@@ -47,6 +47,11 @@ const STAR_OUTER_SPILL_STRENGTH = 0.28;
 const STAR_OUTER_SPILL_EXPONENT = 1.35;
 const STAR_BEHIND_DEPTH_RANGE = 0.65;
 const STAR_BEHIND_RADIUS_SCALE = 1.1;
+const STAR_LAYER_COUNT = 3;
+const STAR_LAYER_FLOW_SCALE: readonly [number, number, number] = [0.72, 1, 1.34];
+const STAR_LAYER_ALPHA_SCALE: readonly [number, number, number] = [0.62, 0.84, 1];
+const STAR_LAYER_SIZE_SCALE: readonly [number, number, number] = [0.76, 1, 1.22];
+const STAR_LAYER_JITTER_SCALE: readonly [number, number, number] = [0.88, 1, 1.14];
 const DEBUG_RING_AHEAD_COUNT = 28;
 const DEBUG_RING_BEHIND_COUNT = 7;
 const DEBUG_RING_BEYOND_COUNT = 4;
@@ -90,6 +95,7 @@ interface ProjectedPoint {
 
 interface TunnelStar {
   readonly ringIndex: number;
+  readonly layer: 0 | 1 | 2;
   readonly theta: number;
   readonly radialJitter: number;
   readonly alpha: number;
@@ -295,12 +301,14 @@ function createTunnelStars(): ReadonlyArray<TunnelStar> {
 
   for (let ringIndex = 0; ringIndex < TUNNEL_RING_COUNT; ringIndex += 1) {
     for (let starIndex = 0; starIndex < TUNNEL_STARS_PER_RING; starIndex += 1) {
+      const layer = (starIndex % STAR_LAYER_COUNT) as 0 | 1 | 2;
       stars.push({
         ringIndex,
+        layer,
         theta: rng.frac() * TAU,
-        radialJitter: rng.realInRange(-5, 5),
-        alpha: rng.realInRange(0.45, 0.95),
-        sizeScale: rng.realInRange(0.75, 1.05)
+        radialJitter: rng.realInRange(-5, 5) * STAR_LAYER_JITTER_SCALE[layer],
+        alpha: rng.realInRange(0.45, 0.95) * STAR_LAYER_ALPHA_SCALE[layer],
+        sizeScale: rng.realInRange(0.75, 1.05) * STAR_LAYER_SIZE_SCALE[layer]
       });
     }
   }
@@ -535,7 +543,8 @@ export class TunnelInvadersScene extends Phaser.Scene {
 
   private drawTunnelStars(graphics: Phaser.GameObjects.Graphics, frame: RenderFrame): void {
     for (const star of this.tunnelStars) {
-      const depth = ringDepthAt(star.ringIndex, frame.timeSeconds, this.renderTuning.flowSpeed);
+      const layerFlowSpeed = this.renderTuning.flowSpeed * STAR_LAYER_FLOW_SCALE[star.layer];
+      const depth = ringDepthAt(star.ringIndex, frame.timeSeconds, layerFlowSpeed);
       const visualDepth = clamp01(depth);
       const point = projectPolar(star.theta, depth, frame, this.renderTuning, star.radialJitter);
       const starPixelSize = point.pixelSize;
@@ -557,7 +566,7 @@ export class TunnelInvadersScene extends Phaser.Scene {
       graphics.fillStyle(color, star.alpha * lerp(0.45, 1, 1 - visualDepth));
       graphics.fillRect(starX, starY, starSize, starSize);
 
-      const trailDepth = Math.min(1, depth + 0.04);
+      const trailDepth = Math.min(1, depth + 0.04 * STAR_LAYER_FLOW_SCALE[star.layer]);
       const trailPoint = projectPolar(star.theta, trailDepth, frame, this.renderTuning, star.radialJitter);
       const trailPixelSize = trailPoint.pixelSize;
       const trailSize = Math.max(trailPixelSize, Math.round(starSize * 0.6));
