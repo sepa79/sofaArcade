@@ -1,0 +1,21 @@
+:root {
+  color: #f5f7ff;
+  background: radial-gradient(circle at top, #1f2a44 0%, #0a0d1d 45%, #03040a 100%);
+  font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+}

@@ -1,0 +1,93 @@
+{
+  "id": "pixel-invaders-hybrid",
+  "playerIndex": 0,
+  "bindings": [
+    {
+      "id": "move-keyboard-axis",
+      "actionId": "MOVE_X_RELATIVE",
+      "type": "axis_1d",
+      "source": {
+        "kind": "keyboard_axis",
+        "code": "keyboard.move_x"
+      },
+      "scale": 1,
+      "invert": false
+    },
+    {
+      "id": "move-gamepad-axis",
+      "actionId": "MOVE_X_RELATIVE",
+      "type": "axis_1d",
+      "source": {
+        "kind": "gamepad_axis",
+        "code": "gamepad.move_x"
+      },
+      "scale": 1,
+      "invert": false
+    },
+    {
+      "id": "move-pointer-absolute",
+      "actionId": "MOVE_X_ABSOLUTE",
+      "type": "axis_1d",
+      "source": {
+        "kind": "mouse_position_x",
+        "code": "pointer.x.byte"
+      },
+      "scale": 1,
+      "invert": false
+    },
+    {
+      "id": "move-pointer-active",
+      "actionId": "MOVE_X_ABSOLUTE_ACTIVE",
+      "type": "digital",
+      "source": {
+        "kind": "mouse_button",
+        "code": "pointer.primary_down"
+      }
+    },
+    {
+      "id": "fire-keyboard",
+      "actionId": "FIRE_PRIMARY",
+      "type": "digital",
+      "source": {
+        "kind": "keyboard_key",
+        "code": "keyboard.fire"
+      }
+    },
+    {
+      "id": "fire-gamepad",
+      "actionId": "FIRE_PRIMARY",
+      "type": "digital",
+      "source": {
+        "kind": "gamepad_button",
+        "code": "gamepad.fire"
+      }
+    },
+    {
+      "id": "fire-pointer",
+      "actionId": "FIRE_PRIMARY",
+      "type": "digital",
+      "source": {
+        "kind": "mouse_button",
+        "code": "pointer.fire"
+      }
+    },
+    {
+      "id": "restart-keyboard",
+      "actionId": "RESTART",
+      "type": "digital",
+      "source": {
+        "kind": "keyboard_key",
+        "code": "keyboard.restart"
+      }
+    },
+    {
+      "id": "restart-gamepad",
+      "actionId": "RESTART",
+      "type": "digital",
+      "source": {
+        "kind": "gamepad_button",
+        "code": "gamepad.restart"
+      }
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "name": "web-portal",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "VITE_RELAY_HTTP_URL=http://localhost:8787 vite --host 0.0.0.0",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "lint": "eslint src vite.config.ts --max-warnings=0",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@light80/core": "workspace:*",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.0",
+    "@types/node": "^20.17.57",
+    "@types/qrcode": "^1.5.5",
+    "eslint": "^9.39.3",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.56.1",
+    "vite": "^6.4.1",
+    "vitest": "^3.2.4"
+  }
+}
