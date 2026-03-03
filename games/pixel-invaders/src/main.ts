@@ -12,10 +12,9 @@ const gameConfig: Phaser.Types.Core.GameConfig = {
   pixelArt: true,
   scene: [LauncherScene, PixelInvadersScene, TunnelInvadersScene],
   scale: {
-    mode: Phaser.Scale.FIT,
-    autoCenter: Phaser.Scale.CENTER_BOTH,
-    width: WORLD_WIDTH,
-    height: WORLD_HEIGHT
+    mode: Phaser.Scale.RESIZE,
+    width: window.innerWidth || WORLD_WIDTH,
+    height: window.innerHeight || WORLD_HEIGHT
   }
 };
 

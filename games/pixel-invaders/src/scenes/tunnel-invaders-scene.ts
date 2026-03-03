@@ -4,9 +4,7 @@ import {
   FIXED_TIMESTEP,
   TAU,
   TUNNEL_INNER_RADIUS,
-  TUNNEL_OUTER_RADIUS,
-  WORLD_HEIGHT,
-  WORLD_WIDTH
+  TUNNEL_OUTER_RADIUS
 } from '../tunnel/game/constants';
 import { createInputContext, readFrameInput } from '../tunnel/game/input';
 import { stepGame } from '../tunnel/game/logic';
@@ -23,12 +21,11 @@ const ENEMY_SPRITE_KEY = 'tunnel-enemy-ship';
 const WORM_DRIFT_CAP_X = 18;
 const WORM_DRIFT_CAP_Y = 16;
 const OUTER_DRIFT_INFLUENCE = 0.2;
-const TUNNEL_DENSITY_EXPONENT = 0.58;
 const TWIST_BASE_AMP = 0.08;
 const TWIST_WAVE_AMP = 0.04;
 const ENEMY_WAVE_AMP = 0.08;
-const TUNNEL_RING_COUNT = 34;
-const TUNNEL_STARS_PER_RING = 18;
+const TUNNEL_RING_COUNT = 64;
+const TUNNEL_STARS_PER_RING = 20;
 const TUNNEL_FLOW_SPEED = 0.24;
 const TUNNEL_STAR_SIZE_SCALE = 0.48;
 const DEBUG_TUNING_ENABLED = true;
@@ -42,19 +39,43 @@ const TWIST_SCALE_MAX = 2;
 const TWIST_SCALE_STEP = 0.05;
 const DEPTH_SCALE_DEFAULT = 1;
 const DEPTH_SCALE_DEEP = 4.5;
-const DEPTH_PERSPECTIVE_BIAS = 1.2;
-const PLAYER_SPRITE_SCALE = 0.7;
-const PLAYER_SPRITE_SCALE_JUMP = 0.82;
+const DEPTH_SCALE_MAX = 20;
+const DEPTH_SCALE_STEP = 0.5;
+const DEPTH_CAMERA_NEAR = 8;
+const PLAYER_EDGE_MARGIN_RATIO = 0.15;
+const STAR_OUTER_SPILL_STRENGTH = 0.28;
+const STAR_OUTER_SPILL_EXPONENT = 1.35;
+const STAR_BEHIND_DEPTH_RANGE = 0.65;
+const STAR_BEHIND_RADIUS_SCALE = 1.1;
+const DEBUG_RING_AHEAD_COUNT = 28;
+const DEBUG_RING_BEHIND_COUNT = 7;
+const DEBUG_RING_BEYOND_COUNT = 4;
+const PLAYER_SPRITE_SCALE = 2.1;
+const PLAYER_SPRITE_SCALE_JUMP = 2.46;
 const ENEMY_SPRITE_SCALE_NEAR = 0.75;
 const ENEMY_SPRITE_SCALE_FAR = 0.35;
+const INNER_RADIUS_RATIO = TUNNEL_INNER_RADIUS / TUNNEL_OUTER_RADIUS;
 
 interface RenderFrame {
   readonly timeSeconds: number;
   readonly driftX: number;
   readonly driftY: number;
+  readonly viewportWidth: number;
+  readonly viewportHeight: number;
+  readonly baseCenterX: number;
+  readonly baseCenterY: number;
+  readonly outerRadiusX: number;
+  readonly outerRadiusY: number;
+  readonly innerRadiusX: number;
+  readonly innerRadiusY: number;
 }
 
 interface RenderCenter {
+  readonly x: number;
+  readonly y: number;
+}
+
+interface RenderRadius {
   readonly x: number;
   readonly y: number;
 }
@@ -89,7 +110,9 @@ interface DebugKeys {
   readonly flowUp: ReadonlyArray<Phaser.Input.Keyboard.Key>;
   readonly twistDown: ReadonlyArray<Phaser.Input.Keyboard.Key>;
   readonly twistUp: ReadonlyArray<Phaser.Input.Keyboard.Key>;
-  readonly toggleDepthMode: ReadonlyArray<Phaser.Input.Keyboard.Key>;
+  readonly depthDown: ReadonlyArray<Phaser.Input.Keyboard.Key>;
+  readonly depthUp: ReadonlyArray<Phaser.Input.Keyboard.Key>;
+  readonly toggleRings: ReadonlyArray<Phaser.Input.Keyboard.Key>;
   readonly toggleOverlay: ReadonlyArray<Phaser.Input.Keyboard.Key>;
 }
 
@@ -97,7 +120,7 @@ const DEFAULT_RENDER_TUNING: RenderTuning = {
   pixelOffset: -3,
   flowSpeed: TUNNEL_FLOW_SPEED,
   twistScale: 0.25,
-  depthScale: DEPTH_SCALE_DEFAULT
+  depthScale: DEPTH_SCALE_DEEP
 };
 
 export interface TunnelInvadersSceneData {
@@ -157,10 +180,11 @@ function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
 
-function depthToRadius(depth: number): number {
-  const clampedDepth = clamp01(depth);
-  const depthCurve = Math.pow(clampedDepth, TUNNEL_DENSITY_EXPONENT);
-  return TUNNEL_OUTER_RADIUS - depthCurve * (TUNNEL_OUTER_RADIUS - TUNNEL_INNER_RADIUS);
+function depthToRadius(depth: number, frame: RenderFrame): RenderRadius {
+  return {
+    x: frame.outerRadiusX - depth * (frame.outerRadiusX - frame.innerRadiusX),
+    y: frame.outerRadiusY - depth * (frame.outerRadiusY - frame.innerRadiusY)
+  };
 }
 
 function lerp(a: number, b: number, t: number): number {
@@ -192,14 +216,30 @@ function pixelSizeForDepth(depth: number, pixelOffset: number): number {
   return nearSize;
 }
 
-function computeRenderFrame(timeSeconds: number): RenderFrame {
+function computeRenderFrame(timeSeconds: number, viewportWidth: number, viewportHeight: number): RenderFrame {
   const driftX = Math.sin(timeSeconds * 0.74) * 12 + Math.sin(timeSeconds * 1.23 + 0.7) * 6;
   const driftY = Math.cos(timeSeconds * 0.82 + 0.2) * 10 + Math.sin(timeSeconds * 1.36 + 1.1) * 5;
+  const baseCenterX = viewportWidth / 2;
+  const baseCenterY = viewportHeight / 2;
+  const edgeMarginX = baseCenterX * PLAYER_EDGE_MARGIN_RATIO;
+  const edgeMarginY = baseCenterY * PLAYER_EDGE_MARGIN_RATIO;
+  const outerRadiusX = Math.max(32, baseCenterX - edgeMarginX);
+  const outerRadiusY = Math.max(32, baseCenterY - edgeMarginY);
+  const innerRadiusX = Math.max(18, outerRadiusX * INNER_RADIUS_RATIO);
+  const innerRadiusY = Math.max(18, outerRadiusY * INNER_RADIUS_RATIO);
 
   return {
     timeSeconds,
     driftX: Math.max(-WORM_DRIFT_CAP_X, Math.min(WORM_DRIFT_CAP_X, driftX)),
-    driftY: Math.max(-WORM_DRIFT_CAP_Y, Math.min(WORM_DRIFT_CAP_Y, driftY))
+    driftY: Math.max(-WORM_DRIFT_CAP_Y, Math.min(WORM_DRIFT_CAP_Y, driftY)),
+    viewportWidth,
+    viewportHeight,
+    baseCenterX,
+    baseCenterY,
+    outerRadiusX,
+    outerRadiusY,
+    innerRadiusX,
+    innerRadiusY
   };
 }
 
@@ -208,8 +248,8 @@ function centerForDepth(depth: number, frame: RenderFrame): RenderCenter {
   const depthInfluence = OUTER_DRIFT_INFLUENCE + (1 - OUTER_DRIFT_INFLUENCE) * Math.pow(clampedDepth, 1.45);
 
   return {
-    x: WORLD_WIDTH / 2 + frame.driftX * depthInfluence,
-    y: WORLD_HEIGHT / 2 + frame.driftY * depthInfluence
+    x: frame.baseCenterX + frame.driftX * depthInfluence,
+    y: frame.baseCenterY + frame.driftY * depthInfluence
   };
 }
 
@@ -232,19 +272,21 @@ function wrapUnit(value: number): number {
 }
 
 function mapDepthForPerspective(depth: number, depthScale: number): number {
-  const normalizedDepth = clamp01(depth);
   const clampedScale = Math.max(DEPTH_SCALE_DEFAULT, depthScale);
+  const zNear = DEPTH_CAMERA_NEAR;
+  const zFar = zNear + clampedScale;
+  const z = zNear + depth * clampedScale;
+  const invNear = 1 / zNear;
+  const invFar = 1 / zFar;
+  const invDepth = 1 / z;
 
-  const virtualDepth = normalizedDepth * clampedScale;
-  const projected = virtualDepth / (virtualDepth + DEPTH_PERSPECTIVE_BIAS);
-  const projectedMax = clampedScale / (clampedScale + DEPTH_PERSPECTIVE_BIAS);
-
-  return projectedMax === 0 ? 0 : projected / projectedMax;
+  return (invNear - invDepth) / (invNear - invFar);
 }
 
 function ringDepthAt(ringIndex: number, timeSeconds: number, flowSpeed: number): number {
+  const totalRange = 1 + STAR_BEHIND_DEPTH_RANGE;
   const normalized = ringIndex / TUNNEL_RING_COUNT;
-  return wrapUnit(normalized - timeSeconds * flowSpeed);
+  return wrapUnit(normalized - timeSeconds * flowSpeed) * totalRange - STAR_BEHIND_DEPTH_RANGE;
 }
 
 function createTunnelStars(): ReadonlyArray<TunnelStar> {
@@ -273,16 +315,20 @@ function projectPolar(
   tuning: RenderTuning,
   radiusOffset = 0
 ): ProjectedPoint {
-  const clampedDepth = clamp01(depth);
-  const projectedDepth = mapDepthForPerspective(clampedDepth, tuning.depthScale);
+  const projectedDepth = mapDepthForPerspective(depth < 0 ? 0 : depth, tuning.depthScale);
   const pixelSize = pixelSizeForDepth(projectedDepth, tuning.pixelOffset);
   const center = centerForDepth(projectedDepth, frame);
-  const radius = depthToRadius(projectedDepth) + radiusOffset;
+  const radius = depthToRadius(projectedDepth, frame);
+  const behindDepth = depth < 0 ? -depth : 0;
+  const behindRadiusOffset =
+    behindDepth * Math.min(frame.viewportWidth, frame.viewportHeight) * STAR_BEHIND_RADIUS_SCALE;
+  const radiusX = radius.x + radiusOffset + behindRadiusOffset;
+  const radiusY = radius.y + radiusOffset + behindRadiusOffset;
   const renderTheta = theta + depthTwist(projectedDepth, frame.timeSeconds, tuning.twistScale);
 
   return {
-    x: snapToGrid(center.x + Math.cos(renderTheta) * radius, pixelSize),
-    y: snapToGrid(center.y + Math.sin(renderTheta) * radius, pixelSize),
+    x: snapToGrid(center.x + Math.cos(renderTheta) * radiusX, pixelSize),
+    y: snapToGrid(center.y + Math.sin(renderTheta) * radiusY, pixelSize),
     pixelSize,
     centerX: center.x,
     centerY: center.y
@@ -291,6 +337,35 @@ function projectPolar(
 
 function quantizeSize(size: number, pixelSize: number): number {
   return Math.max(pixelSize, Math.round(size / pixelSize) * pixelSize);
+}
+
+function applyOuterSpill(
+  point: ProjectedPoint,
+  depth: number,
+  frame: RenderFrame,
+  pixelSize: number
+): { readonly x: number; readonly y: number } {
+  const vecX = point.x - point.centerX;
+  const vecY = point.y - point.centerY;
+  const radius = Math.hypot(vecX, vecY);
+  if (radius === 0) {
+    return {
+      x: point.x,
+      y: point.y
+    };
+  }
+
+  const dirX = vecX / radius;
+  const dirY = vecY / radius;
+  const spillFactor = Math.pow(1 - clamp01(depth), STAR_OUTER_SPILL_EXPONENT);
+  const spill =
+    Math.min(frame.viewportWidth, frame.viewportHeight) * spillFactor * STAR_OUTER_SPILL_STRENGTH;
+  const extendedRadius = radius + spill;
+
+  return {
+    x: snapToGrid(point.centerX + dirX * extendedRadius, pixelSize),
+    y: snapToGrid(point.centerY + dirY * extendedRadius, pixelSize)
+  };
 }
 
 function justDownAny(keys: ReadonlyArray<Phaser.Input.Keyboard.Key>): boolean {
@@ -312,6 +387,7 @@ export class TunnelInvadersScene extends Phaser.Scene {
   private debugText: Phaser.GameObjects.Text | null = null;
   private debugKeys: DebugKeys | null = null;
   private debugOverlayVisible = DEBUG_TUNING_ENABLED;
+  private debugRingsVisible = false;
   private renderTuning: RenderTuning = DEFAULT_RENDER_TUNING;
   private hintText!: Phaser.GameObjects.Text;
   private inputContext!: InputContext;
@@ -338,13 +414,13 @@ export class TunnelInvadersScene extends Phaser.Scene {
     }
 
     this.graphics = this.add.graphics();
-    this.playerSprite = this.add.image(WORLD_WIDTH / 2, WORLD_HEIGHT / 2, PLAYER_SPRITE_KEY);
+    this.playerSprite = this.add.image(this.scale.width / 2, this.scale.height / 2, PLAYER_SPRITE_KEY);
     this.playerSprite.setOrigin(0.5, 0.5);
     this.playerSprite.setScale(PLAYER_SPRITE_SCALE);
     this.tunnelStars = createTunnelStars();
 
     for (const enemy of this.state.enemies) {
-      const sprite = this.add.image(WORLD_WIDTH / 2, WORLD_HEIGHT / 2, ENEMY_SPRITE_KEY);
+      const sprite = this.add.image(this.scale.width / 2, this.scale.height / 2, ENEMY_SPRITE_KEY);
       sprite.setOrigin(0.5, 0.5);
       sprite.setScale(ENEMY_SPRITE_SCALE_FAR);
       this.enemySprites.set(enemy.id, sprite);
@@ -362,7 +438,7 @@ export class TunnelInvadersScene extends Phaser.Scene {
       color: '#90f0ff'
     });
 
-    this.hintText = this.add.text(WORLD_WIDTH / 2, WORLD_HEIGHT / 2, '', {
+    this.hintText = this.add.text(this.scale.width / 2, this.scale.height / 2, '', {
       fontFamily: 'Trebuchet MS',
       fontSize: '34px',
       color: '#ffe4a8',
@@ -401,11 +477,19 @@ export class TunnelInvadersScene extends Phaser.Scene {
           keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.PERIOD),
           keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.X)
         ],
-        toggleDepthMode: [keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D)],
+        depthDown: [
+          keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D),
+          keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.PAGE_DOWN)
+        ],
+        depthUp: [
+          keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F),
+          keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.PAGE_UP)
+        ],
+        toggleRings: [keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R)],
         toggleOverlay: [keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F1)]
       };
 
-      this.debugText = this.add.text(20, WORLD_HEIGHT - 88, '', {
+      this.debugText = this.add.text(20, this.scale.height - 88, '', {
         fontFamily: 'Trebuchet MS',
         fontSize: '16px',
         color: '#9be7ff'
@@ -434,9 +518,14 @@ export class TunnelInvadersScene extends Phaser.Scene {
     const graphics = this.graphics;
     graphics.clear();
 
-    const frame = computeRenderFrame(this.time.now / 1000);
+    const frame = computeRenderFrame(this.time.now / 1000, this.scale.width, this.scale.height);
+    this.hintText.setPosition(this.scale.width / 2, this.scale.height / 2);
+    if (this.debugText !== null) {
+      this.debugText.setY(this.scale.height - 88);
+    }
 
     this.drawTunnelStars(graphics, frame);
+    this.drawDebugRings(graphics, frame);
     this.drawBullets(graphics, frame);
     this.drawEnemies(frame);
     this.drawPlayer(graphics, frame);
@@ -447,36 +536,77 @@ export class TunnelInvadersScene extends Phaser.Scene {
   private drawTunnelStars(graphics: Phaser.GameObjects.Graphics, frame: RenderFrame): void {
     for (const star of this.tunnelStars) {
       const depth = ringDepthAt(star.ringIndex, frame.timeSeconds, this.renderTuning.flowSpeed);
+      const visualDepth = clamp01(depth);
       const point = projectPolar(star.theta, depth, frame, this.renderTuning, star.radialJitter);
       const starPixelSize = point.pixelSize;
       const starSize = quantizeSize(
-        lerp(1.2, 3.4, 1 - depth) * star.sizeScale * TUNNEL_STAR_SIZE_SCALE,
+        lerp(1.2, 3.4, 1 - visualDepth) * star.sizeScale * TUNNEL_STAR_SIZE_SCALE,
         starPixelSize
       );
       const starHalf = starSize / 2;
-      const starX = snapToGrid(point.x - starHalf, starPixelSize);
-      const starY = snapToGrid(point.y - starHalf, starPixelSize);
+      const spilled = applyOuterSpill(point, depth, frame, starPixelSize);
+      const starX = snapToGrid(spilled.x - starHalf, starPixelSize);
+      const starY = snapToGrid(spilled.y - starHalf, starPixelSize);
 
       const color = Phaser.Display.Color.GetColor(
-        Math.round(lerp(90, 212, 1 - depth)),
-        Math.round(lerp(120, 236, 1 - depth)),
-        Math.round(lerp(170, 255, 1 - depth))
+        Math.round(lerp(90, 212, 1 - visualDepth)),
+        Math.round(lerp(120, 236, 1 - visualDepth)),
+        Math.round(lerp(170, 255, 1 - visualDepth))
       );
 
-      graphics.fillStyle(color, star.alpha * lerp(0.45, 1, 1 - depth));
+      graphics.fillStyle(color, star.alpha * lerp(0.45, 1, 1 - visualDepth));
       graphics.fillRect(starX, starY, starSize, starSize);
 
-      const trailDepth = clamp01(depth + 0.045);
+      const trailDepth = Math.min(1, depth + 0.04);
       const trailPoint = projectPolar(star.theta, trailDepth, frame, this.renderTuning, star.radialJitter);
       const trailPixelSize = trailPoint.pixelSize;
       const trailSize = Math.max(trailPixelSize, Math.round(starSize * 0.6));
+      const spilledTrail = applyOuterSpill(trailPoint, trailDepth, frame, trailPixelSize);
       graphics.fillStyle(0x6bb4ff, 0.2 * star.alpha);
       graphics.fillRect(
-        snapToGrid(trailPoint.x - trailSize / 2, trailPixelSize),
-        snapToGrid(trailPoint.y - trailSize / 2, trailPixelSize),
+        snapToGrid(spilledTrail.x - trailSize / 2, trailPixelSize),
+        snapToGrid(spilledTrail.y - trailSize / 2, trailPixelSize),
         trailSize,
         trailSize
       );
+    }
+  }
+
+  private drawDebugRings(graphics: Phaser.GameObjects.Graphics, frame: RenderFrame): void {
+    if (!this.debugRingsVisible) {
+      return;
+    }
+
+    const ringSegments = 64;
+    const stepFrom = -DEBUG_RING_BEHIND_COUNT;
+    const stepTo = DEBUG_RING_AHEAD_COUNT + DEBUG_RING_BEYOND_COUNT;
+
+    for (let step = stepFrom; step <= stepTo; step += 1) {
+      const depth = step / DEBUG_RING_AHEAD_COUNT;
+      const visualDepth = clamp01(depth);
+
+      const alpha = lerp(0.16, 0.52, 1 - visualDepth);
+      const color = Phaser.Display.Color.GetColor(
+        Math.round(lerp(58, 130, 1 - visualDepth)),
+        Math.round(lerp(136, 220, 1 - visualDepth)),
+        Math.round(lerp(210, 255, 1 - visualDepth))
+      );
+
+      graphics.lineStyle(1, color, alpha);
+      graphics.beginPath();
+
+      for (let segment = 0; segment <= ringSegments; segment += 1) {
+        const theta = (segment / ringSegments) * TAU;
+        const point = projectPolar(theta, depth, frame, this.renderTuning);
+
+        if (segment === 0) {
+          graphics.moveTo(point.x, point.y);
+        } else {
+          graphics.lineTo(point.x, point.y);
+        }
+      }
+
+      graphics.strokePath();
     }
   }
 
@@ -571,13 +701,21 @@ export class TunnelInvadersScene extends Phaser.Scene {
       }
     }
 
-    if (justDownAny(this.debugKeys.toggleDepthMode)) {
+    if (justDownAny(this.debugKeys.toggleRings)) {
+      this.debugRingsVisible = !this.debugRingsVisible;
+    }
+
+    if (justDownAny(this.debugKeys.depthDown)) {
       this.renderTuning = {
         ...this.renderTuning,
-        depthScale:
-          this.renderTuning.depthScale > DEPTH_SCALE_DEFAULT
-            ? DEPTH_SCALE_DEFAULT
-            : DEPTH_SCALE_DEEP
+        depthScale: Math.max(DEPTH_SCALE_DEEP, this.renderTuning.depthScale - DEPTH_SCALE_STEP)
+      };
+    }
+
+    if (justDownAny(this.debugKeys.depthUp)) {
+      this.renderTuning = {
+        ...this.renderTuning,
+        depthScale: Math.min(DEPTH_SCALE_MAX, this.renderTuning.depthScale + DEPTH_SCALE_STEP)
       };
     }
 
@@ -640,7 +778,7 @@ export class TunnelInvadersScene extends Phaser.Scene {
     const near = Math.max(mid, 4 + this.renderTuning.pixelOffset);
 
     this.debugText.setText(
-      `DEBUG TUNING [F1]\nPIXELS [ ] / 9 0: ${far}/${mid}/${near}\nFLOW - + / PgDn PgUp / S W: ${this.renderTuning.flowSpeed.toFixed(2)}\nTWIST , . / Z X: ${this.renderTuning.twistScale.toFixed(2)}\nDEEP D: ${this.renderTuning.depthScale > DEPTH_SCALE_DEFAULT ? 'ON' : 'OFF'} (${this.renderTuning.depthScale.toFixed(2)})`
+      `DEBUG TUNING [F1]\nPIXELS [ ] / 9 0: ${far}/${mid}/${near}\nFLOW - + / PgDn PgUp / S W: ${this.renderTuning.flowSpeed.toFixed(2)}\nTWIST , . / Z X: ${this.renderTuning.twistScale.toFixed(2)}\nDEPTH D/F (PgDn/PgUp): ${this.renderTuning.depthScale.toFixed(1)}\nRINGS R: ${this.debugRingsVisible ? 'ON' : 'OFF'}`
     );
   }
 
