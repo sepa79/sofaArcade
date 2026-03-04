@@ -98,6 +98,10 @@ const EXPLOSION_GLOW_RADIUS_NEAR = 44;
 const EXPLOSION_GLOW_RADIUS_FAR = 26;
 const ASTEROID_SPRITE_SCALE_NEAR = 2;
 const ASTEROID_SPRITE_SCALE_FAR = 0.22;
+const CAMERA_ZOOM_DEFAULT = 1;
+const CAMERA_ZOOM_OUT = 0.72;
+const CAMERA_ZOOM_SPEED = 1.8;
+const CAMERA_ZOOM_DEPTH_THRESHOLD = -0.02;
 const PLAYER_SPRITE_SCALE_JUMP = 2.46;
 const INNER_RADIUS_RATIO = TUNNEL_INNER_RADIUS / TUNNEL_OUTER_RADIUS;
 const ENEMY_BULLET_CORE_SIZE_NEAR = 8.4;
@@ -282,15 +286,20 @@ function pixelSizeForDepth(depth: number, pixelOffset: number): number {
   return nearSize;
 }
 
-function computeRenderFrame(timeSeconds: number, viewportWidth: number, viewportHeight: number): RenderFrame {
+function computeRenderFrame(
+  timeSeconds: number,
+  viewportWidth: number,
+  viewportHeight: number,
+  cameraZoom: number
+): RenderFrame {
   const driftX = Math.sin(timeSeconds * 0.74) * 12 + Math.sin(timeSeconds * 1.23 + 0.7) * 6;
   const driftY = Math.cos(timeSeconds * 0.82 + 0.2) * 10 + Math.sin(timeSeconds * 1.36 + 1.1) * 5;
   const baseCenterX = viewportWidth / 2;
   const baseCenterY = viewportHeight / 2;
   const edgeMarginX = baseCenterX * PLAYER_EDGE_MARGIN_RATIO;
   const edgeMarginY = baseCenterY * PLAYER_EDGE_MARGIN_RATIO;
-  const outerRadiusX = Math.max(32, baseCenterX - edgeMarginX);
-  const outerRadiusY = Math.max(32, baseCenterY - edgeMarginY);
+  const outerRadiusX = Math.max(32, (baseCenterX - edgeMarginX) * cameraZoom);
+  const outerRadiusY = Math.max(32, (baseCenterY - edgeMarginY) * cameraZoom);
   const innerRadiusX = Math.max(18, outerRadiusX * INNER_RADIUS_RATIO);
   const innerRadiusY = Math.max(18, outerRadiusY * INNER_RADIUS_RATIO);
 
@@ -491,6 +500,7 @@ export class TunnelInvadersScene extends Phaser.Scene {
   private inputContext!: InputContext;
   private state: GameState = createInitialState();
   private accumulator = 0;
+  private cameraZoom = CAMERA_ZOOM_DEFAULT;
   private hitFlashAlpha = 0;
   private crtOverlayWidth = -1;
   private crtOverlayHeight = -1;
@@ -768,6 +778,7 @@ export class TunnelInvadersScene extends Phaser.Scene {
       this.triggerHitFeedback(HIT_FLASH_ENEMY, HIT_SHAKE_ENEMY_DURATION_MS, HIT_SHAKE_ENEMY_INTENSITY);
     }
 
+    this.updateCameraZoom(delta / 1000);
     this.hitFlashAlpha = Math.max(0, this.hitFlashAlpha - (delta / 1000) * HIT_FLASH_DECAY_PER_SECOND);
     this.renderState();
   }
@@ -777,7 +788,12 @@ export class TunnelInvadersScene extends Phaser.Scene {
     const graphics = this.graphics;
     graphics.clear();
 
-    const frame = computeRenderFrame(this.time.now / 1000, this.scale.width, this.scale.height);
+    const frame = computeRenderFrame(
+      this.time.now / 1000,
+      this.scale.width,
+      this.scale.height,
+      this.cameraZoom
+    );
     this.hintText.setPosition(this.scale.width / 2, this.scale.height / 2);
 
     this.syncEnemySprites();
@@ -829,7 +845,12 @@ export class TunnelInvadersScene extends Phaser.Scene {
   }
 
   private spawnExplosion(theta: number, depth: number): void {
-    const frame = computeRenderFrame(this.time.now / 1000, this.scale.width, this.scale.height);
+    const frame = computeRenderFrame(
+      this.time.now / 1000,
+      this.scale.width,
+      this.scale.height,
+      this.cameraZoom
+    );
     const projected = projectPolarSmooth(theta, depth, frame, this.renderTuning);
     const useFirstSet = Phaser.Math.Between(0, 1) === 0;
     const textureKey = useFirstSet ? EXPLOSION_TEXTURE_KEY_1 : EXPLOSION_TEXTURE_KEY_2;
@@ -1338,6 +1359,23 @@ export class TunnelInvadersScene extends Phaser.Scene {
       );
       drawPixelBlock(head.x, head.y, noseSize, 0xfff6b2, 1);
     }
+  }
+
+  private shouldZoomOut(): boolean {
+    return this.state.enemies.some((enemy) => enemy.alive && enemy.depth < CAMERA_ZOOM_DEPTH_THRESHOLD);
+  }
+
+  private updateCameraZoom(deltaSeconds: number): void {
+    const target = this.shouldZoomOut() ? CAMERA_ZOOM_OUT : CAMERA_ZOOM_DEFAULT;
+    const delta = target - this.cameraZoom;
+    const maxStep = CAMERA_ZOOM_SPEED * deltaSeconds;
+
+    if (Math.abs(delta) <= maxStep) {
+      this.cameraZoom = target;
+      return;
+    }
+
+    this.cameraZoom += Math.sign(delta) * maxStep;
   }
 
   private applyDebugHotkeys(): void {
