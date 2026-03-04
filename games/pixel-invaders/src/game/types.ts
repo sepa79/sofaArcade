@@ -3,6 +3,8 @@ export interface Enemy {
   readonly x: number;
   readonly y: number;
   readonly alive: boolean;
+  readonly kind: 'normal' | 'ufo';
+  readonly scoreValue: number;
 }
 
 export interface Bullet {
@@ -19,11 +21,13 @@ export interface FrameInput {
   readonly restartPressed: boolean;
 }
 
-export type GamePhase = 'playing' | 'won' | 'lost';
+export type GamePhase = 'ready' | 'playing' | 'lost';
 
 export interface GameState {
   readonly phase: GamePhase;
   readonly score: number;
+  readonly hitStreak: number;
+  readonly scoreMultiplier: number;
   readonly lives: number;
   readonly playerX: number;
   readonly playerRespawnTimer: number;

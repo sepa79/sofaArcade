@@ -24,8 +24,6 @@ const HORIZON_FLOW_SPEED_PX_PER_SEC = 60;
 const PERSPECTIVE_TOP_SPACING = 33;
 const PERSPECTIVE_BOTTOM_SPREAD = 5;
 const PERSPECTIVE_FADE_SEGMENTS = 12;
-const PERSPECTIVE_PARALLAX_MAX_X = 18;
-const PERSPECTIVE_PARALLAX_LERP = 0.12;
 
 interface MenuKeys {
   readonly up: Phaser.Input.Keyboard.Key;
@@ -172,7 +170,6 @@ export class LauncherScene extends Phaser.Scene {
   private keys!: MenuKeys;
   private backdropGraphics!: Phaser.GameObjects.Graphics;
   private stars: MenuStar[] = [];
-  private perspectiveParallaxX = 0;
   private sfxLoopTimer = 0;
   private sfxLoopStep = 0;
   private dom: LauncherDom | null = null;
@@ -775,11 +772,7 @@ export class LauncherScene extends Phaser.Scene {
       graphics.fillRect(Math.round(star.x), Math.round(star.y), star.size, star.size);
     }
 
-    const pointerNormalizedX = Math.max(-1, Math.min(1, (this.input.activePointer.x / width) * 2 - 1));
-    const targetParallaxX = pointerNormalizedX * PERSPECTIVE_PARALLAX_MAX_X;
-    this.perspectiveParallaxX = lerp(this.perspectiveParallaxX, targetParallaxX, PERSPECTIVE_PARALLAX_LERP);
-
-    const centerX = width / 2 + this.perspectiveParallaxX;
+    const centerX = width / 2;
     const perspectiveCount = Math.ceil((width * 0.5) / PERSPECTIVE_TOP_SPACING) + 2;
     for (let i = -perspectiveCount; i <= perspectiveCount; i += 1) {
       const xTop = centerX + i * PERSPECTIVE_TOP_SPACING;

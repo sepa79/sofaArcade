@@ -1,11 +1,18 @@
 import {
   BULLET_HEIGHT,
+  ENEMY_COLS,
   ENEMY_BULLET_SPEED,
   ENEMY_DESCEND_STEP,
   ENEMY_DRIFT_DOWN_SPEED,
   ENEMY_FIRE_INTERVAL,
   ENEMY_HEIGHT,
+  ENEMY_ROW_RESPAWN_Y,
+  ENEMY_ROW_UFO_CHANCE,
+  ENEMY_ROWS,
   ENEMY_SPEED_STEP,
+  ENEMY_START_X,
+  ENEMY_GAP_X,
+  ENEMY_UFO_SCORE,
   ENEMY_WIDTH,
   PLAYER_HEIGHT,
   PLAYER_RESPAWN_INVULNERABILITY,
@@ -76,15 +83,11 @@ function moveEnemies(
   readonly direction: -1 | 1;
   readonly speed: number;
 } {
-  const moved = enemies.map((enemy) =>
-    enemy.alive
-      ? {
-          ...enemy,
-          x: enemy.x + direction * speed * dt,
-          y: enemy.y + ENEMY_DRIFT_DOWN_SPEED * dt
-        }
-      : enemy
-  );
+  const moved = enemies.map((enemy) => ({
+    ...enemy,
+    x: enemy.x + direction * speed * dt,
+    y: enemy.y + ENEMY_DRIFT_DOWN_SPEED * dt
+  }));
 
   const touchedBoundary = moved.some(
     (enemy) => enemy.alive && (enemy.x <= ENEMY_WIDTH / 2 || enemy.x >= WORLD_WIDTH - ENEMY_WIDTH / 2)
@@ -133,23 +136,132 @@ function spawnEnemyBullet(
   };
 }
 
+function collectDefeatedRows(enemies: ReadonlyArray<Enemy>): ReadonlyArray<number> {
+  const defeatedRows: number[] = [];
+  for (let row = 0; row < ENEMY_ROWS; row += 1) {
+    let rowAlive = false;
+    for (const enemy of enemies) {
+      if (Math.floor(enemy.id / ENEMY_COLS) !== row) {
+        continue;
+      }
+      if (enemy.alive) {
+        rowAlive = true;
+        break;
+      }
+    }
+    if (!rowAlive) {
+      defeatedRows.push(row);
+    }
+  }
+
+  return defeatedRows;
+}
+
+function respawnRows(
+  enemies: ReadonlyArray<Enemy>,
+  rows: ReadonlyArray<number>,
+  rngSeed: number
+): {
+  readonly enemies: ReadonlyArray<Enemy>;
+  readonly rngSeed: number;
+} {
+  if (rows.length === 0) {
+    return {
+      enemies,
+      rngSeed
+    };
+  }
+
+  const rowsToRespawn = new Set(rows);
+  const ufoColumnByRow = new Map<number, number | null>();
+  let nextSeed = rngSeed;
+  for (const row of rows) {
+    const roll = nextRandom(nextSeed);
+    nextSeed = roll.seed;
+    if (roll.value >= ENEMY_ROW_UFO_CHANCE) {
+      ufoColumnByRow.set(row, null);
+      continue;
+    }
+
+    const columnRoll = nextRandom(nextSeed);
+    nextSeed = columnRoll.seed;
+    ufoColumnByRow.set(row, Math.floor(columnRoll.value * ENEMY_COLS));
+  }
+
+  const nextEnemies = enemies.map((enemy) => {
+    const row = Math.floor(enemy.id / ENEMY_COLS);
+    if (!rowsToRespawn.has(row)) {
+      return enemy;
+    }
+
+    const col = enemy.id % ENEMY_COLS;
+    const ufoCol = ufoColumnByRow.get(row);
+    const isUfo = ufoCol !== null && ufoCol === col;
+    const kind: Enemy['kind'] = isUfo ? 'ufo' : 'normal';
+    return {
+      ...enemy,
+      alive: true,
+      x: ENEMY_START_X + col * ENEMY_GAP_X,
+      y: ENEMY_ROW_RESPAWN_Y,
+      kind,
+      scoreValue: kind === 'ufo' ? ENEMY_UFO_SCORE : SCORE_PER_ENEMY
+    };
+  });
+
+  return {
+    enemies: nextEnemies,
+    rngSeed: nextSeed
+  };
+}
+
 function moveBullets(bullets: ReadonlyArray<Bullet>, dt: number): ReadonlyArray<Bullet> {
-  return bullets
-    .map((bullet) => ({
-      ...bullet,
-      y: bullet.y + bullet.vy * dt
-    }))
-    .filter((bullet) => bullet.y > -BULLET_HEIGHT && bullet.y < WORLD_HEIGHT + BULLET_HEIGHT);
+  return bullets.map((bullet) => ({
+    ...bullet,
+    y: bullet.y + bullet.vy * dt
+  }));
+}
+
+function filterBulletsAndCountPlayerMisses(
+  bullets: ReadonlyArray<Bullet>
+): {
+  readonly bullets: ReadonlyArray<Bullet>;
+  readonly playerMisses: number;
+} {
+  let playerMisses = 0;
+  const nextBullets: Bullet[] = [];
+  for (const bullet of bullets) {
+    if (bullet.y <= -BULLET_HEIGHT) {
+      if (bullet.owner === 'player') {
+        playerMisses += 1;
+      }
+      continue;
+    }
+
+    if (bullet.y >= WORLD_HEIGHT + BULLET_HEIGHT) {
+      continue;
+    }
+
+    nextBullets.push(bullet);
+  }
+
+  return {
+    bullets: nextBullets,
+    playerMisses
+  };
 }
 
 function resolvePlayerShots(
   enemies: ReadonlyArray<Enemy>,
   bullets: ReadonlyArray<Bullet>,
-  score: number
+  score: number,
+  hitStreak: number,
+  scoreMultiplier: number
 ): {
   readonly enemies: ReadonlyArray<Enemy>;
   readonly bullets: ReadonlyArray<Bullet>;
   readonly score: number;
+  readonly hitStreak: number;
+  readonly scoreMultiplier: number;
 } {
   const aliveById = new Set<number>();
   enemies.forEach((enemy) => {
@@ -159,6 +271,8 @@ function resolvePlayerShots(
   });
 
   let nextScore = score;
+  let nextHitStreak = hitStreak;
+  let nextScoreMultiplier = scoreMultiplier;
   const nextBullets: Bullet[] = [];
 
   for (const bullet of bullets) {
@@ -177,7 +291,9 @@ function resolvePlayerShots(
     }
 
     aliveById.delete(target.id);
-    nextScore += SCORE_PER_ENEMY;
+    nextScore += target.scoreValue * nextScoreMultiplier;
+    nextHitStreak += 1;
+    nextScoreMultiplier = Math.min(32, nextHitStreak + 1);
   }
 
   const nextEnemies = enemies.map((enemy) => ({
@@ -188,7 +304,9 @@ function resolvePlayerShots(
   return {
     enemies: nextEnemies,
     bullets: nextBullets,
-    score: nextScore
+    score: nextScore,
+    hitStreak: nextHitStreak,
+    scoreMultiplier: nextScoreMultiplier
   };
 }
 
@@ -254,6 +372,21 @@ export function stepGame(state: GameState, input: FrameInput, dt: number): GameS
     throw new Error(`moveAxisSigned must be in [-1, 1], got ${input.moveAxisSigned}.`);
   }
 
+  if (state.phase === 'ready') {
+    if (input.restartPressed) {
+      return createInitialState(state.rngSeed + 1);
+    }
+
+    if (input.firePressed) {
+      return {
+        ...state,
+        phase: 'playing'
+      };
+    }
+
+    return state;
+  }
+
   if (state.phase !== 'playing') {
     return input.restartPressed ? createInitialState(state.rngSeed + 1) : state;
   }
@@ -290,26 +423,40 @@ export function stepGame(state: GameState, input: FrameInput, dt: number): GameS
     enemyFireTimer = ENEMY_FIRE_INTERVAL;
   }
 
-  const resolvedPlayerShots = resolvePlayerShots(movedEnemies.enemies, bullets, state.score);
+  const resolvedPlayerShots = resolvePlayerShots(
+    movedEnemies.enemies,
+    bullets,
+    state.score,
+    state.hitStreak,
+    state.scoreMultiplier
+  );
   const resolvedEnemyShots = resolveEnemyShots(
     state.lives,
     playerX,
     playerRespawnTimer,
     resolvedPlayerShots.bullets
   );
+  const filteredBullets = filterBulletsAndCountPlayerMisses(resolvedEnemyShots.bullets);
+  const playerWasHit = resolvedEnemyShots.lives < state.lives;
+  const shouldResetBonus = filteredBullets.playerMisses > 0 || playerWasHit;
+  const nextHitStreak = shouldResetBonus ? 0 : resolvedPlayerShots.hitStreak;
+  const nextScoreMultiplier = shouldResetBonus ? 1 : resolvedPlayerShots.scoreMultiplier;
+  const respawnResult = respawnRows(
+    resolvedPlayerShots.enemies,
+    collectDefeatedRows(resolvedPlayerShots.enemies),
+    rngSeed
+  );
+  rngSeed = respawnResult.rngSeed;
 
-  const enemiesAliveAfterShots = resolvedPlayerShots.enemies.some((enemy) => enemy.alive);
-  const reachedPlayer = enemiesReachedPlayer(resolvedPlayerShots.enemies);
+  const reachedPlayer = enemiesReachedPlayer(respawnResult.enemies);
 
-  const phase = !enemiesAliveAfterShots
-    ? 'won'
-    : reachedPlayer
-      ? 'lost'
-      : resolvedEnemyShots.phase;
+  const phase = reachedPlayer ? 'lost' : resolvedEnemyShots.phase;
 
   return {
     phase,
     score: resolvedPlayerShots.score,
+    hitStreak: nextHitStreak,
+    scoreMultiplier: nextScoreMultiplier,
     lives: resolvedEnemyShots.lives,
     playerX,
     playerRespawnTimer: resolvedEnemyShots.playerRespawnTimer,
@@ -318,7 +465,7 @@ export function stepGame(state: GameState, input: FrameInput, dt: number): GameS
     enemySpeed: movedEnemies.speed,
     enemyFireTimer,
     rngSeed,
-    enemies: resolvedPlayerShots.enemies,
-    bullets: resolvedEnemyShots.bullets
+    enemies: respawnResult.enemies,
+    bullets: filteredBullets.bullets
   };
 }

@@ -159,6 +159,7 @@ const AUDIO_MIX_PROFILES: Readonly<Record<AudioMixProfileId, AudioMixProfile>> =
     fxDepthFloor: 0.56
   }
 };
+const MOTION_LOOP_GAIN_SCALE = 0.28;
 
 function requireAudioMixProfile(profileId: AudioMixProfileId): AudioMixProfile {
   const profile = AUDIO_MIX_PROFILES[profileId];
@@ -190,6 +191,9 @@ export class RetroSfx {
   private busCompressor: DynamicsCompressorNode | null = null;
   private busLimiter: DynamicsCompressorNode | null = null;
   private lastPlayedAtByKey = new Map<string, number>();
+  private playerShotVariantCursor = 0;
+  private enemyShotVariantCursor = 0;
+  private explosionVariantCursor = 0;
 
   private motionPrimaryOsc: OscillatorNode | null = null;
   private motionSecondaryOsc: OscillatorNode | null = null;
@@ -281,42 +285,114 @@ export class RetroSfx {
     const pan = clamp(spatial.pan ?? 0, -1, 1);
     const depth = clamp01(spatial.depth ?? 0);
     const profile = requireAudioMixProfile(this.mixProfileId);
+    const variant = this.playerShotVariantCursor % 4;
+    this.playerShotVariantCursor += 1;
 
-    this.playTone(
-      {
-        fromHz: 1840,
-        toHz: 680,
-        duration: 0.078,
-        volume: 0.085 * profile.gains.playerShot,
-        wave: 'square',
-        attack: 0.0015
-      },
-      { pan, depth }
-    );
+    if (variant === 0) {
+      this.playTone(
+        {
+          fromHz: 1820,
+          toHz: 700,
+          duration: 0.072,
+          volume: 0.074 * profile.gains.playerShot,
+          wave: 'square',
+          attack: 0.0015
+        },
+        { pan, depth }
+      );
+      this.playTone(
+        {
+          fromHz: 1040,
+          toHz: 460,
+          duration: 0.094,
+          volume: 0.036 * profile.gains.playerShot,
+          wave: 'triangle',
+          delay: 0.005
+        },
+        { pan: clamp(pan + 0.08, -1, 1), depth }
+      );
+      return;
+    }
 
-    this.playTone(
-      {
-        fromHz: 970,
-        toHz: 410,
-        duration: 0.108,
-        volume: 0.048 * profile.gains.playerShot,
-        wave: 'triangle',
-        delay: 0.006
-      },
-      { pan: clamp(pan + 0.1, -1, 1), depth }
-    );
+    if (variant === 1) {
+      this.playTone(
+        {
+          fromHz: 2110,
+          toHz: 740,
+          duration: 0.066,
+          volume: 0.07 * profile.gains.playerShot,
+          wave: 'square',
+          attack: 0.0012
+        },
+        { pan, depth }
+      );
+      this.playTone(
+        {
+          fromHz: 1320,
+          toHz: 510,
+          duration: 0.081,
+          volume: 0.032 * profile.gains.playerShot,
+          wave: 'triangle',
+          delay: 0.003
+        },
+        { pan: clamp(pan - 0.06, -1, 1), depth }
+      );
+      return;
+    }
 
-    this.playTone(
-      {
-        fromHz: 1450,
-        toHz: 620,
-        duration: 0.056,
-        volume: 0.043 * profile.gains.playerShot,
-        wave: 'sawtooth',
-        delay: 0.004
-      },
-      { pan: clamp(pan - 0.08, -1, 1), depth }
-    );
+    if (variant === 2) {
+      this.playTone(
+        {
+          fromHz: 1680,
+          toHz: 640,
+          duration: 0.078,
+          volume: 0.072 * profile.gains.playerShot,
+          wave: 'square',
+          attack: 0.0016
+        },
+        { pan, depth }
+      );
+      this.playTone(
+        {
+          fromHz: 910,
+          toHz: 380,
+          duration: 0.102,
+          volume: 0.038 * profile.gains.playerShot,
+          wave: 'triangle',
+          delay: 0.007
+        },
+        { pan: clamp(pan + 0.05, -1, 1), depth }
+      );
+      return;
+    }
+
+    if (variant === 3) {
+      this.playTone(
+        {
+          fromHz: 1960,
+          toHz: 760,
+          duration: 0.063,
+          volume: 0.068 * profile.gains.playerShot,
+          wave: 'square',
+          attack: 0.0012
+        },
+        { pan, depth }
+      );
+      this.playTone(
+        {
+          fromHz: 1240,
+          toHz: 560,
+          duration: 0.069,
+          volume: 0.03 * profile.gains.playerShot,
+          wave: 'triangle',
+          delay: 0.004
+        },
+        { pan: clamp(pan - 0.04, -1, 1), depth }
+      );
+      return;
+    }
+
+    throw new Error(`Unsupported player shot variant: ${variant}.`);
   }
 
   playEnemyShot(spatial: SpatialSpec = {}): void {
@@ -327,29 +403,110 @@ export class RetroSfx {
     const pan = clamp(spatial.pan ?? 0, -1, 1);
     const depth = clamp01(spatial.depth ?? 0.2);
     const profile = requireAudioMixProfile(this.mixProfileId);
+    const variant = this.enemyShotVariantCursor % 4;
+    this.enemyShotVariantCursor += 1;
 
-    this.playTone(
-      {
-        fromHz: 780,
-        toHz: 250,
-        duration: 0.115,
-        volume: 0.067 * profile.gains.enemyShot,
-        wave: 'sawtooth'
-      },
-      { pan, depth }
-    );
+    if (variant === 0) {
+      this.playTone(
+        {
+          fromHz: 740,
+          toHz: 230,
+          duration: 0.108,
+          volume: 0.053 * profile.gains.enemyShot,
+          wave: 'sawtooth'
+        },
+        { pan, depth }
+      );
+      this.playTone(
+        {
+          fromHz: 470,
+          toHz: 170,
+          duration: 0.124,
+          volume: 0.028 * profile.gains.enemyShot,
+          wave: 'triangle',
+          delay: 0.009
+        },
+        { pan: clamp(pan - 0.06, -1, 1), depth }
+      );
+      return;
+    }
 
-    this.playTone(
-      {
-        fromHz: 520,
-        toHz: 180,
-        duration: 0.14,
-        volume: 0.037 * profile.gains.enemyShot,
-        wave: 'triangle',
-        delay: 0.01
-      },
-      { pan: clamp(pan - 0.06, -1, 1), depth }
-    );
+    if (variant === 1) {
+      this.playTone(
+        {
+          fromHz: 680,
+          toHz: 210,
+          duration: 0.122,
+          volume: 0.051 * profile.gains.enemyShot,
+          wave: 'sawtooth'
+        },
+        { pan, depth }
+      );
+      this.playTone(
+        {
+          fromHz: 420,
+          toHz: 150,
+          duration: 0.146,
+          volume: 0.026 * profile.gains.enemyShot,
+          wave: 'triangle',
+          delay: 0.012
+        },
+        { pan: clamp(pan + 0.04, -1, 1), depth }
+      );
+      return;
+    }
+
+    if (variant === 2) {
+      this.playTone(
+        {
+          fromHz: 820,
+          toHz: 260,
+          duration: 0.098,
+          volume: 0.056 * profile.gains.enemyShot,
+          wave: 'sawtooth'
+        },
+        { pan, depth }
+      );
+      this.playTone(
+        {
+          fromHz: 560,
+          toHz: 200,
+          duration: 0.118,
+          volume: 0.025 * profile.gains.enemyShot,
+          wave: 'triangle',
+          delay: 0.008
+        },
+        { pan: clamp(pan - 0.05, -1, 1), depth }
+      );
+      return;
+    }
+
+    if (variant === 3) {
+      this.playTone(
+        {
+          fromHz: 720,
+          toHz: 220,
+          duration: 0.112,
+          volume: 0.049 * profile.gains.enemyShot,
+          wave: 'sawtooth'
+        },
+        { pan, depth }
+      );
+      this.playTone(
+        {
+          fromHz: 500,
+          toHz: 170,
+          duration: 0.134,
+          volume: 0.028 * profile.gains.enemyShot,
+          wave: 'triangle',
+          delay: 0.011
+        },
+        { pan: clamp(pan + 0.06, -1, 1), depth }
+      );
+      return;
+    }
+
+    throw new Error(`Unsupported enemy shot variant: ${variant}.`);
   }
 
   playExplosion(spec: ExplosionSoundSpec = {}): void {
@@ -362,36 +519,109 @@ export class RetroSfx {
     const depth = clamp01(spec.depth ?? 0);
     const largeMul = isLarge ? 1.35 : 1;
     const profile = requireAudioMixProfile(this.mixProfileId);
+    const variant = this.explosionVariantCursor % 4;
+    this.explosionVariantCursor += 1;
 
-    this.playTone(
-      {
-        fromHz: 210,
-        toHz: 62,
-        duration: 0.28,
-        volume: 0.11 * largeMul * profile.gains.explosion,
-        wave: 'triangle',
-        attack: 0.0012
-      },
-      { pan, depth }
-    );
-
-    this.playTone(
-      {
-        fromHz: 1240,
-        toHz: 180,
-        duration: 0.11,
-        volume: 0.06 * profile.gains.explosion,
-        wave: 'sawtooth'
-      },
-      { pan: clamp(pan + 0.1, -1, 1), depth }
-    );
+    if (variant === 0) {
+      this.playTone(
+        {
+          fromHz: 210,
+          toHz: 62,
+          duration: 0.28,
+          volume: 0.09 * largeMul * profile.gains.explosion,
+          wave: 'triangle',
+          attack: 0.0012
+        },
+        { pan, depth }
+      );
+      this.playTone(
+        {
+          fromHz: 1080,
+          toHz: 170,
+          duration: 0.106,
+          volume: 0.046 * profile.gains.explosion,
+          wave: 'sawtooth'
+        },
+        { pan: clamp(pan + 0.08, -1, 1), depth }
+      );
+    } else if (variant === 1) {
+      this.playTone(
+        {
+          fromHz: 240,
+          toHz: 78,
+          duration: 0.24,
+          volume: 0.084 * largeMul * profile.gains.explosion,
+          wave: 'triangle',
+          attack: 0.0012
+        },
+        { pan, depth }
+      );
+      this.playTone(
+        {
+          fromHz: 920,
+          toHz: 210,
+          duration: 0.09,
+          volume: 0.04 * profile.gains.explosion,
+          wave: 'sawtooth',
+          delay: 0.004
+        },
+        { pan: clamp(pan - 0.07, -1, 1), depth }
+      );
+    } else if (variant === 2) {
+      this.playTone(
+        {
+          fromHz: 184,
+          toHz: 58,
+          duration: 0.31,
+          volume: 0.082 * largeMul * profile.gains.explosion,
+          wave: 'triangle',
+          attack: 0.0013
+        },
+        { pan, depth }
+      );
+      this.playTone(
+        {
+          fromHz: 1320,
+          toHz: 240,
+          duration: 0.084,
+          volume: 0.042 * profile.gains.explosion,
+          wave: 'sawtooth'
+        },
+        { pan: clamp(pan + 0.05, -1, 1), depth }
+      );
+    } else if (variant === 3) {
+      this.playTone(
+        {
+          fromHz: 228,
+          toHz: 72,
+          duration: 0.26,
+          volume: 0.086 * largeMul * profile.gains.explosion,
+          wave: 'triangle',
+          attack: 0.0012
+        },
+        { pan, depth }
+      );
+      this.playTone(
+        {
+          fromHz: 1180,
+          toHz: 190,
+          duration: 0.096,
+          volume: 0.041 * profile.gains.explosion,
+          wave: 'sawtooth',
+          delay: 0.003
+        },
+        { pan: clamp(pan - 0.06, -1, 1), depth }
+      );
+    } else {
+      throw new Error(`Unsupported explosion variant: ${variant}.`);
+    }
 
     this.playTone(
       {
         fromHz: 52,
         toHz: 39,
-        duration: isLarge ? 0.52 : 0.38,
-        volume: 0.21 * largeMul * profile.gains.explosion,
+        duration: isLarge ? 0.46 : 0.34,
+        volume: 0.17 * largeMul * profile.gains.explosion,
         wave: 'sine',
         bus: 'sub'
       },
@@ -401,10 +631,10 @@ export class RetroSfx {
     if (isLarge) {
       this.playTone(
         {
-          fromHz: 95,
-          toHz: 43,
-          duration: 0.44,
-          volume: 0.17 * profile.gains.explosion,
+          fromHz: 86,
+          toHz: 42,
+          duration: 0.38,
+          volume: 0.12 * profile.gains.explosion,
           wave: 'triangle',
           bus: 'sub',
           delay: 0.015
@@ -507,21 +737,25 @@ export class RetroSfx {
     const now = context.currentTime;
     const profile = requireAudioMixProfile(this.mixProfileId);
 
-    const gainTarget = active ? lerp(0.018, 0.105, speed) * profile.gains.motionFx * profile.programGain : 0;
-    const subGainTarget = active ? lerp(0.009, 0.05, speed) * profile.gains.motionSub * profile.programGain : 0;
-    const filterTarget = active ? lerp(620, 2200, speed) : 480;
-    const primaryHz = lerp(66, 128, speed);
-    const secondaryHz = primaryHz * 1.95;
-    const subHz = lerp(34, 58, speed);
-    const pan = clamp(Math.sin(state.theta) * 0.88 * profile.stereoWidth, -1, 1);
+    const gainTarget = active
+      ? lerp(0.008, 0.052, speed) * profile.gains.motionFx * profile.programGain * MOTION_LOOP_GAIN_SCALE
+      : 0;
+    const subGainTarget = active
+      ? lerp(0.002, 0.014, speed) * profile.gains.motionSub * profile.programGain * MOTION_LOOP_GAIN_SCALE
+      : 0;
+    const filterTarget = active ? lerp(820, 1900, speed) : 760;
+    const primaryHz = lerp(94, 148, speed);
+    const secondaryHz = primaryHz * 2;
+    const subHz = lerp(44, 58, speed);
+    const pan = clamp(Math.sin(state.theta) * 0.3 * profile.stereoWidth, -1, 1);
 
-    this.motionGain.gain.setTargetAtTime(gainTarget, now, 0.06);
-    this.motionSubGain.gain.setTargetAtTime(subGainTarget, now, 0.08);
-    this.motionFilter.frequency.setTargetAtTime(filterTarget, now, 0.08);
-    this.motionPan.pan.setTargetAtTime(pan, now, 0.05);
-    this.motionPrimaryOsc.frequency.setTargetAtTime(primaryHz, now, 0.06);
-    this.motionSecondaryOsc.frequency.setTargetAtTime(secondaryHz, now, 0.06);
-    this.motionSubOsc.frequency.setTargetAtTime(subHz, now, 0.08);
+    this.motionGain.gain.setTargetAtTime(gainTarget, now, 0.18);
+    this.motionSubGain.gain.setTargetAtTime(subGainTarget, now, 0.2);
+    this.motionFilter.frequency.setTargetAtTime(filterTarget, now, 0.2);
+    this.motionPan.pan.setTargetAtTime(pan, now, 0.18);
+    this.motionPrimaryOsc.frequency.setTargetAtTime(primaryHz, now, 0.2);
+    this.motionSecondaryOsc.frequency.setTargetAtTime(secondaryHz, now, 0.2);
+    this.motionSubOsc.frequency.setTargetAtTime(subHz, now, 0.24);
   }
 
   private ensureContext(): AudioContext {
@@ -603,22 +837,22 @@ export class RetroSfx {
     const motionFilter = context.createBiquadFilter();
     const motionPan = context.createStereoPanner();
 
-    primaryOsc.type = 'triangle';
-    secondaryOsc.type = 'sawtooth';
+    primaryOsc.type = 'sine';
+    secondaryOsc.type = 'sine';
     subOsc.type = 'sine';
 
-    primaryOsc.frequency.value = 70;
-    secondaryOsc.frequency.value = 138;
-    subOsc.frequency.value = 38;
+    primaryOsc.frequency.value = 98;
+    secondaryOsc.frequency.value = 196;
+    subOsc.frequency.value = 46;
 
-    primaryGain.gain.value = 0.55;
-    secondaryGain.gain.value = 0.2;
+    primaryGain.gain.value = 0.25;
+    secondaryGain.gain.value = 0.05;
     motionGain.gain.value = 0;
     motionSubGain.gain.value = 0;
 
     motionFilter.type = 'lowpass';
-    motionFilter.frequency.value = 620;
-    motionFilter.Q.value = 0.85;
+    motionFilter.frequency.value = 920;
+    motionFilter.Q.value = 0.35;
 
     motionPan.pan.value = 0;
 

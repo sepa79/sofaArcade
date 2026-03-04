@@ -8,6 +8,7 @@ import {
   ENEMY_START_X,
   ENEMY_START_Y,
   PLAYER_LIVES,
+  SCORE_PER_ENEMY,
   WORLD_WIDTH
 } from './constants';
 import type { Enemy, GameState } from './types';
@@ -22,7 +23,9 @@ function createEnemyGrid(): ReadonlyArray<Enemy> {
         id,
         x: ENEMY_START_X + col * ENEMY_GAP_X,
         y: ENEMY_START_Y + row * ENEMY_GAP_Y,
-        alive: true
+        alive: true,
+        kind: 'normal',
+        scoreValue: SCORE_PER_ENEMY
       });
       id += 1;
     }
@@ -33,8 +36,10 @@ function createEnemyGrid(): ReadonlyArray<Enemy> {
 
 export function createInitialState(seed: number): GameState {
   return {
-    phase: 'playing',
+    phase: 'ready',
     score: 0,
+    hitStreak: 0,
+    scoreMultiplier: 1,
     lives: PLAYER_LIVES,
     playerX: WORLD_WIDTH / 2,
     playerRespawnTimer: 0,

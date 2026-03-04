@@ -1,5 +1,11 @@
 import Phaser from 'phaser';
-import { RetroSfx, type AudioMixProfileId } from '@light80/game-sdk';
+import {
+  RetroSfx,
+  getGlobalDebugMode,
+  toggleGlobalDebugMode,
+  type AudioMixProfileId
+} from '@light80/game-sdk';
+import { loadPersistentNonNegativeInt, savePersistentNonNegativeInt } from '@light80/core';
 
 import enemyShipImage from '../assets/sprite_enemy_1.png';
 import enemyShipImage2 from '../assets/sprite_enemy_2.png';
@@ -9,15 +15,26 @@ import explosionSrc1Image from '../assets/explosion_src_1.png';
 import explosionSrc2Image from '../assets/explosion_src_2.png';
 import backgroundMusicTrack from '../assets/game-bgm.mp3';
 import backgroundMusicSyncRaw from '../assets/game-bgm.sync.json';
+import kosmicznaPodrozTrack from '../assets/kosmiczna_podroz_fade_out.ogg';
+import kosmicznaPodrozSyncRaw from '../assets/kosmiczna_podroz_fade_out.sync.json';
 import playerShipAltImage from '../assets/sprite_player_1a.png';
 import playerShipImage from '../assets/sprite_player_1.png';
-import { SyncClock, createSyncTrackRuntime, type SyncCurveSample, type SyncFrame } from '../audio-sync';
+import {
+  SyncClock,
+  createSyncTrackRuntime,
+  type SyncCurveSample,
+  type SyncFrame,
+  type SyncTrackRuntime
+} from '../audio-sync';
+import { readTrackHeaderMetadata, type TrackHeaderMetadata } from '../audio-metadata';
 import {
   BULLET_HEIGHT,
   BULLET_WIDTH,
   ENEMY_COLS,
   FIXED_TIMESTEP,
+  PLAYER_HEIGHT,
   PLAYER_SPEED,
+  PLAYER_WIDTH,
   PLAYER_Y,
   WORLD_HEIGHT,
   WORLD_WIDTH
@@ -37,19 +54,21 @@ const ENEMY_SPRITE_KEYS = [
   'pixel-invaders-enemy-ship-3',
   'pixel-invaders-enemy-ship-4'
 ] as const;
+const ENEMY_NORMAL_SPRITE_KEYS = [ENEMY_SPRITE_KEYS[0], ENEMY_SPRITE_KEYS[1], ENEMY_SPRITE_KEYS[3]] as const;
+const ENEMY_UFO_SPRITE_KEY = ENEMY_SPRITE_KEYS[2];
 const EXPLOSION_TEXTURE_KEY_1 = 'pixel-explosion-1';
 const EXPLOSION_TEXTURE_KEY_2 = 'pixel-explosion-2';
 const EXPLOSION_ANIM_KEY_1 = 'pixel-explosion-anim-1';
 const EXPLOSION_ANIM_KEY_2 = 'pixel-explosion-anim-2';
-const BACKGROUND_MUSIC_KEY = 'pixel-invaders-background-music';
+const HIGH_SCORE_STORAGE_KEY = 'pixel-invaders.high-score.v1';
 const BACKGROUND_MUSIC_VOLUME = 0.42;
+const SONG_BANNER_VISIBLE_MS = 2_600;
 const PLAYER_SPRITE_SCALE = 2.1;
 const ENEMY_SPRITE_SCALE = 1.5;
 const ENEMY_SPRITE_ROTATION = 0;
-const STAR_COUNT = 180;
-const STAR_LAYER_SPEED: readonly [number, number, number] = [46, 88, 138];
-const STAR_LAYER_ALPHA: readonly [number, number, number] = [0.33, 0.58, 0.9];
-const STAR_LAYER_SIZE: readonly [number, number, number] = [1, 2, 2.8];
+const STAR_COUNT = 220;
+const STAR_COLORS: readonly number[] = [0x63d6ff, 0xff58d6, 0xffcf5e, 0xa78bff];
+const PLAYFIELD_HORIZON_Y_RATIO = 0.79;
 const EXPLOSION_FRAME_WIDTH = 24;
 const EXPLOSION_FRAME_HEIGHT = 21;
 const EXPLOSION_FRAME_COUNT = 10;
@@ -57,6 +76,16 @@ const EXPLOSION_ANIMATION_RATE = 28;
 const EXPLOSION_SPRITE_SCALE = 1.5;
 const EXPLOSION_DURATION_MS = 260;
 const EXPLOSION_RADIUS_PX = 44;
+const ROW_RESPAWN_FLASH_DURATION_MS = 420;
+const ROW_RESPAWN_FLASH_HALF_HEIGHT_PX = 42;
+const PLAYER_DEATH_CLUSTER_BURST_COUNT = 3;
+const PLAYER_DEATH_CLUSTER_BURST_TOTAL = 7;
+const PLAYER_DEATH_CLUSTER_BURST_INTERVAL_MS = 62;
+const PLAYER_DEATH_CLUSTER_RADIUS_X = PLAYER_WIDTH * 1.7;
+const PLAYER_DEATH_CLUSTER_RADIUS_Y = PLAYER_HEIGHT * 1.9;
+const SCORE_WIREFRAME_DIGIT_WIDTH = 34;
+const SCORE_WIREFRAME_DIGIT_HEIGHT = 56;
+const SCORE_WIREFRAME_DIGIT_GAP = 11;
 const SYNC_VIGNETTE_TEXTURE_KEY = 'pixel-invaders-sync-vignette';
 const SYNC_VIGNETTE_TEXTURE_SIZE = 512;
 const SYNC_VIGNETTE_DEPTH = 900;
@@ -71,16 +100,77 @@ const BOTTOM_GRID_FLOW_SPEED_PX_PER_SEC = 56;
 const BOTTOM_GRID_TOP_SPACING = 44;
 const BOTTOM_GRID_BOTTOM_SPREAD = 4.8;
 const BOTTOM_GRID_FADE_SEGMENTS = 10;
-const BOTTOM_GRID_PARALLAX_MAX_X = 18;
+const MUSIC_LANE_PULSE_TRAVEL_BEATS = 1.25;
+const MUSIC_LANE_BLOCK_DEPTH = 0.064;
+const MUSIC_LANE_CENTER_CLEAR_HALF_WIDTH = 146;
+const SKYLINE_BASE_OFFSET_PX = 2;
+const SKYLINE_HEIGHT_SCALE = 0.52;
+const SKYLINE_ISO_DEPTH_T_BASE = 0.036;
+const SKYLINE_ISO_DEPTH_T_BY_DISTANCE = 0.052;
+const SKYLINE_ISO_DEPTH_T_BY_WIDTH = 0.11;
+const SKYLINE_NEON_COLORS = [
+  [86, 236, 255],
+  [255, 118, 226],
+  [112, 152, 255]
+] as const;
+const SCORE_WIREFRAME_SEGMENTS: Readonly<Record<number, ReadonlyArray<0 | 1 | 2 | 3 | 4 | 5 | 6>>> = {
+  0: [0, 1, 2, 3, 4, 5],
+  1: [1, 2],
+  2: [0, 1, 6, 4, 3],
+  3: [0, 1, 6, 2, 3],
+  4: [5, 6, 1, 2],
+  5: [0, 5, 6, 2, 3],
+  6: [0, 5, 6, 2, 3, 4],
+  7: [0, 1, 2],
+  8: [0, 1, 2, 3, 4, 5, 6],
+  9: [0, 1, 2, 3, 5, 6]
+};
 
-const PIXEL_BGM_SYNC_TRACK = createSyncTrackRuntime(
-  backgroundMusicSyncRaw,
-  'pixel-invaders.assets.game-bgm.sync.json'
-);
-const PIXEL_BGM_INITIAL_CURVE = PIXEL_BGM_SYNC_TRACK.track.curves.samples[0];
-if (PIXEL_BGM_INITIAL_CURVE === undefined) {
-  throw new Error('pixel-invaders.assets.game-bgm.sync.json contains no curve samples.');
+interface MusicTrackDefinition {
+  readonly id: string;
+  readonly audioCacheKey: string;
+  readonly binaryCacheKey: string;
+  readonly audioSource: string;
+  readonly syncRuntime: SyncTrackRuntime;
+  readonly syncSource: string;
 }
+
+interface MusicTrackRuntime {
+  readonly id: string;
+  readonly audioCacheKey: string;
+  readonly binaryCacheKey: string;
+  readonly syncRuntime: SyncTrackRuntime;
+  readonly metadata: TrackHeaderMetadata;
+}
+
+const MUSIC_TRACK_DEFINITIONS: ReadonlyArray<MusicTrackDefinition> = [
+  {
+    id: 'pixel-bgm-main',
+    audioCacheKey: 'pixel-invaders-background-music-main',
+    binaryCacheKey: 'pixel-invaders-background-music-main-bytes',
+    audioSource: backgroundMusicTrack,
+    syncRuntime: createSyncTrackRuntime(backgroundMusicSyncRaw, 'pixel-invaders.assets.game-bgm.sync.json'),
+    syncSource: 'pixel-invaders.assets.game-bgm.mp3'
+  },
+  {
+    id: 'pixel-bgm-kosmiczna-podroz',
+    audioCacheKey: 'pixel-invaders-background-music-kosmiczna-podroz',
+    binaryCacheKey: 'pixel-invaders-background-music-kosmiczna-podroz-bytes',
+    audioSource: kosmicznaPodrozTrack,
+    syncRuntime: createSyncTrackRuntime(
+      kosmicznaPodrozSyncRaw,
+      'pixel-invaders.assets.kosmiczna_podroz_fade_out.sync.json'
+    ),
+    syncSource: 'pixel-invaders.assets.kosmiczna_podroz_fade_out.ogg'
+  }
+];
+const ZERO_SYNC_CURVE: SyncCurveSample = {
+  t: 0,
+  low: 0,
+  mid: 0,
+  high: 0,
+  rms: 0
+};
 
 interface ExplosionFx {
   readonly x: number;
@@ -88,10 +178,54 @@ interface ExplosionFx {
   readonly startAtMs: number;
 }
 
+interface RowRespawnFlashFx {
+  readonly y: number;
+  readonly startAtMs: number;
+}
+
 interface PixelStar {
   readonly x: number;
   readonly y: number;
-  readonly layer: 0 | 1 | 2;
+  readonly speed: number;
+  readonly size: number;
+  readonly alpha: number;
+  readonly color: number;
+  readonly twinklePhase: number;
+}
+
+interface PixelSkylineBuilding {
+  readonly x: number;
+  readonly width: number;
+  readonly height: number;
+  readonly crownHeight: number;
+  readonly depth: number;
+  readonly style: 0 | 1 | 2;
+  readonly patternSeed: number;
+  readonly skyscraper: boolean;
+}
+
+type MusicLaneBand = 'low' | 'mid' | 'high';
+
+interface MusicLanePulse {
+  readonly lane: 0 | 1 | 2 | 3 | 4 | 5;
+  readonly band: MusicLaneBand;
+  readonly intensity: number;
+  readonly progress: number;
+}
+
+interface DebugKeys {
+  readonly pulseToggle: Phaser.Input.Keyboard.Key;
+  readonly guideToggle: Phaser.Input.Keyboard.Key;
+  readonly bottomToggle: Phaser.Input.Keyboard.Key;
+  readonly backgroundFlashToggle: Phaser.Input.Keyboard.Key;
+}
+
+interface RuntimeHotkeys {
+  readonly debugToggle: Phaser.Input.Keyboard.Key;
+  readonly sfxToggle: Phaser.Input.Keyboard.Key;
+  readonly playPause: Phaser.Input.Keyboard.Key;
+  readonly previousSong: Phaser.Input.Keyboard.Key;
+  readonly nextSong: Phaser.Input.Keyboard.Key;
 }
 
 interface MusicReactiveState {
@@ -157,6 +291,17 @@ function clamp01(value: number): number {
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
+}
+
+function mixColor(fromColor: number, toColor: number, t: number): number {
+  const clamped = clamp01(t);
+  const from = Phaser.Display.Color.IntegerToColor(fromColor);
+  const to = Phaser.Display.Color.IntegerToColor(toColor);
+  return Phaser.Display.Color.GetColor(
+    Math.round(lerp(from.red, to.red, clamped)),
+    Math.round(lerp(from.green, to.green, clamped)),
+    Math.round(lerp(from.blue, to.blue, clamped))
+  );
 }
 
 function decayPulse(value: number, decayPerSecond: number, deltaSeconds: number): number {
@@ -236,27 +381,67 @@ function emptyEnemyReactiveBurst(): EnemyReactiveBurst {
   };
 }
 
+function requireKeyboard(scene: Phaser.Scene): Phaser.Input.Keyboard.KeyboardPlugin {
+  if (scene.input.keyboard === undefined || scene.input.keyboard === null) {
+    throw new Error('Phaser keyboard plugin is required for Pixel Invaders controls.');
+  }
+
+  return scene.input.keyboard;
+}
+
+function normalizeBinaryBytes(raw: unknown, source: string): Uint8Array {
+  if (raw instanceof ArrayBuffer) {
+    return new Uint8Array(raw);
+  }
+  if (ArrayBuffer.isView(raw)) {
+    return new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength);
+  }
+  throw new Error(`${source} did not return binary audio data.`);
+}
+
 export class PixelInvadersScene extends Phaser.Scene {
   private graphics!: Phaser.GameObjects.Graphics;
   private syncVignette!: Phaser.GameObjects.Image;
   private playerSprite!: Phaser.GameObjects.Image;
   private enemySprites = new Map<number, Phaser.GameObjects.Image>();
-  private hudText!: Phaser.GameObjects.Text;
+  private scoreText!: Phaser.GameObjects.Text;
+  private highScoreText!: Phaser.GameObjects.Text;
+  private livesText!: Phaser.GameObjects.Text;
   private controllerText!: Phaser.GameObjects.Text;
+  private bonusText!: Phaser.GameObjects.Text;
+  private debugText!: Phaser.GameObjects.Text;
   private bannerText!: Phaser.GameObjects.Text;
   private readonly sfx = new RetroSfx();
+  private debugModeEnabled = getGlobalDebugMode();
+  private runtimeHotkeys!: RuntimeHotkeys;
+  private debugKeys: DebugKeys | null = null;
   private backgroundMusic: Phaser.Sound.BaseSound | null = null;
+  private musicTracks: ReadonlyArray<MusicTrackRuntime> = [];
+  private activeMusicTrackIndex = 0;
+  private musicBannerElement: HTMLDivElement | null = null;
+  private musicBannerHideAtMs = 0;
+  private musicPausedByUser = false;
+  private sfxEnabled = true;
   private explosions: ReadonlyArray<ExplosionFx> = [];
+  private rowRespawnFlashes: ReadonlyArray<RowRespawnFlashFx> = [];
   private inputContext!: InputContext;
   private state: GameState = createInitialState(1337);
   private stars: ReadonlyArray<PixelStar> = [];
+  private readonly starRespawnRng = new Phaser.Math.RandomDataGenerator(['pixel-stars-respawn-v1']);
+  private skylineBuildings: ReadonlyArray<PixelSkylineBuilding> = [];
+  private bassLaneToggle = false;
+  private musicLanePulses: ReadonlyArray<MusicLanePulse> = [];
+  private debugMusicLanePulsesEnabled = true;
+  private debugMusicLaneGuidesEnabled = true;
+  private debugBottomVisualsEnabled = true;
+  private debugBackgroundFlashEnabled = false;
   private enemyReactiveBursts = new Map<number, EnemyReactiveBurst>();
   private lastHighReactiveEnemyId: number | null = null;
   private lastMidReactiveEnemyId: number | null = null;
-  private readonly syncClock = new SyncClock(PIXEL_BGM_SYNC_TRACK);
+  private syncClock: SyncClock | null = null;
   private musicReactive: MusicReactiveState = {
     sectionId: 0,
-    curve: PIXEL_BGM_INITIAL_CURVE,
+    curve: ZERO_SYNC_CURVE,
     beatPulse: 0,
     barPulse: 0,
     lowOnsetPulse: 0,
@@ -274,6 +459,7 @@ export class PixelInvadersScene extends Phaser.Scene {
   };
   private accumulator = 0;
   private launchData: PixelInvadersSceneData | null = null;
+  private highScore = 0;
 
   constructor() {
     super(PIXEL_INVADERS_SCENE_KEY);
@@ -300,15 +486,33 @@ export class PixelInvadersScene extends Phaser.Scene {
       frameHeight: EXPLOSION_FRAME_HEIGHT,
       endFrame: EXPLOSION_FRAME_COUNT - 1
     });
-    this.load.audio(BACKGROUND_MUSIC_KEY, backgroundMusicTrack);
+    for (const track of MUSIC_TRACK_DEFINITIONS) {
+      this.load.audio(track.audioCacheKey, track.audioSource);
+      this.load.binary(track.binaryCacheKey, track.audioSource);
+    }
   }
 
   create(): void {
     if (this.launchData === null) {
       throw new Error('Pixel Invaders launchData is missing in create().');
     }
+    const keyboard = requireKeyboard(this);
+    this.debugKeys = {
+      pulseToggle: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F7),
+      guideToggle: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F8),
+      bottomToggle: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F9),
+      backgroundFlashToggle: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F10)
+    };
+    this.runtimeHotkeys = {
+      debugToggle: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F6),
+      sfxToggle: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F1),
+      playPause: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F2),
+      previousSong: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F3),
+      nextSong: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F4)
+    };
 
     this.sfx.setMixProfile(this.launchData.audioMixProfileId);
+    this.highScore = loadPersistentNonNegativeInt(HIGH_SCORE_STORAGE_KEY) ?? 0;
 
     this.graphics = this.add.graphics();
     this.updateLayout();
@@ -316,7 +520,9 @@ export class PixelInvadersScene extends Phaser.Scene {
     this.syncVignette = this.add.image(this.scale.width / 2, this.scale.height / 2, SYNC_VIGNETTE_TEXTURE_KEY);
     this.syncVignette.setOrigin(0.5);
     this.syncVignette.setDepth(SYNC_VIGNETTE_DEPTH);
+    this.syncVignette.setAlpha(0);
     this.stars = this.createStars();
+    this.skylineBuildings = this.createSkylineBuildings();
     this.playerSprite = this.add.image(this.scale.width / 2, this.scale.height / 2, PLAYER_SPRITE_KEY);
     this.playerSprite.setOrigin(0.5, 0.5);
     this.playerSprite.setScale(PLAYER_SPRITE_SCALE * this.visualScale());
@@ -333,12 +539,39 @@ export class PixelInvadersScene extends Phaser.Scene {
     }
     this.setupExplosionAnimations();
 
-    this.hudText = this.add.text(20, 18, '', {
+    this.scoreText = this.add.text(20, 18, '', {
       fontFamily: 'Trebuchet MS',
       fontSize: '24px',
       color: '#f4f7ff'
     });
-    this.hudText.setDepth(HUD_DEPTH);
+    this.scoreText.setDepth(HUD_DEPTH);
+
+    this.highScoreText = this.add.text(this.scale.width / 2, 18, '', {
+      fontFamily: 'Trebuchet MS',
+      fontSize: '24px',
+      color: '#f4f7ff',
+      align: 'center'
+    });
+    this.highScoreText.setOrigin(0.5, 0);
+    this.highScoreText.setDepth(HUD_DEPTH);
+
+    this.bonusText = this.add.text(this.scale.width / 2, 52, '', {
+      fontFamily: 'Trebuchet MS',
+      fontSize: '26px',
+      color: '#ffd7a8',
+      align: 'center'
+    });
+    this.bonusText.setOrigin(0.5, 0);
+    this.bonusText.setDepth(HUD_DEPTH);
+
+    this.livesText = this.add.text(this.scale.width - 20, 18, '', {
+      fontFamily: 'Trebuchet MS',
+      fontSize: '24px',
+      color: '#f4f7ff',
+      align: 'right'
+    });
+    this.livesText.setOrigin(1, 0);
+    this.livesText.setDepth(HUD_DEPTH);
 
     this.controllerText = this.add.text(20, 52, `CTRL ${this.launchData.controllerLabel}`, {
       fontFamily: 'Trebuchet MS',
@@ -346,6 +579,15 @@ export class PixelInvadersScene extends Phaser.Scene {
       color: '#90f0ff'
     });
     this.controllerText.setDepth(HUD_DEPTH);
+
+    this.debugText = this.add.text(this.scale.width - 16, 18, '', {
+      fontFamily: 'Trebuchet MS',
+      fontSize: '14px',
+      color: '#9fe4ff',
+      align: 'left'
+    });
+    this.debugText.setOrigin(0, 1);
+    this.debugText.setDepth(HUD_DEPTH);
 
     this.bannerText = this.add.text(this.scale.width / 2, this.scale.height / 2 - 40, '', {
       fontFamily: 'Trebuchet MS',
@@ -360,17 +602,25 @@ export class PixelInvadersScene extends Phaser.Scene {
 
     this.inputContext = createInputContext(this, this.launchData.controllerProfileId);
     this.cameras.main.setBackgroundColor('#060913');
+    this.musicTracks = this.readMusicTrackRuntimes();
+    this.musicBannerElement = this.createMusicBannerElement();
     this.initializeBackgroundMusic();
-    this.musicReactive = applySyncFrame(this.musicReactive, this.syncClock.reset(this.readMusicTimeSec()), 0);
+    this.musicReactive = applySyncFrame(this.musicReactive, this.requireSyncClock().reset(this.readMusicTimeSec()), 0);
     this.scale.on(Phaser.Scale.Events.RESIZE, this.onResize);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.sfx.shutdown();
       this.stopBackgroundMusic();
+      if (this.musicBannerElement !== null) {
+        this.musicBannerElement.remove();
+        this.musicBannerElement = null;
+      }
       this.scale.off(Phaser.Scale.Events.RESIZE, this.onResize);
     });
   }
 
   update(_: number, delta: number): void {
+    this.updateHotkeys();
+    this.updateMusicBannerVisibility();
     const deltaSeconds = delta * 0.001;
     this.accumulator += deltaSeconds;
     let playerShot = false;
@@ -379,10 +629,10 @@ export class PixelInvadersScene extends Phaser.Scene {
     let enemyShotX = this.state.playerX;
     let playerHit = false;
     let playerHitX = this.state.playerX;
-    let won = false;
     let lost = false;
     let maxMoveSpeedUnit = 0;
     const destroyedEnemies: Enemy[] = [];
+    const respawnedRows = new Set<number>();
 
     while (this.accumulator >= FIXED_TIMESTEP) {
       const input = readFrameInput(this, this.inputContext, {
@@ -430,12 +680,22 @@ export class PixelInvadersScene extends Phaser.Scene {
           destroyedEnemies.push(previousEnemy);
         }
       }
+      const previousEnemyById = new Map<number, Enemy>();
+      for (const previousEnemy of previous.enemies) {
+        previousEnemyById.set(previousEnemy.id, previousEnemy);
+      }
+      for (const nextEnemy of next.enemies) {
+        const previousEnemy = previousEnemyById.get(nextEnemy.id);
+        if (previousEnemy === undefined) {
+          throw new Error(`Missing previous enemy state for id ${nextEnemy.id}.`);
+        }
+        if (!previousEnemy.alive && nextEnemy.alive) {
+          respawnedRows.add(Math.floor(nextEnemy.id / ENEMY_COLS));
+        }
+      }
       if (next.lives < previous.lives) {
         playerHit = true;
         playerHitX = previous.playerX;
-      }
-      if (previous.phase === 'playing' && next.phase === 'won') {
-        won = true;
       }
       if (previous.phase === 'playing' && next.phase === 'lost') {
         lost = true;
@@ -446,45 +706,55 @@ export class PixelInvadersScene extends Phaser.Scene {
       this.state = next;
       this.accumulator -= FIXED_TIMESTEP;
     }
+    for (const row of respawnedRows) {
+      this.spawnRowRespawnFlash(row);
+    }
 
     this.stars = this.stars.map((star) => {
-      const speed = STAR_LAYER_SPEED[star.layer];
-      let nextY = star.y + speed * deltaSeconds;
-      if (nextY > WORLD_HEIGHT + 8) {
-        nextY = -8;
+      let nextY = star.y + star.speed * deltaSeconds;
+      let nextX = star.x;
+      if (nextY > WORLD_HEIGHT + 6) {
+        nextY = -6;
+        nextX = this.starRespawnRng.realInRange(0, WORLD_WIDTH);
       }
 
       return {
         ...star,
+        x: nextX,
         y: nextY
       };
     });
     this.updateMusicReactive(deltaSeconds);
+    if (this.state.score > this.highScore) {
+      this.highScore = this.state.score;
+      savePersistentNonNegativeInt(HIGH_SCORE_STORAGE_KEY, this.highScore);
+    }
 
-    if (playerShot) {
+    if (this.sfxEnabled && playerShot) {
       this.sfx.playPlayerShot({ pan: xToStereoPan(playerShotX), depth: 0 });
     }
-    if (enemyShot) {
+    if (this.sfxEnabled && enemyShot) {
       this.sfx.playEnemyShot({ pan: xToStereoPan(enemyShotX), depth: 0 });
     }
     for (const enemy of destroyedEnemies.slice(0, 3)) {
-      this.sfx.playExplosion({ pan: xToStereoPan(enemy.x), depth: 0, large: false });
+      if (this.sfxEnabled) {
+        this.sfx.playExplosion({ pan: xToStereoPan(enemy.x), depth: 0, large: false });
+      }
       this.spawnExplosion(enemy.x, enemy.y);
     }
     if (playerHit) {
-      this.sfx.playPlayerHit({ pan: xToStereoPan(playerHitX), depth: 0 });
-      this.spawnExplosion(playerHitX, PLAYER_Y);
+      if (this.sfxEnabled) {
+        this.sfx.playPlayerHit({ pan: xToStereoPan(playerHitX), depth: 0 });
+      }
+      this.spawnPlayerDeathCluster(playerHitX, PLAYER_Y);
     }
-    if (won) {
-      this.sfx.playWin();
-    }
-    if (lost) {
+    if (this.sfxEnabled && lost) {
       this.sfx.playLose();
     }
     this.sfx.updateTunnelMotion({
       theta: playerXToMotionTheta(this.state.playerX),
       speedUnit: maxMoveSpeedUnit,
-      active: this.state.phase === 'playing' && maxMoveSpeedUnit > 0.02
+      active: this.sfxEnabled && this.state.phase === 'playing' && maxMoveSpeedUnit > 0.02
     });
     this.updateExplosions();
 
@@ -496,6 +766,7 @@ export class PixelInvadersScene extends Phaser.Scene {
     graphics.clear();
 
     this.drawBackground(graphics);
+    this.drawRowRespawnFlashes(graphics);
     this.syncEnemySprites();
     this.drawPlayer();
     this.drawEnemies();
@@ -586,10 +857,14 @@ export class PixelInvadersScene extends Phaser.Scene {
   }
 
   private enemySpriteKeyFor(enemy: Enemy): (typeof ENEMY_SPRITE_KEYS)[number] {
+    if (enemy.kind === 'ufo') {
+      return ENEMY_UFO_SPRITE_KEY;
+    }
+
     const rowIndex = Math.floor(enemy.id / ENEMY_COLS);
-    const keyCount = ENEMY_SPRITE_KEYS.length;
+    const keyCount = ENEMY_NORMAL_SPRITE_KEYS.length;
     const index = ((rowIndex % keyCount) + keyCount) % keyCount;
-    const spriteKey = ENEMY_SPRITE_KEYS[index];
+    const spriteKey = ENEMY_NORMAL_SPRITE_KEYS[index];
     if (spriteKey === undefined) {
       throw new Error(`Enemy sprite key is missing for index ${index}.`);
     }
@@ -673,24 +948,57 @@ export class PixelInvadersScene extends Phaser.Scene {
   }
 
   private drawHud(): void {
-    this.hudText.setPosition(this.playfieldOffsetX + 20, this.playfieldOffsetY + 18);
+    if (this.launchData === null) {
+      throw new Error('Pixel Invaders launchData is missing in drawHud().');
+    }
+    this.scoreText.setPosition(this.playfieldOffsetX + 20, this.playfieldOffsetY + 18);
+    this.highScoreText.setPosition(this.playfieldOffsetX + this.playfieldWidth * 0.5, this.playfieldOffsetY + 18);
+    this.bonusText.setPosition(this.playfieldOffsetX + this.playfieldWidth * 0.5, this.playfieldOffsetY + 52);
+    this.livesText.setPosition(this.playfieldOffsetX + this.playfieldWidth - 20, this.playfieldOffsetY + 18);
     this.controllerText.setPosition(this.playfieldOffsetX + 20, this.playfieldOffsetY + 52);
-    this.hudText.setText(`SCORE ${this.state.score.toString().padStart(5, '0')}    LIVES ${this.state.lives}`);
+    this.scoreText.setText(`SCORE ${this.state.score.toString().padStart(6, '0')}`);
+    this.highScoreText.setText(`HI ${this.highScore.toString().padStart(6, '0')}`);
+    this.bonusText.setText(`x${this.state.scoreMultiplier}`);
+    this.livesText.setText(`LIVES ${this.state.lives}`);
+    this.controllerText.setText(`CTRL ${this.launchData.controllerLabel}`);
     const hudPulse = clamp01(
       this.musicReactive.beatPulse * 0.85 + this.musicReactive.barPulse + this.musicReactive.midOnsetPulse * 0.65
     );
-    const hudColor = Phaser.Display.Color.GetColor(
+    const scoreColor = Phaser.Display.Color.GetColor(
       Math.round(lerp(244, 255, hudPulse)),
       Math.round(lerp(247, 231, hudPulse)),
       Math.round(lerp(255, 232, hudPulse))
+    );
+    const highScoreColor = Phaser.Display.Color.GetColor(
+      Math.round(lerp(214, 255, hudPulse)),
+      Math.round(lerp(222, 248, hudPulse)),
+      Math.round(lerp(255, 255, hudPulse))
     );
     const controllerColor = Phaser.Display.Color.GetColor(
       Math.round(lerp(144, 210, hudPulse)),
       Math.round(lerp(240, 248, hudPulse)),
       Math.round(lerp(255, 255, hudPulse))
     );
-    this.hudText.setTint(hudColor);
+    const bonusPulse = clamp01(hudPulse * 0.6 + this.state.scoreMultiplier / 14);
+    const bonusColor = Phaser.Display.Color.GetColor(
+      Math.round(lerp(255, 255, bonusPulse)),
+      Math.round(lerp(215, 144, bonusPulse)),
+      Math.round(lerp(168, 106, bonusPulse))
+    );
+    this.scoreText.setTint(scoreColor);
+    this.highScoreText.setTint(highScoreColor);
+    this.livesText.setTint(scoreColor);
     this.controllerText.setTint(controllerColor);
+    this.bonusText.setTint(bonusColor);
+    if (!this.debugModeEnabled) {
+      this.debugText.setText('');
+      return;
+    }
+
+    this.debugText.setPosition(this.playfieldOffsetX + 16, this.playfieldOffsetY + this.playfieldHeight - 16);
+    this.debugText.setText(
+      `DEBUG MODE [F6]\nPULSES [F7]: ${this.debugMusicLanePulsesEnabled ? 'ON' : 'OFF'}\nLANES [F8]: ${this.debugMusicLaneGuidesEnabled ? 'ON' : 'OFF'}\nBOTTOM [F9]: ${this.debugBottomVisualsEnabled ? 'ON' : 'OFF'}\nBG FLASH [F10]: ${this.debugBackgroundFlashEnabled ? 'ON' : 'OFF'}`
+    );
   }
 
   private syncEnemySprites(): void {
@@ -713,12 +1021,12 @@ export class PixelInvadersScene extends Phaser.Scene {
       return;
     }
 
-    if (this.state.phase === 'won') {
-      this.bannerText.setText('SECTOR SECURED\nPRESS ENTER');
+    if (this.state.phase === 'ready') {
+      this.bannerText.setText('PRESS FIRE TO START');
       return;
     }
 
-    this.bannerText.setText('PIXEL INVADERS PREVAILED\nPRESS ENTER');
+    this.bannerText.setText('GAME OVER\nPRESS ENTER');
   }
 
   private updateLayout(): void {
@@ -736,25 +1044,76 @@ export class PixelInvadersScene extends Phaser.Scene {
   }
 
   private createStars(): ReadonlyArray<PixelStar> {
-    const rng = new Phaser.Math.RandomDataGenerator(['pixel-stars-v1']);
+    const rng = new Phaser.Math.RandomDataGenerator(['launcher-stars-v5']);
     const stars: PixelStar[] = [];
     for (let i = 0; i < STAR_COUNT; i += 1) {
+      const starColor = STAR_COLORS[Math.floor(rng.realInRange(0, STAR_COLORS.length))];
+      if (starColor === undefined) {
+        throw new Error(`Pixel Invaders star color is missing for index ${i}.`);
+      }
       stars.push({
         x: rng.realInRange(0, WORLD_WIDTH),
         y: rng.realInRange(0, WORLD_HEIGHT),
-        layer: (i % 3) as 0 | 1 | 2
+        speed: rng.realInRange(8, 44),
+        size: rng.realInRange(1, 3),
+        alpha: rng.realInRange(0.25, 1),
+        color: starColor,
+        twinklePhase: rng.realInRange(0, Math.PI * 2)
       });
     }
 
     return stars;
   }
 
+  private createSkylineBuildings(): ReadonlyArray<PixelSkylineBuilding> {
+    const rng = new Phaser.Math.RandomDataGenerator(['pixel-skyline-v1']);
+    const buildings: PixelSkylineBuilding[] = [];
+    let x = -26;
+    const centerMinX = WORLD_WIDTH / 2 - MUSIC_LANE_CENTER_CLEAR_HALF_WIDTH;
+    const centerMaxX = WORLD_WIDTH / 2 + MUSIC_LANE_CENTER_CLEAR_HALF_WIDTH;
+
+    while (x < WORLD_WIDTH + 26) {
+      const skyscraper = rng.realInRange(0, 1) > 0.88;
+      const width = skyscraper ? rng.integerInRange(14, 28) : rng.integerInRange(18, 56);
+      const baseHeight = skyscraper ? rng.integerInRange(208, 340) : rng.integerInRange(58, 182);
+      const towerHeightBoost = skyscraper ? rng.integerInRange(0, 48) : rng.realInRange(0, 1) > 0.88 ? rng.integerInRange(34, 96) : 0;
+      const height = Math.min(360, baseHeight + towerHeightBoost);
+      const depth = skyscraper ? rng.realInRange(0.52, 1) : rng.realInRange(0.32, 1);
+      const style = rng.integerInRange(0, 2) as 0 | 1 | 2;
+      const crownHeight = skyscraper
+        ? Math.min(48, Math.max(7, Math.round(height * rng.realInRange(0.08, 0.16))))
+        : Math.min(26, Math.max(5, Math.round(height * rng.realInRange(0.08, 0.2))));
+      const buildingLeft = x;
+      const buildingRight = x + width;
+      const intersectsCenterClear = buildingRight > centerMinX && buildingLeft < centerMaxX;
+      if (intersectsCenterClear) {
+        x += width + (skyscraper ? rng.integerInRange(10, 24) : rng.integerInRange(4, 14));
+        continue;
+      }
+      buildings.push({
+        x: x + width / 2,
+        width,
+        height,
+        crownHeight,
+        depth,
+        style,
+        patternSeed: rng.integerInRange(0, 8192),
+        skyscraper
+      });
+      x += width + (skyscraper ? rng.integerInRange(10, 24) : rng.integerInRange(4, 14));
+    }
+
+    return buildings.sort((a, b) => a.depth - b.depth || a.x - b.x);
+  }
+
   private drawBackground(graphics: Phaser.GameObjects.Graphics): void {
     const curve = this.musicReactive.curve;
-    const sectionAccent = this.musicReactive.sectionId % 3;
+    const sectionAccent = this.debugBackgroundFlashEnabled ? this.musicReactive.sectionId % 3 : 0;
     const rhythmPulse = clamp01(this.musicReactive.beatPulse * 0.8 + this.musicReactive.barPulse);
     const lowEnergy = clamp01(curve.low * 0.72 + curve.rms * 0.35 + this.musicReactive.lowOnsetPulse * 0.9);
-    const bgEnergy = clamp01(0.12 + lowEnergy * 0.45 + rhythmPulse * 0.5);
+    const bgEnergy = this.debugBackgroundFlashEnabled
+      ? clamp01(0.12 + lowEnergy * 0.45 + rhythmPulse * 0.5)
+      : 0.16;
     const bgColor = Phaser.Display.Color.GetColor(
       Math.round(lerp(3, 14 + sectionAccent * 2, bgEnergy)),
       Math.round(lerp(7, 18 + sectionAccent * 4, bgEnergy)),
@@ -762,13 +1121,18 @@ export class PixelInvadersScene extends Phaser.Scene {
     );
     graphics.fillStyle(bgColor, 1);
     graphics.fillRect(this.playfieldOffsetX, this.playfieldOffsetY, this.playfieldWidth, this.playfieldHeight);
+    this.drawScoreWireframe(graphics);
 
-    const sparkleGain = clamp01(0.84 + curve.high * 0.32 + this.musicReactive.highOnsetPulse * 0.55);
-    const densityGain = clamp01(0.92 + curve.mid * 0.24 + this.musicReactive.midOnsetPulse * 0.35);
+    const starCutoffY = this.debugBottomVisualsEnabled
+      ? WORLD_HEIGHT * PLAYFIELD_HORIZON_Y_RATIO - 1
+      : WORLD_HEIGHT + 8;
     for (const star of this.stars) {
-      const starSize = Math.max(1, STAR_LAYER_SIZE[star.layer] * this.visualScale() * densityGain);
-      const alpha = clamp01(STAR_LAYER_ALPHA[star.layer] * sparkleGain);
-      graphics.fillStyle(0x9fd8ff, alpha);
+      if (star.y > starCutoffY) {
+        continue;
+      }
+      const twinkle = 0.65 + 0.35 * Math.sin(this.time.now * 0.003 + star.x * 0.02 + star.twinklePhase);
+      const starSize = Math.max(1, star.size * this.visualScale());
+      graphics.fillStyle(star.color, star.alpha * twinkle);
       graphics.fillRect(
         Math.round(this.worldToScreenX(star.x)),
         Math.round(this.worldToScreenY(star.y)),
@@ -777,14 +1141,90 @@ export class PixelInvadersScene extends Phaser.Scene {
       );
     }
 
-    this.drawBottomGrid(graphics);
+    if (this.debugBottomVisualsEnabled) {
+      this.drawSkyline(graphics);
+      this.drawBottomGrid(graphics);
+    }
+  }
+
+  private drawScoreWireframe(graphics: Phaser.GameObjects.Graphics): void {
+    const scale = this.visualScale();
+    const digitWidth = SCORE_WIREFRAME_DIGIT_WIDTH * scale;
+    const digitHeight = SCORE_WIREFRAME_DIGIT_HEIGHT * scale;
+    const digitGap = SCORE_WIREFRAME_DIGIT_GAP * scale;
+    const scoreText = this.state.score.toString().padStart(6, '0');
+    const totalWidth = scoreText.length * digitWidth + Math.max(0, scoreText.length - 1) * digitGap;
+    const startX = this.playfieldOffsetX + this.playfieldWidth * 0.5 - totalWidth * 0.5;
+    const originY = this.playfieldOffsetY + this.playfieldHeight * 0.3;
+    const intensity = clamp01(this.musicReactive.barPulse * 0.45 + this.musicReactive.beatPulse * 0.24);
+    const lineAlpha = 0.07 + intensity * 0.08;
+    const glowAlpha = 0.035 + intensity * 0.04;
+    const strokeColor = Phaser.Display.Color.GetColor(96, 170, 255);
+    const glowColor = Phaser.Display.Color.GetColor(168, 108, 255);
+    const inset = Math.max(2, 5 * scale);
+    const midY = digitHeight * 0.5;
+
+    const segmentPoints = (segment: 0 | 1 | 2 | 3 | 4 | 5 | 6): Readonly<[number, number, number, number]> => {
+      if (segment === 0) {
+        return [inset, 0, digitWidth - inset, 0];
+      }
+      if (segment === 1) {
+        return [digitWidth - inset, inset, digitWidth - inset, midY - inset * 0.3];
+      }
+      if (segment === 2) {
+        return [digitWidth - inset, midY + inset * 0.3, digitWidth - inset, digitHeight - inset];
+      }
+      if (segment === 3) {
+        return [inset, digitHeight, digitWidth - inset, digitHeight];
+      }
+      if (segment === 4) {
+        return [inset, midY + inset * 0.3, inset, digitHeight - inset];
+      }
+      if (segment === 5) {
+        return [inset, inset, inset, midY - inset * 0.3];
+      }
+      return [inset, midY, digitWidth - inset, midY];
+    };
+
+    for (let index = 0; index < scoreText.length; index += 1) {
+      const digitChar = scoreText[index];
+      if (digitChar === undefined) {
+        throw new Error(`Missing score digit at index ${index}.`);
+      }
+      const digitValue = Number.parseInt(digitChar, 10);
+      if (!Number.isInteger(digitValue) || digitValue < 0 || digitValue > 9) {
+        throw new Error(`Invalid score digit "${digitChar}" at index ${index}.`);
+      }
+      const segments = SCORE_WIREFRAME_SEGMENTS[digitValue];
+      if (segments === undefined) {
+        throw new Error(`Missing wireframe segment map for digit ${digitValue}.`);
+      }
+
+      const offsetX = startX + index * (digitWidth + digitGap);
+      for (const segment of segments) {
+        const [x0, y0, x1, y1] = segmentPoints(segment);
+        graphics.lineStyle(Math.max(1, Math.round(4 * scale)), glowColor, glowAlpha);
+        graphics.beginPath();
+        graphics.moveTo(offsetX + x0, originY + y0);
+        graphics.lineTo(offsetX + x1, originY + y1);
+        graphics.strokePath();
+
+        graphics.lineStyle(Math.max(1, Math.round(2 * scale)), strokeColor, lineAlpha);
+        graphics.beginPath();
+        graphics.moveTo(offsetX + x0, originY + y0);
+        graphics.lineTo(offsetX + x1, originY + y1);
+        graphics.strokePath();
+      }
+    }
   }
 
   private updateMusicReactive(deltaSeconds: number): void {
     const backgroundMusic = this.requireBackgroundMusic();
+    const syncClock = this.requireSyncClock();
     const nowSec = this.readMusicTimeSec();
     const playbackState = backgroundMusic.isPlaying ? 'playing' : 'paused';
-    const syncFrame = this.syncClock.tick(nowSec, playbackState);
+    const syncFrame = syncClock.tick(nowSec, playbackState);
+    this.updateMusicLanePulses(syncFrame, deltaSeconds);
     this.musicReactive = applySyncFrame(this.musicReactive, syncFrame, deltaSeconds);
     this.updateEnemyReactiveBursts(syncFrame, deltaSeconds);
 
@@ -793,22 +1233,82 @@ export class PixelInvadersScene extends Phaser.Scene {
         this.musicReactive.beatPulse * 0.7 +
         this.musicReactive.barPulse * 0.9
     );
-    const vignetteAlpha = clamp01(
-      0.06 + this.musicReactive.curve.low * 0.2 + this.musicReactive.curve.rms * 0.08 + blinkPulse * 0.42
-    );
+    const vignetteAlpha = this.debugBackgroundFlashEnabled
+      ? clamp01(0.06 + this.musicReactive.curve.low * 0.2 + this.musicReactive.curve.rms * 0.08 + blinkPulse * 0.42)
+      : 0;
     this.syncVignette.setAlpha(vignetteAlpha);
+  }
+
+  private updateMusicLanePulses(syncFrame: SyncFrame, deltaSeconds: number): void {
+    const pulseSpeedPerSecond = (this.activeMusicTrackBpm() / 60) / MUSIC_LANE_PULSE_TRAVEL_BEATS;
+    let strongestLowOnset = 0;
+    let strongestMidOnset = 0;
+    let strongestHighOnset = 0;
+    for (const onsetEvent of syncFrame.onsets) {
+      if (onsetEvent.band === 'low') {
+        strongestLowOnset = Math.max(strongestLowOnset, onsetEvent.strength);
+        continue;
+      }
+      if (onsetEvent.band === 'mid') {
+        strongestMidOnset = Math.max(strongestMidOnset, onsetEvent.strength);
+        continue;
+      }
+      strongestHighOnset = Math.max(strongestHighOnset, onsetEvent.strength);
+    }
+
+    const lowEnergy = clamp01(syncFrame.curve.low * 0.72 + strongestLowOnset * 0.68);
+    const midEnergy = clamp01(syncFrame.curve.mid * 0.64 + strongestMidOnset * 0.72);
+    const highEnergy = clamp01(syncFrame.curve.high * 0.66 + strongestHighOnset * 0.74);
+    const nextPulses: MusicLanePulse[] = [];
+
+    for (const pulse of this.musicLanePulses) {
+      const nextProgress = pulse.progress + pulseSpeedPerSecond * deltaSeconds;
+      if (nextProgress >= 1.02) {
+        continue;
+      }
+
+      nextPulses.push({
+        ...pulse,
+        progress: nextProgress
+      });
+    }
+
+    for (const beatEvent of syncFrame.beats) {
+      this.bassLaneToggle = !this.bassLaneToggle;
+      const bassLane: 2 | 3 = this.bassLaneToggle ? 3 : 2;
+      const laneSpecs: ReadonlyArray<Readonly<{ lane: 0 | 1 | 2 | 3 | 4 | 5; band: MusicLaneBand; intensity: number }>> = [
+        { lane: 0, band: 'high', intensity: clamp01(highEnergy * 0.88 + beatEvent.strength * 0.24) },
+        { lane: 1, band: 'mid', intensity: clamp01(midEnergy * 0.92 + beatEvent.strength * 0.2) },
+        { lane: bassLane, band: 'low', intensity: clamp01(lowEnergy * 1 + beatEvent.strength * 0.26) },
+        { lane: 4, band: 'mid', intensity: clamp01(midEnergy * 0.92 + beatEvent.strength * 0.2) },
+        { lane: 5, band: 'high', intensity: clamp01(highEnergy * 0.88 + beatEvent.strength * 0.24) }
+      ];
+
+      for (const laneSpec of laneSpecs) {
+        if (laneSpec.intensity < 0.18) {
+          continue;
+        }
+        nextPulses.push({
+          lane: laneSpec.lane,
+          band: laneSpec.band,
+          intensity: laneSpec.intensity,
+          progress: 0
+        });
+      }
+    }
+
+    this.musicLanePulses = nextPulses;
   }
 
   private drawBottomGrid(graphics: Phaser.GameObjects.Graphics): void {
     const width = this.playfieldWidth;
     const height = this.playfieldHeight;
-    const horizonY = this.playfieldOffsetY + Math.floor(height * 0.79);
+    const horizonY = this.playfieldOffsetY + Math.floor(height * PLAYFIELD_HORIZON_Y_RATIO);
     const nearestY = this.playfieldOffsetY + height + 2;
     const travelRange = nearestY - horizonY;
     const spacing = travelRange / BOTTOM_GRID_LINE_COUNT;
     const flowOffset = ((this.time.now * BOTTOM_GRID_FLOW_SPEED_PX_PER_SEC) / 1000) % spacing;
-    const playerParallax = ((this.state.playerX / WORLD_WIDTH) * 2 - 1) * BOTTOM_GRID_PARALLAX_MAX_X;
-    const centerX = this.playfieldOffsetX + width / 2 + playerParallax;
+    const centerX = this.playfieldOffsetX + width / 2;
     const gridEnergy = clamp01(
       this.musicReactive.curve.low * 0.52 +
         this.musicReactive.curve.mid * 0.34 +
@@ -841,6 +1341,8 @@ export class PixelInvadersScene extends Phaser.Scene {
       }
     }
 
+    this.drawMusicLaneFlow(graphics, horizonY, nearestY, centerX);
+
     const drawnRows = new Set<number>();
     for (let line = -1; line <= BOTTOM_GRID_LINE_COUNT; line += 1) {
       let y = horizonY + line * spacing + flowOffset;
@@ -866,6 +1368,522 @@ export class PixelInvadersScene extends Phaser.Scene {
       graphics.lineTo(this.playfieldOffsetX + width, yRow);
       graphics.strokePath();
     }
+
+    this.drawLaneSourceLights(graphics, horizonY, centerX);
+  }
+
+  private musicLaneEnergyByBand(): Readonly<Record<MusicLaneBand, number>> {
+    return {
+      low: clamp01(
+        this.musicReactive.curve.low * 0.62 +
+          this.musicReactive.lowOnsetPulse * 0.96 +
+          this.musicReactive.beatPulse * 0.58 +
+          this.musicReactive.barPulse * 0.26
+      ),
+      mid: clamp01(
+        this.musicReactive.curve.mid * 0.64 +
+          this.musicReactive.midOnsetPulse * 0.92 +
+          this.musicReactive.beatPulse * 0.28 +
+          this.musicReactive.barPulse * 0.36
+      ),
+      high: clamp01(
+        this.musicReactive.curve.high * 0.68 +
+          this.musicReactive.highOnsetPulse * 0.95 +
+          this.musicReactive.beatPulse * 0.24 +
+          this.musicReactive.barPulse * 0.22
+      )
+    };
+  }
+
+  private drawMusicLaneFlow(
+    graphics: Phaser.GameObjects.Graphics,
+    horizonY: number,
+    nearestY: number,
+    centerX: number
+  ): void {
+    const laneStartIndices = [-3, -2, -1, 0, 1, 2] as const;
+    const laneBands = ['high', 'mid', 'low', 'low', 'mid', 'high'] as const;
+    const laneBrightColors: Readonly<Record<MusicLaneBand, number>> = {
+      low: Phaser.Display.Color.GetColor(255, 84, 104),
+      mid: Phaser.Display.Color.GetColor(209, 124, 252),
+      high: Phaser.Display.Color.GetColor(120, 232, 255)
+    };
+    const laneNeutralColors: Readonly<Record<MusicLaneBand, number>> = {
+      low: Phaser.Display.Color.GetColor(126, 74, 84),
+      mid: Phaser.Display.Color.GetColor(104, 88, 128),
+      high: Phaser.Display.Color.GetColor(72, 102, 120)
+    };
+    const laneEnergies = this.musicLaneEnergyByBand();
+    const travelRange = nearestY - horizonY;
+    const lineX = (lineIndex: number, depth: number): number => {
+      const xTop = centerX + lineIndex * BOTTOM_GRID_TOP_SPACING;
+      const xBottom = centerX + lineIndex * BOTTOM_GRID_TOP_SPACING * BOTTOM_GRID_BOTTOM_SPREAD;
+      return lerp(xTop, xBottom, depth);
+    };
+
+    if (this.debugMusicLaneGuidesEnabled) {
+      for (let lane = 0; lane < laneStartIndices.length; lane += 1) {
+        const lineStart = laneStartIndices[lane];
+        if (lineStart === undefined) {
+          throw new Error(`Lane start index missing for lane ${lane}.`);
+        }
+        const band = laneBands[lane];
+        if (band === undefined) {
+          throw new Error(`Lane band missing for lane ${lane}.`);
+        }
+        const lineEnd = lineStart + 1;
+        const laneColor = laneNeutralColors[band];
+        const laneEnergy = laneEnergies[band];
+        const breathing = 0.5 + 0.5 * Math.sin(this.time.now * 0.0032 + lane * 0.8);
+        const xLeftTop = lineX(lineStart, 0);
+        const xRightTop = lineX(lineEnd, 0);
+        const xLeftBottom = lineX(lineStart, 1);
+        const xRightBottom = lineX(lineEnd, 1);
+        const laneAlpha = clamp01(0.03 + laneEnergy * 0.12 + breathing * 0.028);
+        graphics.fillStyle(laneColor, laneAlpha);
+        graphics.beginPath();
+        graphics.moveTo(xLeftTop, horizonY);
+        graphics.lineTo(xRightTop, horizonY);
+        graphics.lineTo(xRightBottom, nearestY);
+        graphics.lineTo(xLeftBottom, nearestY);
+        graphics.closePath();
+        graphics.fillPath();
+      }
+    }
+
+    if (!this.debugMusicLanePulsesEnabled) {
+      return;
+    }
+
+    for (const pulse of this.musicLanePulses) {
+      const lineStart = laneStartIndices[pulse.lane];
+      if (lineStart === undefined) {
+        throw new Error(`Lane start index missing for lane ${pulse.lane}.`);
+      }
+      const brightColor = laneBrightColors[pulse.band];
+      const neutralColor = laneNeutralColors[pulse.band];
+      const t0 = clamp01(pulse.progress);
+      const t1 = clamp01(pulse.progress + MUSIC_LANE_BLOCK_DEPTH);
+      if (t1 <= t0) {
+        continue;
+      }
+      const y0 = horizonY + travelRange * t0;
+      const y1 = horizonY + travelRange * t1;
+      const xLeft0 = lineX(lineStart, t0);
+      const xRight0 = lineX(lineStart + 1, t0);
+      const xLeft1 = lineX(lineStart, t1);
+      const xRight1 = lineX(lineStart + 1, t1);
+      const tMid = (t0 + t1) * 0.5;
+      const entryFlash = Math.exp(-pulse.progress * 14);
+      const release = 1 - entryFlash;
+      const tileColor = mixColor(brightColor, neutralColor, release);
+      const alpha = clamp01(0.12 + pulse.intensity * 0.36) * lerp(0.45, 0.75, tMid);
+      const glowAlpha = clamp01(0.06 + pulse.intensity * 0.2 + entryFlash * 0.58);
+      const expandPx = Math.max(1, Math.round(lerp(7, 2, tMid) * this.visualScale()));
+
+      graphics.fillStyle(brightColor, glowAlpha * 0.5);
+      graphics.beginPath();
+      graphics.moveTo(xLeft0 - expandPx, y0);
+      graphics.lineTo(xRight0 + expandPx, y0);
+      graphics.lineTo(xRight1 + expandPx, y1);
+      graphics.lineTo(xLeft1 - expandPx, y1);
+      graphics.closePath();
+      graphics.fillPath();
+
+      graphics.fillStyle(tileColor, alpha);
+      graphics.beginPath();
+      graphics.moveTo(xLeft0, y0);
+      graphics.lineTo(xRight0, y0);
+      graphics.lineTo(xRight1, y1);
+      graphics.lineTo(xLeft1, y1);
+      graphics.closePath();
+      graphics.fillPath();
+
+      graphics.lineStyle(
+        Math.max(1, Math.round(this.visualScale() * 2)),
+        brightColor,
+        clamp01(0.1 + entryFlash * 0.7)
+      );
+      graphics.beginPath();
+      graphics.moveTo(xLeft0, y0);
+      graphics.lineTo(xRight0, y0);
+      graphics.lineTo(xRight1, y1);
+      graphics.lineTo(xLeft1, y1);
+      graphics.closePath();
+      graphics.strokePath();
+    }
+  }
+
+  private drawLaneSourceLights(
+    graphics: Phaser.GameObjects.Graphics,
+    horizonY: number,
+    centerX: number
+  ): void {
+    const laneCenters = [-2.5, -1.5, -0.5, 0.5, 1.5, 2.5] as const;
+    const laneBands = ['high', 'mid', 'low', 'low', 'mid', 'high'] as const;
+    const brightColors: Readonly<Record<MusicLaneBand, number>> = {
+      low: Phaser.Display.Color.GetColor(255, 84, 104),
+      mid: Phaser.Display.Color.GetColor(209, 124, 252),
+      high: Phaser.Display.Color.GetColor(120, 232, 255)
+    };
+    const laneEnergies = this.musicLaneEnergyByBand();
+    const sourceY = horizonY + Math.max(2, Math.round(2 * this.visualScale()));
+
+    for (let lane = 0; lane < laneCenters.length; lane += 1) {
+      const laneCenter = laneCenters[lane];
+      if (laneCenter === undefined) {
+        throw new Error(`Lane center index missing for lane ${lane}.`);
+      }
+      const band = laneBands[lane];
+      if (band === undefined) {
+        throw new Error(`Lane band missing for lane source ${lane}.`);
+      }
+
+      const laneX = centerX + laneCenter * BOTTOM_GRID_TOP_SPACING;
+      const bandEnergy = laneEnergies[band];
+      let flashBoost = 0;
+      for (const pulse of this.musicLanePulses) {
+        if (pulse.lane !== lane) {
+          continue;
+        }
+        if (pulse.progress > 0.12) {
+          continue;
+        }
+        flashBoost = Math.max(flashBoost, (0.12 - pulse.progress) / 0.12 * pulse.intensity);
+      }
+
+      const brightness = clamp01(bandEnergy * 0.72 + flashBoost * 0.84);
+      if (brightness < 0.05) {
+        continue;
+      }
+
+      const color = brightColors[band];
+      const coreWidth = Math.max(2, Math.round(11 * this.visualScale()));
+      const coreHeight = Math.max(1, Math.round(4 * this.visualScale()));
+      const glowWidth = Math.max(8, Math.round(coreWidth * (1.8 + brightness * 0.8)));
+      const glowHeight = Math.max(5, Math.round(coreHeight * (2.2 + brightness * 0.7)));
+      graphics.fillStyle(color, clamp01(0.06 + brightness * 0.36));
+      graphics.fillEllipse(laneX, sourceY + coreHeight * 0.25, glowWidth, glowHeight);
+      graphics.fillStyle(color, clamp01(0.22 + brightness * 0.56));
+      graphics.fillRect(
+        Math.round(laneX - coreWidth / 2),
+        Math.round(sourceY - coreHeight / 2),
+        coreWidth,
+        coreHeight
+      );
+      graphics.lineStyle(Math.max(1, Math.round(this.visualScale() * 1.5)), color, clamp01(0.2 + brightness * 0.48));
+      graphics.strokeRect(
+        Math.round(laneX - coreWidth / 2),
+        Math.round(sourceY - coreHeight / 2),
+        coreWidth,
+        coreHeight
+      );
+    }
+  }
+
+  private drawSkyline(graphics: Phaser.GameObjects.Graphics): void {
+    const width = this.playfieldWidth;
+    const height = this.playfieldHeight;
+    const horizonY = this.playfieldOffsetY + Math.floor(height * PLAYFIELD_HORIZON_Y_RATIO);
+    const baseY = horizonY + SKYLINE_BASE_OFFSET_PX * this.playfieldScaleY;
+    const vanishX = this.playfieldOffsetX + width * 0.5;
+    const glowPulse = clamp01(
+      this.musicReactive.curve.low * 0.26 +
+        this.musicReactive.curve.mid * 0.16 +
+        this.musicReactive.lowOnsetPulse * 0.2 +
+        this.musicReactive.barPulse * 0.32
+    );
+
+    const projectToVanish = (x: number, y: number, depthT: number): Readonly<{ x: number; y: number }> => ({
+      x: lerp(x, vanishX, depthT),
+      y: lerp(y, horizonY, depthT)
+    });
+
+    const drawQueue = this.skylineBuildings
+      .map((building) => {
+        const centerX = this.worldToScreenX(building.x);
+        const buildingWidth = Math.max(3, Math.round(building.width * this.playfieldScaleX));
+        const buildingHeight = Math.max(4, Math.round(building.height * this.playfieldScaleY * SKYLINE_HEIGHT_SCALE));
+        const crownHeight = Math.max(2, Math.round(building.crownHeight * this.playfieldScaleY * SKYLINE_HEIGHT_SCALE));
+        const left = Math.round(centerX - buildingWidth / 2);
+        const right = left + buildingWidth;
+        const top = Math.round(baseY - buildingHeight);
+        return {
+          building,
+          centerX,
+          buildingWidth,
+          buildingHeight,
+          crownHeight,
+          left,
+          right,
+          top,
+          centerDistance: Math.abs(centerX - vanishX)
+        };
+      })
+      .filter((entry) => !(entry.left > this.playfieldOffsetX + width + 40 || entry.right < this.playfieldOffsetX - 40))
+      .sort((a, b) => {
+        if (a.centerDistance !== b.centerDistance) {
+          return b.centerDistance - a.centerDistance;
+        }
+        if (a.building.depth !== b.building.depth) {
+          return a.building.depth - b.building.depth;
+        }
+        return a.centerX - b.centerX;
+      });
+
+    for (const entry of drawQueue) {
+      const building = entry.building;
+      const centerX = entry.centerX;
+      const buildingWidth = entry.buildingWidth;
+      const buildingHeight = entry.buildingHeight;
+      const crownHeight = entry.crownHeight;
+      const left = entry.left;
+      const right = entry.right;
+      const top = entry.top;
+
+      const [neonR, neonG, neonB] = SKYLINE_NEON_COLORS[building.style];
+      const colorVisibility = 0.62;
+      const dim = (value: number): number => Math.round(lerp(4, value, colorVisibility));
+      const edgeColor = Phaser.Display.Color.GetColor(neonR, neonG, neonB);
+      const bodyColor = Phaser.Display.Color.GetColor(
+        dim(lerp(6, neonR * 0.2, building.depth)),
+        dim(lerp(7, neonG * 0.16, building.depth)),
+        dim(lerp(16, neonB * 0.24, building.depth))
+      );
+      const topColor = Phaser.Display.Color.GetColor(
+        dim(lerp(26, neonR * 0.46, building.depth)),
+        dim(lerp(22, neonG * 0.4, building.depth)),
+        dim(lerp(40, neonB * 0.54, building.depth))
+      );
+      const sideColor = Phaser.Display.Color.GetColor(
+        dim(lerp(10, neonR * 0.24, building.depth)),
+        dim(lerp(9, neonG * 0.2, building.depth)),
+        dim(lerp(24, neonB * 0.3, building.depth))
+      );
+      const depthT = clamp01(
+        SKYLINE_ISO_DEPTH_T_BASE +
+          building.depth * SKYLINE_ISO_DEPTH_T_BY_DISTANCE +
+          (buildingWidth / Math.max(1, width)) * SKYLINE_ISO_DEPTH_T_BY_WIDTH
+      );
+      const backTopLeft = projectToVanish(left, top, depthT);
+      const backTopRight = projectToVanish(right, top, depthT);
+      const backBaseLeft = projectToVanish(left, baseY, depthT);
+      const backBaseRight = projectToVanish(right, baseY, depthT);
+      const showRightSide = centerX <= vanishX;
+      const visibilityAlpha = 1;
+
+      graphics.fillStyle(topColor, visibilityAlpha);
+      graphics.beginPath();
+      graphics.moveTo(left, top);
+      graphics.lineTo(right, top);
+      graphics.lineTo(backTopRight.x, backTopRight.y);
+      graphics.lineTo(backTopLeft.x, backTopLeft.y);
+      graphics.closePath();
+      graphics.fillPath();
+
+      graphics.fillStyle(sideColor, visibilityAlpha);
+      if (showRightSide) {
+        graphics.beginPath();
+        graphics.moveTo(right, top);
+        graphics.lineTo(right, baseY);
+        graphics.lineTo(backBaseRight.x, backBaseRight.y);
+        graphics.lineTo(backTopRight.x, backTopRight.y);
+        graphics.closePath();
+        graphics.fillPath();
+      } else {
+        graphics.beginPath();
+        graphics.moveTo(left, top);
+        graphics.lineTo(left, baseY);
+        graphics.lineTo(backBaseLeft.x, backBaseLeft.y);
+        graphics.lineTo(backTopLeft.x, backTopLeft.y);
+        graphics.closePath();
+        graphics.fillPath();
+      }
+
+      graphics.fillStyle(bodyColor, visibilityAlpha);
+      graphics.fillRect(left, top, buildingWidth, buildingHeight);
+
+      const crownWidth = Math.max(2, Math.round(buildingWidth * 0.72));
+      const crownLeft = Math.round(centerX - crownWidth / 2);
+      const crownRight = crownLeft + crownWidth;
+      const crownTop = top - crownHeight;
+      const crownDepthT = depthT * 0.86;
+      const crownBackTopLeft = projectToVanish(crownLeft, crownTop, crownDepthT);
+      const crownBackTopRight = projectToVanish(crownRight, crownTop, crownDepthT);
+      graphics.fillStyle(topColor, visibilityAlpha);
+      graphics.beginPath();
+      graphics.moveTo(crownLeft, crownTop);
+      graphics.lineTo(crownRight, crownTop);
+      graphics.lineTo(crownBackTopRight.x, crownBackTopRight.y);
+      graphics.lineTo(crownBackTopLeft.x, crownBackTopLeft.y);
+      graphics.closePath();
+      graphics.fillPath();
+
+      graphics.fillStyle(bodyColor, visibilityAlpha);
+      graphics.fillRect(crownLeft, crownTop, crownWidth, crownHeight);
+
+      const glowWidth = Math.max(1, Math.round(3 * this.visualScale()));
+      graphics.lineStyle(glowWidth, edgeColor, (0.018 + glowPulse * 0.024) * (0.35 + building.depth * 0.45));
+      graphics.strokeRect(left, top, buildingWidth, buildingHeight);
+      graphics.lineStyle(Math.max(1, Math.round(1 * this.visualScale())), edgeColor, 0.08 + glowPulse * 0.08);
+      graphics.strokeRect(left, top, buildingWidth, buildingHeight);
+      graphics.beginPath();
+      graphics.moveTo(left, top);
+      graphics.lineTo(backTopLeft.x, backTopLeft.y);
+      graphics.lineTo(backTopRight.x, backTopRight.y);
+      graphics.lineTo(right, top);
+      graphics.strokePath();
+      if (showRightSide) {
+        graphics.beginPath();
+        graphics.moveTo(right, top);
+        graphics.lineTo(backTopRight.x, backTopRight.y);
+        graphics.moveTo(right, baseY);
+        graphics.lineTo(backBaseRight.x, backBaseRight.y);
+        graphics.strokePath();
+      } else {
+        graphics.beginPath();
+        graphics.moveTo(left, top);
+        graphics.lineTo(backTopLeft.x, backTopLeft.y);
+        graphics.moveTo(left, baseY);
+        graphics.lineTo(backBaseLeft.x, backBaseLeft.y);
+        graphics.strokePath();
+      }
+
+      const windowStepX = Math.max(4, Math.round((5 + building.depth * 2.2) * this.playfieldScaleX));
+      const windowStepY = Math.max(5, Math.round((8 + building.depth * 2.2) * this.playfieldScaleY));
+      const windowWidth = Math.max(1, Math.round(windowStepX * 0.42));
+      const windowHeight = Math.max(1, Math.round(windowStepY * 0.44));
+      const startX = left + Math.max(1, Math.round(3 * this.playfieldScaleX));
+      const startY = top + Math.max(2, Math.round(6 * this.playfieldScaleY));
+      const maxX = left + buildingWidth - windowWidth - Math.max(1, Math.round(3 * this.playfieldScaleX));
+      const maxY = top + buildingHeight - windowHeight - Math.max(1, Math.round(4 * this.playfieldScaleY));
+      const skylineWindowPatternIntervalSec = 240 / this.activeMusicTrackBpm();
+      const patternPhase =
+        (Math.floor(this.readMusicTimeSec() / skylineWindowPatternIntervalSec) + building.patternSeed) % 19;
+      const windowAlphaBase = clamp01(0.08 + building.depth * 0.2 + glowPulse * 0.12);
+
+      let row = 0;
+      for (let y = startY; y <= maxY; y += windowStepY) {
+        let col = 0;
+        for (let x = startX; x <= maxX; x += windowStepX) {
+          const patternValue = (row * 13 + col * 17 + patternPhase + building.patternSeed) % 23;
+          if (patternValue <= 8) {
+            const lightAlpha = windowAlphaBase * (0.7 + (patternValue % 3) * 0.12);
+            graphics.fillStyle(edgeColor, Math.min(1, lightAlpha));
+            graphics.fillRect(x, y, windowWidth, windowHeight);
+          }
+          col += 1;
+        }
+        row += 1;
+      }
+
+      if (building.skyscraper) {
+        const spineWidth = Math.max(1, Math.round(buildingWidth * 0.08));
+        const spineX = Math.round(centerX - spineWidth / 2);
+        graphics.fillStyle(edgeColor, 0.08 + glowPulse * 0.12);
+        graphics.fillRect(spineX, top + Math.max(2, Math.round(this.playfieldScaleY * 3)), spineWidth, Math.max(4, buildingHeight - 6));
+        const antennaHeight = Math.max(8, Math.round(16 * this.playfieldScaleY));
+        graphics.lineStyle(Math.max(1, Math.round(1 * this.visualScale())), edgeColor, 0.2 + glowPulse * 0.12);
+        graphics.beginPath();
+        graphics.moveTo(centerX, crownTop);
+        graphics.lineTo(centerX, crownTop - antennaHeight);
+        graphics.strokePath();
+        graphics.fillStyle(edgeColor, 0.28 + glowPulse * 0.14);
+        graphics.fillCircle(centerX, crownTop - antennaHeight, Math.max(1, Math.round(this.visualScale() * 2)));
+      }
+    }
+  }
+
+  private updateHotkeys(): void {
+    if (Phaser.Input.Keyboard.JustDown(this.runtimeHotkeys.debugToggle)) {
+      this.debugModeEnabled = toggleGlobalDebugMode();
+      this.showSongBanner(this.debugModeEnabled ? 'DEBUG MODE ON' : 'DEBUG MODE OFF');
+    }
+    if (this.debugModeEnabled) {
+      this.updateDebugHotkeys();
+      return;
+    }
+    this.updateRuntimeHotkeys();
+  }
+
+  private updateDebugHotkeys(): void {
+    const debugKeys = this.debugKeys;
+    if (debugKeys === null) {
+      throw new Error('Debug hotkeys are missing while debug mode is enabled.');
+    }
+    if (Phaser.Input.Keyboard.JustDown(debugKeys.pulseToggle)) {
+      this.debugMusicLanePulsesEnabled = !this.debugMusicLanePulsesEnabled;
+    }
+    if (Phaser.Input.Keyboard.JustDown(debugKeys.guideToggle)) {
+      this.debugMusicLaneGuidesEnabled = !this.debugMusicLaneGuidesEnabled;
+    }
+    if (Phaser.Input.Keyboard.JustDown(debugKeys.bottomToggle)) {
+      this.debugBottomVisualsEnabled = !this.debugBottomVisualsEnabled;
+    }
+    if (Phaser.Input.Keyboard.JustDown(debugKeys.backgroundFlashToggle)) {
+      this.debugBackgroundFlashEnabled = !this.debugBackgroundFlashEnabled;
+    }
+  }
+
+  private updateRuntimeHotkeys(): void {
+    if (Phaser.Input.Keyboard.JustDown(this.runtimeHotkeys.sfxToggle)) {
+      this.toggleSfxEnabled();
+    }
+    if (Phaser.Input.Keyboard.JustDown(this.runtimeHotkeys.playPause)) {
+      this.toggleMusicPlayback();
+    }
+    if (Phaser.Input.Keyboard.JustDown(this.runtimeHotkeys.previousSong)) {
+      this.cycleMusicTrack(-1);
+    }
+    if (Phaser.Input.Keyboard.JustDown(this.runtimeHotkeys.nextSong)) {
+      this.cycleMusicTrack(1);
+    }
+  }
+
+  private toggleSfxEnabled(): void {
+    this.sfxEnabled = !this.sfxEnabled;
+    this.showSongBanner(this.sfxEnabled ? 'SFX ON' : 'SFX OFF');
+  }
+
+  private toggleMusicPlayback(): void {
+    const backgroundMusic = this.requireBackgroundMusic();
+    if (backgroundMusic.isPlaying) {
+      this.musicPausedByUser = true;
+      backgroundMusic.pause();
+      this.showSongBanner('MSX PAUSE');
+      return;
+    }
+    this.musicPausedByUser = false;
+    backgroundMusic.resume();
+    this.showSongBanner('MSX PLAY');
+  }
+
+  private cycleMusicTrack(step: -1 | 1): void {
+    const trackCount = this.musicTracks.length;
+    if (trackCount <= 0) {
+      throw new Error('Music track list is empty.');
+    }
+    const nextIndex = (this.activeMusicTrackIndex + step + trackCount) % trackCount;
+    this.switchMusicTrack(nextIndex, true);
+  }
+
+  private updateMusicBannerVisibility(): void {
+    if (this.musicBannerElement === null) {
+      return;
+    }
+    if (this.musicBannerHideAtMs > 0 && this.time.now >= this.musicBannerHideAtMs) {
+      this.musicBannerElement.classList.remove('is-visible');
+      this.musicBannerHideAtMs = 0;
+    }
+  }
+
+  private showSongBanner(label: string): void {
+    if (this.musicBannerElement === null) {
+      throw new Error('Music banner overlay is not initialized.');
+    }
+    this.musicBannerElement.textContent = label;
+    this.musicBannerElement.classList.add('is-visible');
+    this.musicBannerHideAtMs = this.time.now + SONG_BANNER_VISIBLE_MS;
   }
 
   private updateEnemyReactiveBursts(syncFrame: SyncFrame, deltaSeconds: number): void {
@@ -1043,6 +2061,56 @@ export class PixelInvadersScene extends Phaser.Scene {
     });
   }
 
+  private spawnPlayerDeathCluster(centerX: number, centerY: number): void {
+    this.spawnExplosion(centerX, centerY);
+    for (let burstIndex = 0; burstIndex < PLAYER_DEATH_CLUSTER_BURST_TOTAL; burstIndex += 1) {
+      this.time.delayedCall(burstIndex * PLAYER_DEATH_CLUSTER_BURST_INTERVAL_MS, () => {
+        for (let explosionIndex = 0; explosionIndex < PLAYER_DEATH_CLUSTER_BURST_COUNT; explosionIndex += 1) {
+          const jitterX = Phaser.Math.FloatBetween(-PLAYER_DEATH_CLUSTER_RADIUS_X, PLAYER_DEATH_CLUSTER_RADIUS_X);
+          const jitterY = Phaser.Math.FloatBetween(-PLAYER_DEATH_CLUSTER_RADIUS_Y, PLAYER_DEATH_CLUSTER_RADIUS_Y);
+          const explosionX = Phaser.Math.Clamp(centerX + jitterX, 0, WORLD_WIDTH);
+          const explosionY = Phaser.Math.Clamp(centerY + jitterY, 0, WORLD_HEIGHT);
+          this.spawnExplosion(explosionX, explosionY);
+        }
+
+        if (this.sfxEnabled) {
+          this.sfx.playExplosion({
+            pan: xToStereoPan(centerX),
+            depth: 0,
+            large: burstIndex % 2 === 0
+          });
+        }
+      });
+    }
+  }
+
+  private spawnRowRespawnFlash(row: number): void {
+    const rowEnemies = this.state.enemies.filter(
+      (enemy) => enemy.alive && Math.floor(enemy.id / ENEMY_COLS) === row
+    );
+    if (rowEnemies.length === 0) {
+      throw new Error(`Cannot create row respawn flash for empty row ${row}.`);
+    }
+
+    this.rowRespawnFlashes = this.rowRespawnFlashes.concat({
+      y: rowEnemies[0].y,
+      startAtMs: this.time.now
+    });
+
+    let rowCenterX = 0;
+    for (const enemy of rowEnemies) {
+      rowCenterX += enemy.x;
+      if (enemy.id % 3 !== 0) {
+        continue;
+      }
+      this.spawnExplosion(enemy.x, enemy.y);
+    }
+    rowCenterX /= rowEnemies.length;
+    if (this.sfxEnabled) {
+      this.sfx.playExplosion({ pan: xToStereoPan(rowCenterX), depth: 0, large: true });
+    }
+  }
+
   private worldToScreenX(worldX: number): number {
     return this.playfieldOffsetX + worldX * this.playfieldScaleX;
   }
@@ -1058,6 +2126,9 @@ export class PixelInvadersScene extends Phaser.Scene {
   private updateExplosions(): void {
     const now = this.time.now;
     this.explosions = this.explosions.filter((explosion) => now - explosion.startAtMs < EXPLOSION_DURATION_MS);
+    this.rowRespawnFlashes = this.rowRespawnFlashes.filter(
+      (flash) => now - flash.startAtMs < ROW_RESPAWN_FLASH_DURATION_MS
+    );
   }
 
   private drawExplosions(graphics: Phaser.GameObjects.Graphics): void {
@@ -1077,6 +2148,39 @@ export class PixelInvadersScene extends Phaser.Scene {
     }
   }
 
+  private drawRowRespawnFlashes(graphics: Phaser.GameObjects.Graphics): void {
+    for (const flash of this.rowRespawnFlashes) {
+      const progress = clamp01((this.time.now - flash.startAtMs) / ROW_RESPAWN_FLASH_DURATION_MS);
+      if (progress >= 1) {
+        continue;
+      }
+      const fade = 1 - progress;
+      const reactiveEnergy = clamp01(this.musicReactive.beatPulse * 0.34 + this.musicReactive.barPulse * 0.42);
+      const color = mixColor(0x70e6ff, 0xff7ad8, progress * 0.58 + reactiveEnergy * 0.16);
+      const centerY = this.worldToScreenY(flash.y);
+      const halfHeight = Math.max(
+        4,
+        Math.round((6 + ROW_RESPAWN_FLASH_HALF_HEIGHT_PX * progress) * this.visualScale())
+      );
+      const top = Math.round(centerY - halfHeight);
+      const bandHeight = Math.max(1, halfHeight * 2);
+
+      graphics.fillStyle(color, clamp01(0.03 + fade * 0.24));
+      graphics.fillRect(this.playfieldOffsetX, top, this.playfieldWidth, bandHeight);
+      graphics.lineStyle(
+        Math.max(1, Math.round(this.visualScale() * 2)),
+        color,
+        clamp01(0.06 + fade * 0.5 + reactiveEnergy * 0.2)
+      );
+      graphics.beginPath();
+      graphics.moveTo(this.playfieldOffsetX, top);
+      graphics.lineTo(this.playfieldOffsetX + this.playfieldWidth, top);
+      graphics.moveTo(this.playfieldOffsetX, top + bandHeight);
+      graphics.lineTo(this.playfieldOffsetX + this.playfieldWidth, top + bandHeight);
+      graphics.strokePath();
+    }
+  }
+
   private ensureFullscreenOnInteraction(): void {
     if (this.scale.isFullscreen) {
       return;
@@ -1085,16 +2189,76 @@ export class PixelInvadersScene extends Phaser.Scene {
     this.scale.startFullscreen();
   }
 
-  private initializeBackgroundMusic(): void {
-    if (!this.cache.audio.exists(BACKGROUND_MUSIC_KEY)) {
-      throw new Error(`Missing audio asset for key "${BACKGROUND_MUSIC_KEY}".`);
+  private readMusicTrackRuntimes(): ReadonlyArray<MusicTrackRuntime> {
+    const tracks: MusicTrackRuntime[] = [];
+    for (const definition of MUSIC_TRACK_DEFINITIONS) {
+      if (!this.cache.audio.exists(definition.audioCacheKey)) {
+        throw new Error(`Missing audio asset for key "${definition.audioCacheKey}".`);
+      }
+      const rawBytes: unknown = this.cache.binary.get(definition.binaryCacheKey);
+      if (rawBytes === null || rawBytes === undefined) {
+        throw new Error(`Missing binary audio header data for key "${definition.binaryCacheKey}".`);
+      }
+      const bytes = normalizeBinaryBytes(rawBytes, definition.syncSource);
+      const metadata = readTrackHeaderMetadata(bytes, definition.syncSource);
+      const firstCurve = definition.syncRuntime.track.curves.samples[0];
+      if (firstCurve === undefined) {
+        throw new Error(`${definition.syncSource} sync track contains no curve samples.`);
+      }
+      const bpm = definition.syncRuntime.track.timing.bpm;
+      if (!Number.isFinite(bpm) || bpm <= 0) {
+        throw new Error(`${definition.syncSource} sync track contains invalid bpm: ${String(bpm)}.`);
+      }
+      tracks.push({
+        id: definition.id,
+        audioCacheKey: definition.audioCacheKey,
+        binaryCacheKey: definition.binaryCacheKey,
+        syncRuntime: definition.syncRuntime,
+        metadata
+      });
     }
+    return tracks;
+  }
 
-    this.backgroundMusic = this.sound.add(BACKGROUND_MUSIC_KEY, {
-      loop: true,
-      volume: BACKGROUND_MUSIC_VOLUME
-    });
-    this.startBackgroundMusic();
+  private createMusicBannerElement(): HTMLDivElement {
+    const host = document.getElementById('app');
+    if (!(host instanceof HTMLElement)) {
+      throw new Error('Cannot create music banner: missing #app host element.');
+    }
+    const banner = document.createElement('div');
+    banner.className = 'pixel-song-banner';
+    host.appendChild(banner);
+    return banner;
+  }
+
+  private activeMusicTrack(): MusicTrackRuntime {
+    const track = this.musicTracks[this.activeMusicTrackIndex];
+    if (track === undefined) {
+      throw new Error(`Missing active music track at index ${this.activeMusicTrackIndex}.`);
+    }
+    return track;
+  }
+
+  private activeMusicTrackBpm(): number {
+    const bpm = this.activeMusicTrack().syncRuntime.track.timing.bpm;
+    if (!Number.isFinite(bpm) || bpm <= 0) {
+      throw new Error(`Active music track has invalid bpm: ${String(bpm)}.`);
+    }
+    return bpm;
+  }
+
+  private requireSyncClock(): SyncClock {
+    if (this.syncClock === null) {
+      throw new Error('Sync clock is not initialized in Pixel Invaders scene.');
+    }
+    return this.syncClock;
+  }
+
+  private initializeBackgroundMusic(): void {
+    if (this.musicTracks.length === 0) {
+      throw new Error('Music track list is empty.');
+    }
+    this.switchMusicTrack(0, false);
   }
 
   private requireBackgroundMusic(): Phaser.Sound.BaseSound {
@@ -1118,7 +2282,45 @@ export class PixelInvadersScene extends Phaser.Scene {
     return backgroundMusic.seek;
   }
 
+  private switchMusicTrack(nextTrackIndex: number, announce: boolean): void {
+    if (!Number.isInteger(nextTrackIndex) || nextTrackIndex < 0 || nextTrackIndex >= this.musicTracks.length) {
+      throw new Error(`Music track index is out of range: ${String(nextTrackIndex)}.`);
+    }
+    const nextTrack = this.musicTracks[nextTrackIndex];
+    if (nextTrack === undefined) {
+      throw new Error(`Music track is missing at index ${nextTrackIndex}.`);
+    }
+
+    const shouldStartPaused = this.musicPausedByUser;
+    if (this.backgroundMusic !== null) {
+      this.backgroundMusic.stop();
+      this.backgroundMusic.destroy();
+      this.backgroundMusic = null;
+    }
+
+    this.backgroundMusic = this.sound.add(nextTrack.audioCacheKey, {
+      loop: true,
+      volume: BACKGROUND_MUSIC_VOLUME
+    });
+    this.activeMusicTrackIndex = nextTrackIndex;
+    this.syncClock = new SyncClock(nextTrack.syncRuntime);
+    const syncFrame = this.syncClock.reset(0);
+    this.musicReactive = applySyncFrame(this.musicReactive, syncFrame, 0);
+    this.musicLanePulses = [];
+    this.bassLaneToggle = false;
+    this.startBackgroundMusic();
+    if (shouldStartPaused) {
+      this.requireBackgroundMusic().pause();
+    }
+    if (announce) {
+      this.showSongBanner(`${nextTrack.metadata.title} - ${nextTrack.metadata.artist}`);
+    }
+  }
+
   private startBackgroundMusic(): void {
+    if (this.musicPausedByUser) {
+      return;
+    }
     const backgroundMusic = this.requireBackgroundMusic();
     if (backgroundMusic.isPlaying) {
       return;
@@ -1128,9 +2330,12 @@ export class PixelInvadersScene extends Phaser.Scene {
   }
 
   private stopBackgroundMusic(): void {
-    const backgroundMusic = this.requireBackgroundMusic();
-    backgroundMusic.stop();
-    backgroundMusic.destroy();
-    this.backgroundMusic = null;
+    if (this.backgroundMusic !== null) {
+      this.backgroundMusic.stop();
+      this.backgroundMusic.destroy();
+      this.backgroundMusic = null;
+    }
+    this.syncClock = null;
+    this.musicPausedByUser = false;
   }
 }

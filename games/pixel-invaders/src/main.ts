@@ -13,6 +13,7 @@ const gameConfig: Phaser.Types.Core.GameConfig = {
   scene: [LauncherScene, PixelInvadersScene, TunnelInvadersScene],
   scale: {
     mode: Phaser.Scale.RESIZE,
+    fullscreenTarget: 'app',
     width: window.innerWidth || WORLD_WIDTH,
     height: window.innerHeight || WORLD_HEIGHT
   }

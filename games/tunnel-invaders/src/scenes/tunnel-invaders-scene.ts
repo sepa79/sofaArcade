@@ -1,5 +1,10 @@
 import Phaser from 'phaser';
-import { RetroSfx, type AudioMixProfileId } from '@light80/game-sdk';
+import {
+  RetroSfx,
+  getGlobalDebugMode,
+  toggleGlobalDebugMode,
+  type AudioMixProfileId
+} from '@light80/game-sdk';
 
 import {
   FIXED_TIMESTEP,
@@ -54,7 +59,6 @@ const TUNNEL_RING_COUNT = 64;
 const TUNNEL_STARS_PER_RING = 20;
 const TUNNEL_FLOW_SPEED = 0.24;
 const TUNNEL_STAR_SIZE_SCALE = 0.48;
-const DEBUG_TUNING_ENABLED = true;
 const PIXEL_OFFSET_MIN = -3;
 const PIXEL_OFFSET_MAX = 4;
 const FLOW_SPEED_MIN = 0.05;
@@ -198,7 +202,14 @@ interface DebugKeys {
   readonly nextMixProfile: ReadonlyArray<Phaser.Input.Keyboard.Key>;
   readonly toggleRings: ReadonlyArray<Phaser.Input.Keyboard.Key>;
   readonly toggleHitboxes: ReadonlyArray<Phaser.Input.Keyboard.Key>;
-  readonly toggleOverlay: ReadonlyArray<Phaser.Input.Keyboard.Key>;
+}
+
+interface RuntimeHotkeys {
+  readonly sfxToggle: Phaser.Input.Keyboard.Key;
+  readonly playPause: Phaser.Input.Keyboard.Key;
+  readonly previousSong: Phaser.Input.Keyboard.Key;
+  readonly nextSong: Phaser.Input.Keyboard.Key;
+  readonly debugToggle: Phaser.Input.Keyboard.Key;
 }
 
 const DEFAULT_RENDER_TUNING: RenderTuning = {
@@ -534,11 +545,15 @@ export class TunnelInvadersScene extends Phaser.Scene {
   private tunnelStars: ReadonlyArray<TunnelStar> = [];
   private hudText!: Phaser.GameObjects.Text;
   private debugText: Phaser.GameObjects.Text | null = null;
+  private runtimeHotkeys: RuntimeHotkeys | null = null;
   private debugKeys: DebugKeys | null = null;
-  private debugOverlayVisible = DEBUG_TUNING_ENABLED;
+  private debugModeEnabled = getGlobalDebugMode();
+  private debugOverlayVisible = this.debugModeEnabled;
   private debugRingsVisible = false;
   private debugHitboxesVisible = false;
   private readonly sfx = new RetroSfx();
+  private sfxEnabled = true;
+  private musicPausedByUser = false;
   private explosionGlows: ReadonlyArray<ExplosionGlowFx> = [];
   private backgroundMusic: Phaser.Sound.BaseSound | null = null;
   private renderTuning: RenderTuning = DEFAULT_RENDER_TUNING;
@@ -637,56 +652,60 @@ export class TunnelInvadersScene extends Phaser.Scene {
     });
     this.hintText.setOrigin(0.5, 0.5);
 
-    if (DEBUG_TUNING_ENABLED) {
-      const keyboard = requireKeyboard(this);
-      this.debugKeys = {
-        pixelDown: [
-          keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.OPEN_BRACKET),
-          keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.NINE)
-        ],
-        pixelUp: [
-          keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.CLOSED_BRACKET),
-          keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ZERO)
-        ],
-        flowDown: [
-          keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.MINUS),
-          keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.NUMPAD_SUBTRACT),
-          keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S)
-        ],
-        flowUp: [
-          keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.PLUS),
-          keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.NUMPAD_ADD),
-          keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W)
-        ],
-        twistDown: [
-          keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.COMMA),
-          keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Z)
-        ],
-        twistUp: [
-          keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.PERIOD),
-          keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.X)
-        ],
-        depthDown: [
-          keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D),
-          keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.PAGE_DOWN)
-        ],
-        depthUp: [
-          keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F),
-          keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.PAGE_UP)
-        ],
-        nextMixProfile: [keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.M)],
-        toggleRings: [keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R)],
-        toggleHitboxes: [keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.H)],
-        toggleOverlay: [keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F1)]
-      };
+    const keyboard = requireKeyboard(this);
+    this.runtimeHotkeys = {
+      sfxToggle: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F1),
+      playPause: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F2),
+      previousSong: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F3),
+      nextSong: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F4),
+      debugToggle: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F6)
+    };
+    this.debugKeys = {
+      pixelDown: [
+        keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.OPEN_BRACKET),
+        keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.NINE)
+      ],
+      pixelUp: [
+        keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.CLOSED_BRACKET),
+        keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ZERO)
+      ],
+      flowDown: [
+        keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.MINUS),
+        keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.NUMPAD_SUBTRACT),
+        keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S)
+      ],
+      flowUp: [
+        keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.PLUS),
+        keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.NUMPAD_ADD),
+        keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W)
+      ],
+      twistDown: [
+        keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.COMMA),
+        keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Z)
+      ],
+      twistUp: [
+        keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.PERIOD),
+        keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.X)
+      ],
+      depthDown: [
+        keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D),
+        keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.PAGE_DOWN)
+      ],
+      depthUp: [
+        keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F),
+        keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.PAGE_UP)
+      ],
+      nextMixProfile: [keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.M)],
+      toggleRings: [keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R)],
+      toggleHitboxes: [keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.H)]
+    };
 
-      this.debugText = this.add.text(20, this.scale.height - 88, '', {
-        fontFamily: 'Trebuchet MS',
-        fontSize: '16px',
-        color: '#9be7ff'
-      });
-      this.debugText.setVisible(this.debugOverlayVisible);
-    }
+    this.debugText = this.add.text(20, this.scale.height - 88, '', {
+      fontFamily: 'Trebuchet MS',
+      fontSize: '16px',
+      color: '#9be7ff'
+    });
+    this.debugText.setVisible(this.debugOverlayVisible);
 
     this.inputContext = createInputContext(this, this.launchData.controllerProfileId);
     this.cameras.main.setBackgroundColor('#000000');
@@ -783,47 +802,50 @@ export class TunnelInvadersScene extends Phaser.Scene {
       this.accumulator -= FIXED_TIMESTEP;
     }
 
-    if (playerShot) {
+    if (this.sfxEnabled && playerShot) {
       this.sfx.playPlayerShot({
         pan: thetaToStereoPan(playerShotTheta ?? this.state.playerTheta),
         depth: 0
       });
     }
-    if (enemyShot && enemyShotSpatial !== null) {
+    if (this.sfxEnabled && enemyShot && enemyShotSpatial !== null) {
       this.sfx.playEnemyShot({
         pan: thetaToStereoPan(enemyShotSpatial.theta),
         depth: enemyShotSpatial.depth
       });
     }
     for (const enemy of destroyedEnemies.slice(0, 3)) {
+      if (!this.sfxEnabled) {
+        continue;
+      }
       this.sfx.playExplosion({
         pan: thetaToStereoPan(enemy.theta),
         depth: clamp01(enemy.depth),
         large: enemy.enemyClass === 'large'
       });
     }
-    if (playerHit) {
+    if (this.sfxEnabled && playerHit) {
       this.sfx.playPlayerHit({
         pan: thetaToStereoPan(this.state.playerTheta),
         depth: 0
       });
-    } else if (shieldHit) {
+    } else if (this.sfxEnabled && shieldHit) {
       this.sfx.playPlayerHit({
         pan: thetaToStereoPan(this.state.playerTheta),
         depth: 0
       });
     }
-    if (won) {
+    if (this.sfxEnabled && won) {
       this.sfx.playWin();
     }
-    if (lost) {
+    if (this.sfxEnabled && lost) {
       this.sfx.playLose();
     }
 
     this.sfx.updateTunnelMotion({
       theta: this.state.playerTheta + Math.PI / 2,
       speedUnit: clamp01(maxMoveSpeed),
-      active: this.state.phase === 'playing' && maxMoveSpeed > 0.02
+      active: this.sfxEnabled && this.state.phase === 'playing' && maxMoveSpeed > 0.02
     });
 
     if (playerDeathTriggered && playerExplosionTheta !== null) {
@@ -913,11 +935,13 @@ export class TunnelInvadersScene extends Phaser.Scene {
         );
       }
 
-      this.sfx.playExplosion({
-        pan: thetaToStereoPan(this.playerDeathCluster.theta),
-        depth: 0,
-        large: true
-      });
+      if (this.sfxEnabled) {
+        this.sfx.playExplosion({
+          pan: thetaToStereoPan(this.playerDeathCluster.theta),
+          depth: 0,
+          large: true
+        });
+      }
       burstTimerMs += PLAYER_DEATH_CLUSTER_BURST_INTERVAL_MS;
     }
 
@@ -1535,15 +1559,26 @@ export class TunnelInvadersScene extends Phaser.Scene {
   }
 
   private applyDebugHotkeys(): void {
-    if (!DEBUG_TUNING_ENABLED || this.debugKeys === null) {
-      return;
+    if (this.runtimeHotkeys === null) {
+      throw new Error('Tunnel runtime hotkeys are not initialized.');
     }
-
-    if (justDownAny(this.debugKeys.toggleOverlay)) {
-      this.debugOverlayVisible = !this.debugOverlayVisible;
+    if (Phaser.Input.Keyboard.JustDown(this.runtimeHotkeys.debugToggle)) {
+      this.debugModeEnabled = toggleGlobalDebugMode();
+      this.debugOverlayVisible = this.debugModeEnabled;
+      this.debugRingsVisible = this.debugModeEnabled && this.debugRingsVisible;
+      this.debugHitboxesVisible = this.debugModeEnabled && this.debugHitboxesVisible;
       if (this.debugText !== null) {
         this.debugText.setVisible(this.debugOverlayVisible);
       }
+    }
+
+    if (!this.debugModeEnabled) {
+      this.updateRuntimeAudioHotkeys();
+      return;
+    }
+
+    if (this.debugKeys === null) {
+      return;
     }
 
     if (justDownAny(this.debugKeys.toggleRings)) {
@@ -1618,12 +1653,40 @@ export class TunnelInvadersScene extends Phaser.Scene {
 
     if (justDownAny(this.debugKeys.nextMixProfile)) {
       this.sfx.nextMixProfile();
-      this.sfx.playUiMove();
+      if (this.sfxEnabled) {
+        this.sfx.playUiMove();
+      }
+    }
+  }
+
+  private updateRuntimeAudioHotkeys(): void {
+    if (this.runtimeHotkeys === null) {
+      throw new Error('Tunnel runtime hotkeys are not initialized.');
+    }
+    if (Phaser.Input.Keyboard.JustDown(this.runtimeHotkeys.sfxToggle)) {
+      this.sfxEnabled = !this.sfxEnabled;
+    }
+    if (Phaser.Input.Keyboard.JustDown(this.runtimeHotkeys.playPause)) {
+      const backgroundMusic = this.requireBackgroundMusic();
+      if (backgroundMusic.isPlaying) {
+        this.musicPausedByUser = true;
+        backgroundMusic.pause();
+      } else {
+        this.musicPausedByUser = false;
+        backgroundMusic.resume();
+      }
+    }
+    if (
+      Phaser.Input.Keyboard.JustDown(this.runtimeHotkeys.previousSong) ||
+      Phaser.Input.Keyboard.JustDown(this.runtimeHotkeys.nextSong)
+    ) {
+      this.musicPausedByUser = false;
+      this.restartBackgroundMusicTrack();
     }
   }
 
   private updateDebugOverlay(): void {
-    if (!DEBUG_TUNING_ENABLED || this.debugText === null || !this.debugOverlayVisible) {
+    if (!this.debugModeEnabled || this.debugText === null || !this.debugOverlayVisible) {
       return;
     }
 
@@ -1632,7 +1695,7 @@ export class TunnelInvadersScene extends Phaser.Scene {
     const near = Math.max(mid, 4 + this.renderTuning.pixelOffset);
 
     this.debugText.setText(
-      `DEBUG TUNING [F1]\nPIXELS [ ] / 9 0: ${far}/${mid}/${near}\nFLOW - + / S W: ${this.renderTuning.flowSpeed.toFixed(2)}\nTWIST , . / Z X: ${this.renderTuning.twistScale.toFixed(2)}\nDEPTH D/F (PgDn/PgUp): ${this.renderTuning.depthScale.toFixed(1)}\nMIX M: ${this.sfx.getMixProfile()}\nRINGS R: ${this.debugRingsVisible ? 'ON' : 'OFF'}\nHITBOX H: ${this.debugHitboxesVisible ? 'ON' : 'OFF'}`
+      `DEBUG MODE [F1]\nPIXELS [ ] / 9 0: ${far}/${mid}/${near}\nFLOW - + / S W: ${this.renderTuning.flowSpeed.toFixed(2)}\nTWIST , . / Z X: ${this.renderTuning.twistScale.toFixed(2)}\nDEPTH D/F (PgDn/PgUp): ${this.renderTuning.depthScale.toFixed(1)}\nMIX M: ${this.sfx.getMixProfile()}\nRINGS R: ${this.debugRingsVisible ? 'ON' : 'OFF'}\nHITBOX H: ${this.debugHitboxesVisible ? 'ON' : 'OFF'}`
     );
     this.debugText.setPosition(20, Math.max(20, this.scale.height - this.debugText.height - 20));
   }
@@ -1666,6 +1729,9 @@ export class TunnelInvadersScene extends Phaser.Scene {
   }
 
   private startBackgroundMusic(): void {
+    if (this.musicPausedByUser) {
+      return;
+    }
     const backgroundMusic = this.requireBackgroundMusic();
     if (backgroundMusic.isPlaying) {
       return;
@@ -1674,11 +1740,18 @@ export class TunnelInvadersScene extends Phaser.Scene {
     backgroundMusic.play();
   }
 
+  private restartBackgroundMusicTrack(): void {
+    const backgroundMusic = this.requireBackgroundMusic();
+    backgroundMusic.stop();
+    backgroundMusic.play();
+  }
+
   private stopBackgroundMusic(): void {
     const backgroundMusic = this.requireBackgroundMusic();
     backgroundMusic.stop();
     backgroundMusic.destroy();
     this.backgroundMusic = null;
+    this.musicPausedByUser = false;
   }
 
   private ensureFullscreenOnInteraction(): void {

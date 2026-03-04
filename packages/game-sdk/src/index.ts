@@ -5,3 +5,4 @@ export {
   type ExplosionSoundSpec,
   type MotionSoundState
 } from './audio/retro-sfx';
+export { getGlobalDebugMode, setGlobalDebugMode, toggleGlobalDebugMode } from './runtime/global-debug-mode';

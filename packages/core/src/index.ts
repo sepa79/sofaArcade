@@ -53,3 +53,5 @@ export {
   type PhoneControllerProvider,
   type PhoneControllerProviderConfig
 } from './phone/provider';
+
+export { loadPersistentNonNegativeInt, savePersistentNonNegativeInt } from './storage/persistence';

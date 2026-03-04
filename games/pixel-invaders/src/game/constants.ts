@@ -25,10 +25,13 @@ export const ENEMY_SPEED_STEP = 10;
 export const ENEMY_DRIFT_DOWN_SPEED = 9;
 export const ENEMY_BULLET_SPEED = 290;
 export const ENEMY_FIRE_INTERVAL = 0.9;
+export const ENEMY_ROW_RESPAWN_Y = 72;
+export const ENEMY_ROW_UFO_CHANCE = 0.38;
+export const ENEMY_UFO_SCORE = 10;
 
 export const BULLET_WIDTH = 4;
 export const BULLET_HEIGHT = 14;
 
 export const PLAYER_LIVES = 3;
 
-export const SCORE_PER_ENEMY = 100;
+export const SCORE_PER_ENEMY = 1;

@@ -230,6 +230,36 @@ body {
   transform: scaleX(-1);
 }
 
+.pixel-song-banner {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translate(-50%, 120%);
+  min-width: min(76vw, 760px);
+  max-width: min(92vw, 980px);
+  padding: 12px 20px;
+  border: 2px solid rgba(116, 236, 255, 0.92);
+  border-radius: 12px;
+  background: linear-gradient(90deg, rgba(15, 14, 34, 0.9), rgba(26, 8, 46, 0.88) 55%, rgba(12, 16, 44, 0.92));
+  color: #c9f7ff;
+  font-size: clamp(16px, 2.4vw, 28px);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-align: center;
+  text-transform: uppercase;
+  text-shadow: 0 0 8px rgba(129, 255, 255, 0.45);
+  box-shadow: 0 0 24px rgba(96, 56, 255, 0.42), inset 0 0 18px rgba(88, 245, 255, 0.12);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 1200;
+  transition: transform 220ms ease, opacity 220ms ease;
+}
+
+.pixel-song-banner.is-visible {
+  transform: translate(-50%, 0);
+  opacity: 1;
+}
+
 .launcher-settings-content {
   flex: 1;
   min-width: 0;
