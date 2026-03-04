@@ -207,8 +207,15 @@ This removes shimmer and looks demoscene‑authentic.
 
 # 11) Implementation Stages (MVP → v1 → vNext)
 
+Status snapshot: **2026-03-04**
+- DONE = implemented and playable in current codebase
+- PARTIAL = implemented in part, still missing key deliverables
+- TODO = not implemented yet
+- NEXT = next planned phase
+
 ## Stage 0 — Core scaffold (foundation)
-**Goal:** minimal playable loop with pseudo‑3D projection.
+**Goal:** minimal playable loop with pseudo‑3D projection.  
+**Status:** DONE
 
 Deliverables:
 - Vite + TS + Phaser setup
@@ -226,7 +233,8 @@ Acceptance:
 ---
 
 ## Stage 1 — Tunnel identity (pseudo‑3D feel)
-**Goal:** it looks like a tunnel shooter, not a ring top‑down.
+**Goal:** it looks like a tunnel shooter, not a ring top‑down.  
+**Status:** DONE
 
 Deliverables:
 - Tunnel background: multiple depth rings/slices
@@ -240,7 +248,8 @@ Acceptance:
 ---
 
 ## Stage 2 — Worm tunnel motion + pixel zones
-**Goal:** demoscene wow factor without breaking control.
+**Goal:** demoscene wow factor without breaking control.  
+**Status:** DONE
 
 Deliverables:
 - Worm center drift: animated `cx,cy`
@@ -254,7 +263,8 @@ Acceptance:
 ---
 
 ## Stage 3 — Arcing shots + obstacles (indestructible)
-**Goal:** add signature mechanics (arc shots + dodging pillars).
+**Goal:** add signature mechanics (arc shots + dodging pillars).  
+**Status:** PARTIAL
 
 Deliverables:
 - Arc bullets: `θ += vθ * dt` (optional slight)
@@ -266,10 +276,15 @@ Deliverables:
 Acceptance:
 - Players can “lead” shots around obstacles; obstacles create real choices.
 
+Current state notes:
+- Depth bullets and enemy shots exist.
+- True arc steering (`vθ` per bullet) and obstacle system are still missing.
+
 ---
 
 ## Stage 4 — Big enemies (multi‑HP) + impact feel
-**Goal:** chunky targets that react to hits (controlled).
+**Goal:** chunky targets that react to hits (controlled).  
+**Status:** PARTIAL
 
 Deliverables:
 - Big enemy with HP (3–8)
@@ -279,10 +294,15 @@ Deliverables:
 Acceptance:
 - Big enemies feel heavy and reactive; no pinball chaos.
 
+Current state notes:
+- Large enemy class + HP + damage feedback are implemented.
+- Physical kick/separation impulse model in `(θ,z)` is still missing.
+
 ---
 
 ## Stage 5 — Multiplayer 1–4 players
-**Goal:** party‑ready.
+**Goal:** party‑ready.  
+**Status:** TODO
 
 Deliverables:
 - Join flow for 1–4 players (controller detect)
@@ -295,7 +315,8 @@ Acceptance:
 ---
 
 ## Stage 6 — Jump/Phase (2nd button) + harder level objects
-**Goal:** solve blocking + add skill.
+**Goal:** solve blocking + add skill.  
+**Status:** PARTIAL
 
 Deliverables:
 - `JUMP_PHASE` with duration + cooldown
@@ -306,10 +327,15 @@ Deliverables:
 Acceptance:
 - Multiplayer feels fair; advanced levels add spice.
 
+Current state notes:
+- `JUMP_PHASE` + cooldown + hit behavior are implemented.
+- Higher-level obstacle variants are still missing.
+
 ---
 
 ## Stage 7 — Music sync (BPM + offset) + beat‑driven pacing (optional)
-**Goal:** spawn/tunnel pulses on beat.
+**Goal:** spawn/tunnel pulses on beat.  
+**Status:** TODO
 
 Deliverables:
 - `MusicSync` module (bpm+offset)
@@ -324,11 +350,37 @@ Acceptance:
 ---
 
 ## Stage 8 — Polish & Meta
+**Status:** PARTIAL
+
 Ideas:
 - Daily modifiers (pixel zones swapped, twist higher, ricochet mode)
 - Async leaderboards
 - More enemy archetypes (snipers, splitters, shielders)
 - Boss waves (giant invader segments in depth)
+
+Current state notes:
+- Major visual polish pass exists (CRT/vignette/parallax/neon launcher).
+- Meta layer features are still missing.
+
+---
+
+## Stage 9 — Collision System 2.0 (NEXT)
+**Goal:** tighten hit accuracy while keeping laptop-safe performance.  
+**Status:** NEXT
+
+Deliverables:
+- Precompute alpha masks from sprites once at startup (player + enemy classes).
+- Broad phase (cheap): keep current angular/depth candidate filtering.
+- Narrow phase (exact): screen-space pixel-perfect check for broad-phase candidates only.
+- Single SSOT for collision shapes and debug overlay source.
+- Debug views:
+  - broad-phase envelopes
+  - narrow-phase hit pixels/contact markers
+- Performance budget checks on laptop targets (stable 60 FPS under stress waves).
+
+Acceptance:
+- Player and enemy collisions match visible sprite silhouettes much more closely.
+- No noticeable frame drops on typical laptop hardware.
 
 ---
 

@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { FIXED_TIMESTEP } from './constants';
+import {
+  BULLET_DEPTH_SPEED,
+  ENEMY_ANGULAR_SPEED,
+  ENEMY_BULLET_DEPTH_SPEED,
+  ENEMY_DEPTH_SPEED,
+  FIXED_TIMESTEP
+} from './constants';
 import { stepGame } from './logic';
 import { createInitialState } from './state';
 import type { GameState } from './types';
@@ -46,18 +52,19 @@ describe('stepGame (tunnel invaders depth model)', () => {
   });
 
   it('kills enemy and awards score when bullet intersects angle and depth', () => {
-    const initial = createInitialState();
-    const target = initial.enemies[0];
-
-    const base: GameState = {
+    const initial = createInitialState('spread');
+    const target = initial.enemies[1];
+    const targetTheta = 1;
+    const targetDepth = 0.5;
+    const movementOnlyState: GameState = {
       ...initial,
       phase: 'playing',
       enemies: initial.enemies.map((enemy, index) =>
-        index === 0
+        index === 1
           ? {
               ...enemy,
-              theta: 1,
-              depth: 0.5,
+              theta: targetTheta,
+              depth: targetDepth,
               alive: true
             }
           : {
@@ -65,11 +72,31 @@ describe('stepGame (tunnel invaders depth model)', () => {
               alive: false
             }
       ),
+      bullets: []
+    };
+
+    const afterMove = stepGame(
+      movementOnlyState,
+      {
+        moveXSigned: 0,
+        fireHeld: false,
+        jumpPressed: false,
+        pausePressed: false,
+        startPressed: false
+      },
+      FIXED_TIMESTEP
+    );
+    const movedTarget = afterMove.enemies[target.id];
+    const bulletDepthBeforeMove = movedTarget.depth - BULLET_DEPTH_SPEED * FIXED_TIMESTEP;
+    const base: GameState = {
+      ...movementOnlyState,
       bullets: [
         {
-          theta: 1,
-          depth: 0.5,
-          ttl: 1
+          theta: movedTarget.theta,
+          depth: bulletDepthBeforeMove,
+          depthVelocity: BULLET_DEPTH_SPEED,
+          ttl: 1,
+          owner: 'player'
         }
       ]
     };
@@ -88,6 +115,64 @@ describe('stepGame (tunnel invaders depth model)', () => {
 
     expect(next.score).toBe(100);
     expect(next.enemies[target.id].alive).toBe(false);
+  });
+
+  it('uses dynamic hit arc by enemy depth (same offset hits near, misses far)', () => {
+    const initial = createInitialState('spread');
+    const thetaBase = 1;
+    const angleStep = ENEMY_ANGULAR_SPEED * FIXED_TIMESTEP;
+    const finalAngleOffset = 0.011;
+    const finalDepthOffset = 0.005;
+    const depthStep = (BULLET_DEPTH_SPEED + ENEMY_DEPTH_SPEED) * FIXED_TIMESTEP;
+
+    const runShot = (enemyDepth: number): GameState => {
+      const bulletDepth = enemyDepth - depthStep - finalDepthOffset;
+      const bulletTheta = thetaBase + angleStep - finalAngleOffset;
+      const state: GameState = {
+        ...initial,
+        phase: 'playing',
+        enemies: initial.enemies.map((enemy, index) =>
+          index === 1
+            ? {
+                ...enemy,
+                theta: thetaBase,
+                depth: enemyDepth,
+                alive: true
+              }
+            : {
+                ...enemy,
+                alive: false
+              }
+        ),
+        bullets: [
+          {
+            theta: bulletTheta,
+            depth: bulletDepth,
+            depthVelocity: BULLET_DEPTH_SPEED,
+            ttl: 1,
+            owner: 'player'
+          }
+        ]
+      };
+
+      return stepGame(
+        state,
+        {
+          moveXSigned: 0,
+          fireHeld: false,
+          jumpPressed: false,
+          pausePressed: false,
+          startPressed: false
+        },
+        FIXED_TIMESTEP
+      );
+    };
+
+    const near = runShot(0.08);
+    const far = runShot(0.92);
+
+    expect(near.score).toBe(100);
+    expect(far.score).toBe(0);
   });
 
   it('reduces life when enemy reaches edge in player sector', () => {
@@ -196,5 +281,74 @@ describe('stepGame (tunnel invaders depth model)', () => {
     );
 
     expect(resumed.phase).toBe('playing');
+  });
+
+  it('spawns two reinforcements of same class when enemy passes behind player', () => {
+    const initial = createInitialState();
+    const state: GameState = {
+      ...initial,
+      phase: 'playing',
+      enemies: [
+        {
+          ...initial.enemies[0],
+          enemyClass: 'large',
+          depth: -0.719,
+          alive: true,
+          shootCooldown: 0
+        }
+      ]
+    };
+
+    const next = stepGame(
+      state,
+      {
+        moveXSigned: 0,
+        fireHeld: false,
+        jumpPressed: false,
+        pausePressed: false,
+        startPressed: false
+      },
+      FIXED_TIMESTEP
+    );
+
+    const aliveEnemies = next.enemies.filter((enemy) => enemy.alive);
+    expect(aliveEnemies).toHaveLength(2);
+    expect(aliveEnemies.every((enemy) => enemy.enemyClass === 'large')).toBe(true);
+    expect(next.nextEnemyId).toBe(state.nextEnemyId + 2);
+  });
+
+  it('enemy bullet can hit player when crossing player depth', () => {
+    const initial = createInitialState();
+    const state: GameState = {
+      ...initial,
+      phase: 'playing',
+      enemies: initial.enemies.map((enemy) => ({
+        ...enemy,
+        alive: false
+      })),
+      bullets: [
+        {
+          theta: initial.playerTheta,
+          depth: -0.01,
+          depthVelocity: ENEMY_BULLET_DEPTH_SPEED,
+          ttl: 1,
+          owner: 'enemy'
+        }
+      ]
+    };
+
+    const next = stepGame(
+      state,
+      {
+        moveXSigned: 0,
+        fireHeld: false,
+        jumpPressed: false,
+        pausePressed: false,
+        startPressed: false
+      },
+      FIXED_TIMESTEP
+    );
+
+    expect(next.lives).toBe(initial.lives - 1);
   });
 });

@@ -82,6 +82,11 @@ export interface InputContext {
   readonly keys: InputKeys;
 }
 
+export interface PointerRange {
+  readonly minX: number;
+  readonly maxX: number;
+}
+
 function requireKeyboard(scene: Phaser.Scene): Phaser.Input.Keyboard.KeyboardPlugin {
   if (scene.input.keyboard === undefined || scene.input.keyboard === null) {
     throw new Error('Phaser keyboard plugin is required for Pixel Invaders input.');
@@ -163,9 +168,15 @@ export function createInputContext(scene: Phaser.Scene, profileId: string): Inpu
   };
 }
 
-export function readFrameInput(scene: Phaser.Scene, inputContext: InputContext): FrameInput {
+export function readFrameInput(
+  scene: Phaser.Scene,
+  inputContext: InputContext,
+  pointerRange?: PointerRange
+): FrameInput {
   const pointer = scene.input.activePointer;
   const gamepad = firstConnectedGamepad();
+  const pointerMinX = pointerRange?.minX ?? 0;
+  const pointerMaxX = pointerRange?.maxX ?? scene.scale.width;
 
   const sourceFrame = createInputSourceFrame({
     digital: {
@@ -179,7 +190,7 @@ export function readFrameInput(scene: Phaser.Scene, inputContext: InputContext):
     axis: {
       [SOURCE_KEYBOARD_MOVE_X]: readKeyboardAxis(inputContext.keys),
       [SOURCE_GAMEPAD_MOVE_X]: readGamepadAxis(gamepad),
-      [SOURCE_POINTER_X_BYTE]: toByteRange(pointer.x, 0, scene.scale.width)
+      [SOURCE_POINTER_X_BYTE]: toByteRange(pointer.x, pointerMinX, pointerMaxX)
     }
   });
 

@@ -1,29 +1,42 @@
 import Phaser from 'phaser';
 
+import { RetroSfx } from '../audio/retro-sfx';
 import {
   FIXED_TIMESTEP,
+  PLAYER_SPRITE_SCALE,
+  ENEMY_SPRITE_SCALE_FAR,
+  ENEMY_SPRITE_SCALE_NEAR,
+  ENEMY_LARGE_SCALE_MULTIPLIER,
   TAU,
   TUNNEL_INNER_RADIUS,
   TUNNEL_OUTER_RADIUS
 } from '../tunnel/game/constants';
+import { enemyHitArc, enemyHitDepthWindow, playerHitArc, playerHitDepthWindow } from '../tunnel/game/hitbox';
 import { createInputContext, readFrameInput } from '../tunnel/game/input';
 import { stepGame } from '../tunnel/game/logic';
 import { createInitialState } from '../tunnel/game/state';
+import explosionSrc1Image from '../assets/explosion_src_1.png';
+import explosionSrc2Image from '../assets/explosion_src_2.png';
 import enemyFighterImage from '../assets/sprite_enemy_1.png';
+import enemyLargeImage from '../assets/sprite_enemy_3.png';
 import fighterShipImage from '../assets/sprite_player_1.png';
 import type { InputContext } from '../tunnel/game/input';
-import type { GameState, TunnelPhase } from '../tunnel/game/types';
+import type { Enemy, GameState, TunnelPhase } from '../tunnel/game/types';
 
 export const TUNNEL_INVADERS_SCENE_KEY = 'tunnel-invaders';
 const PLAYER_SPRITE_KEY = 'tunnel-player-ship';
 const ENEMY_SPRITE_KEY = 'tunnel-enemy-ship';
+const ENEMY_LARGE_SPRITE_KEY = 'tunnel-enemy-ship-large';
+const EXPLOSION_TEXTURE_KEY_1 = 'tunnel-explosion-1';
+const EXPLOSION_TEXTURE_KEY_2 = 'tunnel-explosion-2';
+const EXPLOSION_ANIM_KEY_1 = 'tunnel-explosion-anim-1';
+const EXPLOSION_ANIM_KEY_2 = 'tunnel-explosion-anim-2';
 
 const WORM_DRIFT_CAP_X = 18;
 const WORM_DRIFT_CAP_Y = 16;
 const OUTER_DRIFT_INFLUENCE = 0.2;
 const TWIST_BASE_AMP = 0.08;
 const TWIST_WAVE_AMP = 0.04;
-const ENEMY_WAVE_AMP = 0.08;
 const TUNNEL_RING_COUNT = 64;
 const TUNNEL_STARS_PER_RING = 20;
 const TUNNEL_FLOW_SPEED = 0.24;
@@ -55,11 +68,34 @@ const STAR_LAYER_JITTER_SCALE: readonly [number, number, number] = [0.88, 1, 1.1
 const DEBUG_RING_AHEAD_COUNT = 28;
 const DEBUG_RING_BEHIND_COUNT = 7;
 const DEBUG_RING_BEYOND_COUNT = 4;
-const PLAYER_SPRITE_SCALE = 2.1;
+const CRT_SCANLINE_STEP = 3;
+const CRT_SCANLINE_ALPHA = 0.08;
+const CRT_VIGNETTE_BANDS = 8;
+const CRT_VIGNETTE_BAND_THICKNESS_RATIO = 0.008;
+const CRT_VIGNETTE_ALPHA_MAX = 0.16;
+const HIT_FLASH_DECAY_PER_SECOND = 2.8;
+const HIT_FLASH_ENEMY = 0.09;
+const HIT_FLASH_PLAYER = 0.2;
+const HIT_SHAKE_ENEMY_DURATION_MS = 85;
+const HIT_SHAKE_ENEMY_INTENSITY = 0.0018;
+const HIT_SHAKE_PLAYER_DURATION_MS = 190;
+const HIT_SHAKE_PLAYER_INTENSITY = 0.0048;
+const EXPLOSION_FRAME_WIDTH = 24;
+const EXPLOSION_FRAME_HEIGHT = 21;
+const EXPLOSION_FRAME_COUNT = 10;
+const EXPLOSION_ANIMATION_RATE = 28;
+const EXPLOSION_SCALE_NEAR = 1.5;
+const EXPLOSION_SCALE_FAR = 0.95;
 const PLAYER_SPRITE_SCALE_JUMP = 2.46;
-const ENEMY_SPRITE_SCALE_NEAR = 0.75;
-const ENEMY_SPRITE_SCALE_FAR = 0.35;
 const INNER_RADIUS_RATIO = TUNNEL_INNER_RADIUS / TUNNEL_OUTER_RADIUS;
+const ENEMY_BULLET_CORE_SIZE_NEAR = 8.4;
+const ENEMY_BULLET_CORE_SIZE_FAR = 4.4;
+const ENEMY_BULLET_GLOW_SIZE_BONUS = 8;
+const ENEMY_BULLET_TRAIL_DEPTH = 0.12;
+const CENTER_ANOMALY_CORE_RATIO = 0.56;
+const CENTER_ANOMALY_RING_RATIO = 1.28;
+const CENTER_ANOMALY_RING_THICKNESS_RATIO = 0.16;
+const CENTER_ANOMALY_SWIRL_SEGMENTS = 40;
 
 interface RenderFrame {
   readonly timeSeconds: number;
@@ -119,6 +155,7 @@ interface DebugKeys {
   readonly depthDown: ReadonlyArray<Phaser.Input.Keyboard.Key>;
   readonly depthUp: ReadonlyArray<Phaser.Input.Keyboard.Key>;
   readonly toggleRings: ReadonlyArray<Phaser.Input.Keyboard.Key>;
+  readonly toggleHitboxes: ReadonlyArray<Phaser.Input.Keyboard.Key>;
   readonly toggleOverlay: ReadonlyArray<Phaser.Input.Keyboard.Key>;
 }
 
@@ -267,11 +304,6 @@ function depthTwist(depth: number, timeSeconds: number, twistScale: number): num
   );
 }
 
-function enemyWaveOffset(enemyId: number, depth: number, timeSeconds: number): number {
-  const clampedDepth = clamp01(depth);
-  return ENEMY_WAVE_AMP * clampedDepth * Math.sin(timeSeconds * 2.6 + enemyId * 0.67 + clampedDepth * TAU);
-}
-
 function wrapUnit(value: number): number {
   const remainder = value % 1;
   return remainder < 0 ? remainder + 1 : remainder;
@@ -323,6 +355,27 @@ function projectPolar(
   tuning: RenderTuning,
   radiusOffset = 0
 ): ProjectedPoint {
+  return projectPolarInternal(theta, depth, frame, tuning, radiusOffset, true);
+}
+
+function projectPolarSmooth(
+  theta: number,
+  depth: number,
+  frame: RenderFrame,
+  tuning: RenderTuning,
+  radiusOffset = 0
+): ProjectedPoint {
+  return projectPolarInternal(theta, depth, frame, tuning, radiusOffset, false);
+}
+
+function projectPolarInternal(
+  theta: number,
+  depth: number,
+  frame: RenderFrame,
+  tuning: RenderTuning,
+  radiusOffset: number,
+  snap: boolean
+): ProjectedPoint {
   const projectedDepth = mapDepthForPerspective(depth < 0 ? 0 : depth, tuning.depthScale);
   const pixelSize = pixelSizeForDepth(projectedDepth, tuning.pixelOffset);
   const center = centerForDepth(projectedDepth, frame);
@@ -334,9 +387,12 @@ function projectPolar(
   const radiusY = radius.y + radiusOffset + behindRadiusOffset;
   const renderTheta = theta + depthTwist(projectedDepth, frame.timeSeconds, tuning.twistScale);
 
+  const x = center.x + Math.cos(renderTheta) * radiusX;
+  const y = center.y + Math.sin(renderTheta) * radiusY;
+
   return {
-    x: snapToGrid(center.x + Math.cos(renderTheta) * radiusX, pixelSize),
-    y: snapToGrid(center.y + Math.sin(renderTheta) * radiusY, pixelSize),
+    x: snap ? snapToGrid(x, pixelSize) : x,
+    y: snap ? snapToGrid(y, pixelSize) : y,
     pixelSize,
     centerX: center.x,
     centerY: center.y
@@ -386,8 +442,14 @@ function justDownAny(keys: ReadonlyArray<Phaser.Input.Keyboard.Key>): boolean {
   return false;
 }
 
+function isLargeEnemy(enemyClass: Enemy['enemyClass']): boolean {
+  return enemyClass === 'large';
+}
+
 export class TunnelInvadersScene extends Phaser.Scene {
   private graphics!: Phaser.GameObjects.Graphics;
+  private crtOverlay!: Phaser.GameObjects.Graphics;
+  private hitFlashOverlay!: Phaser.GameObjects.Rectangle;
   private playerSprite!: Phaser.GameObjects.Image;
   private enemySprites = new Map<number, Phaser.GameObjects.Image>();
   private tunnelStars: ReadonlyArray<TunnelStar> = [];
@@ -396,11 +458,16 @@ export class TunnelInvadersScene extends Phaser.Scene {
   private debugKeys: DebugKeys | null = null;
   private debugOverlayVisible = DEBUG_TUNING_ENABLED;
   private debugRingsVisible = false;
+  private debugHitboxesVisible = false;
+  private readonly sfx = new RetroSfx();
   private renderTuning: RenderTuning = DEFAULT_RENDER_TUNING;
   private hintText!: Phaser.GameObjects.Text;
   private inputContext!: InputContext;
   private state: GameState = createInitialState();
   private accumulator = 0;
+  private hitFlashAlpha = 0;
+  private crtOverlayWidth = -1;
+  private crtOverlayHeight = -1;
   private launchData: TunnelInvadersSceneData | null = null;
 
   constructor() {
@@ -410,6 +477,17 @@ export class TunnelInvadersScene extends Phaser.Scene {
   preload(): void {
     this.load.image(PLAYER_SPRITE_KEY, fighterShipImage);
     this.load.image(ENEMY_SPRITE_KEY, enemyFighterImage);
+    this.load.image(ENEMY_LARGE_SPRITE_KEY, enemyLargeImage);
+    this.load.spritesheet(EXPLOSION_TEXTURE_KEY_1, explosionSrc1Image, {
+      frameWidth: EXPLOSION_FRAME_WIDTH,
+      frameHeight: EXPLOSION_FRAME_HEIGHT,
+      endFrame: EXPLOSION_FRAME_COUNT - 1
+    });
+    this.load.spritesheet(EXPLOSION_TEXTURE_KEY_2, explosionSrc2Image, {
+      frameWidth: EXPLOSION_FRAME_WIDTH,
+      frameHeight: EXPLOSION_FRAME_HEIGHT,
+      endFrame: EXPLOSION_FRAME_COUNT - 1
+    });
   }
 
   init(rawData: unknown): void {
@@ -422,17 +500,25 @@ export class TunnelInvadersScene extends Phaser.Scene {
     }
 
     this.graphics = this.add.graphics();
+    this.crtOverlay = this.add.graphics();
+    this.crtOverlay.setDepth(10_000);
+    this.hitFlashOverlay = this.add
+      .rectangle(0, 0, this.scale.width, this.scale.height, 0xffffff, 0)
+      .setOrigin(0, 0)
+      .setDepth(10_001);
     this.playerSprite = this.add.image(this.scale.width / 2, this.scale.height / 2, PLAYER_SPRITE_KEY);
     this.playerSprite.setOrigin(0.5, 0.5);
     this.playerSprite.setScale(PLAYER_SPRITE_SCALE);
     this.tunnelStars = createTunnelStars();
 
     for (const enemy of this.state.enemies) {
-      const sprite = this.add.image(this.scale.width / 2, this.scale.height / 2, ENEMY_SPRITE_KEY);
+      const spriteKey = isLargeEnemy(enemy.enemyClass) ? ENEMY_LARGE_SPRITE_KEY : ENEMY_SPRITE_KEY;
+      const sprite = this.add.image(this.scale.width / 2, this.scale.height / 2, spriteKey);
       sprite.setOrigin(0.5, 0.5);
       sprite.setScale(ENEMY_SPRITE_SCALE_FAR);
       this.enemySprites.set(enemy.id, sprite);
     }
+    this.setupExplosionAnimations();
 
     this.hudText = this.add.text(20, 18, '', {
       fontFamily: 'Trebuchet MS',
@@ -467,13 +553,11 @@ export class TunnelInvadersScene extends Phaser.Scene {
         ],
         flowDown: [
           keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.MINUS),
-          keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.PAGE_DOWN),
           keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.NUMPAD_SUBTRACT),
           keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S)
         ],
         flowUp: [
           keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.PLUS),
-          keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.PAGE_UP),
           keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.NUMPAD_ADD),
           keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W)
         ],
@@ -494,6 +578,7 @@ export class TunnelInvadersScene extends Phaser.Scene {
           keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.PAGE_UP)
         ],
         toggleRings: [keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R)],
+        toggleHitboxes: [keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.H)],
         toggleOverlay: [keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F1)]
       };
 
@@ -506,39 +591,203 @@ export class TunnelInvadersScene extends Phaser.Scene {
     }
 
     this.inputContext = createInputContext(this, this.launchData.controllerProfileId);
-    this.cameras.main.setBackgroundColor('#070d1e');
+    this.cameras.main.setBackgroundColor('#000000');
+    this.refreshCrtOverlay();
   }
 
   update(_: number, delta: number): void {
     this.applyDebugHotkeys();
     this.accumulator += delta / 1000;
+    let enemyHit = false;
+    let playerHit = false;
+    let playerShot = false;
+    let enemyShot = false;
+    let won = false;
+    let lost = false;
+    const destroyedEnemies: Enemy[] = [];
+    let playerExplosionTheta: number | null = null;
 
     while (this.accumulator >= FIXED_TIMESTEP) {
       const input = readFrameInput(this.inputContext);
-      this.state = stepGame(this.state, input, FIXED_TIMESTEP);
+      if (
+        input.startPressed ||
+        input.pausePressed ||
+        input.jumpPressed ||
+        input.fireHeld ||
+        input.moveXSigned !== 0
+      ) {
+        this.sfx.unlock();
+      }
+
+      const prevState = this.state;
+      const nextState = stepGame(this.state, input, FIXED_TIMESTEP);
+      const prevPlayerBullets = prevState.bullets.filter((bullet) => bullet.owner === 'player').length;
+      const nextPlayerBullets = nextState.bullets.filter((bullet) => bullet.owner === 'player').length;
+      const prevEnemyBullets = prevState.bullets.filter((bullet) => bullet.owner === 'enemy').length;
+      const nextEnemyBullets = nextState.bullets.filter((bullet) => bullet.owner === 'enemy').length;
+      enemyHit = enemyHit || nextState.score > prevState.score;
+      playerHit = playerHit || nextState.lives < prevState.lives;
+      playerShot = playerShot || nextPlayerBullets > prevPlayerBullets;
+      enemyShot = enemyShot || nextEnemyBullets > prevEnemyBullets;
+      won = won || (prevState.phase === 'playing' && nextState.phase === 'won');
+      lost = lost || (prevState.phase === 'playing' && nextState.phase === 'lost');
+      if (nextState.lives < prevState.lives) {
+        playerExplosionTheta = prevState.playerTheta;
+      }
+
+      for (const prevEnemy of prevState.enemies) {
+        const nextEnemy = nextState.enemies.find((enemy) => enemy.id === prevEnemy.id);
+        if (prevEnemy.alive && nextEnemy !== undefined && !nextEnemy.alive) {
+          destroyedEnemies.push(prevEnemy);
+        }
+      }
+
+      this.state = nextState;
       this.accumulator -= FIXED_TIMESTEP;
     }
 
+    if (playerShot) {
+      this.sfx.playPlayerShot();
+    }
+    if (enemyShot) {
+      this.sfx.playEnemyShot();
+    }
+    if (enemyHit) {
+      this.sfx.playExplosion();
+    }
+    if (playerHit) {
+      this.sfx.playPlayerHit();
+    }
+    if (won) {
+      this.sfx.playWin();
+    }
+    if (lost) {
+      this.sfx.playLose();
+    }
+
+    if (playerExplosionTheta !== null) {
+      this.spawnExplosion(playerExplosionTheta, 0);
+    }
+    for (const enemy of destroyedEnemies) {
+      this.spawnExplosion(enemy.theta, enemy.depth);
+    }
+
+    if (playerHit) {
+      this.triggerHitFeedback(HIT_FLASH_PLAYER, HIT_SHAKE_PLAYER_DURATION_MS, HIT_SHAKE_PLAYER_INTENSITY);
+    } else if (enemyHit) {
+      this.triggerHitFeedback(HIT_FLASH_ENEMY, HIT_SHAKE_ENEMY_DURATION_MS, HIT_SHAKE_ENEMY_INTENSITY);
+    }
+
+    this.hitFlashAlpha = Math.max(0, this.hitFlashAlpha - (delta / 1000) * HIT_FLASH_DECAY_PER_SECOND);
     this.renderState();
   }
 
   private renderState(): void {
+    this.refreshCrtOverlay();
     const graphics = this.graphics;
     graphics.clear();
 
     const frame = computeRenderFrame(this.time.now / 1000, this.scale.width, this.scale.height);
     this.hintText.setPosition(this.scale.width / 2, this.scale.height / 2);
-    if (this.debugText !== null) {
-      this.debugText.setY(this.scale.height - 88);
-    }
 
+    this.syncEnemySprites();
     this.drawTunnelStars(graphics, frame);
+    this.drawCenterAnomaly(graphics, frame);
     this.drawDebugRings(graphics, frame);
     this.drawBullets(graphics, frame);
     this.drawEnemies(frame);
+    this.drawHitboxes(graphics, frame);
     this.drawPlayer(graphics, frame);
     this.drawHud();
     this.hintText.setText(phaseMessage(this.state.phase));
+    this.hitFlashOverlay.setDisplaySize(this.scale.width, this.scale.height);
+    this.hitFlashOverlay.setFillStyle(0xffffff, this.hitFlashAlpha);
+  }
+
+  private triggerHitFeedback(flashAlpha: number, shakeDurationMs: number, shakeIntensity: number): void {
+    this.hitFlashAlpha = Math.max(this.hitFlashAlpha, flashAlpha);
+    this.cameras.main.shake(shakeDurationMs, shakeIntensity, true);
+  }
+
+  private setupExplosionAnimations(): void {
+    if (!this.anims.exists(EXPLOSION_ANIM_KEY_1)) {
+      this.anims.create({
+        key: EXPLOSION_ANIM_KEY_1,
+        frames: this.anims.generateFrameNumbers(EXPLOSION_TEXTURE_KEY_1, {
+          start: 0,
+          end: EXPLOSION_FRAME_COUNT - 1
+        }),
+        frameRate: EXPLOSION_ANIMATION_RATE,
+        repeat: 0
+      });
+    }
+
+    if (!this.anims.exists(EXPLOSION_ANIM_KEY_2)) {
+      this.anims.create({
+        key: EXPLOSION_ANIM_KEY_2,
+        frames: this.anims.generateFrameNumbers(EXPLOSION_TEXTURE_KEY_2, {
+          start: 0,
+          end: EXPLOSION_FRAME_COUNT - 1
+        }),
+        frameRate: EXPLOSION_ANIMATION_RATE,
+        repeat: 0
+      });
+    }
+  }
+
+  private spawnExplosion(theta: number, depth: number): void {
+    const frame = computeRenderFrame(this.time.now / 1000, this.scale.width, this.scale.height);
+    const projected = projectPolarSmooth(theta, depth, frame, this.renderTuning);
+    const useFirstSet = Phaser.Math.Between(0, 1) === 0;
+    const textureKey = useFirstSet ? EXPLOSION_TEXTURE_KEY_1 : EXPLOSION_TEXTURE_KEY_2;
+    const animKey = useFirstSet ? EXPLOSION_ANIM_KEY_1 : EXPLOSION_ANIM_KEY_2;
+    const sprite = this.add
+      .sprite(projected.x, projected.y, textureKey, 0)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setDepth(6_500);
+
+    sprite.setScale(lerp(EXPLOSION_SCALE_NEAR, EXPLOSION_SCALE_FAR, clamp01(depth)));
+    sprite.play(animKey);
+    sprite.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => {
+      sprite.destroy();
+    });
+  }
+
+  private refreshCrtOverlay(): void {
+    const width = Math.max(1, Math.floor(this.scale.width));
+    const height = Math.max(1, Math.floor(this.scale.height));
+    if (width === this.crtOverlayWidth && height === this.crtOverlayHeight) {
+      return;
+    }
+
+    this.crtOverlayWidth = width;
+    this.crtOverlayHeight = height;
+    this.crtOverlay.clear();
+
+    this.crtOverlay.fillStyle(0x000000, CRT_SCANLINE_ALPHA);
+    for (let y = 0; y < height; y += CRT_SCANLINE_STEP) {
+      this.crtOverlay.fillRect(0, y, width, 1);
+    }
+
+    const bandThickness = Math.max(
+      1,
+      Math.floor(Math.min(width, height) * CRT_VIGNETTE_BAND_THICKNESS_RATIO)
+    );
+    for (let band = 0; band < CRT_VIGNETTE_BANDS; band += 1) {
+      const inset = band * bandThickness;
+      const innerWidth = width - inset * 2;
+      const innerHeight = height - inset * 2;
+      if (innerWidth <= 0 || innerHeight <= 0) {
+        break;
+      }
+
+      const alpha = lerp(0.02, CRT_VIGNETTE_ALPHA_MAX, (band + 1) / CRT_VIGNETTE_BANDS);
+      this.crtOverlay.fillStyle(0x000000, alpha);
+      this.crtOverlay.fillRect(inset, inset, innerWidth, bandThickness);
+      this.crtOverlay.fillRect(inset, inset + innerHeight - bandThickness, innerWidth, bandThickness);
+      this.crtOverlay.fillRect(inset, inset, bandThickness, innerHeight);
+      this.crtOverlay.fillRect(inset + innerWidth - bandThickness, inset, bandThickness, innerHeight);
+    }
   }
 
   private drawTunnelStars(graphics: Phaser.GameObjects.Graphics, frame: RenderFrame): void {
@@ -579,6 +828,121 @@ export class TunnelInvadersScene extends Phaser.Scene {
         trailSize
       );
     }
+  }
+
+  private drawCenterAnomaly(graphics: Phaser.GameObjects.Graphics, frame: RenderFrame): void {
+    const center = centerForDepth(1, frame);
+    const innerBaseRadius = Math.min(frame.innerRadiusX, frame.innerRadiusY);
+    const coreRadius = Math.max(16, innerBaseRadius * CENTER_ANOMALY_CORE_RATIO);
+    const ringRadius = coreRadius * CENTER_ANOMALY_RING_RATIO;
+    const ringThickness = Math.max(2, coreRadius * CENTER_ANOMALY_RING_THICKNESS_RATIO);
+
+    graphics.fillStyle(0x000000, 0.98);
+    graphics.fillCircle(center.x, center.y, coreRadius);
+
+    for (let swirlPass = 0; swirlPass < 2; swirlPass += 1) {
+      const alpha = swirlPass === 0 ? 0.42 : 0.26;
+      const color = swirlPass === 0 ? 0x53aaff : 0x9fd3ff;
+      const phase = this.time.now * 0.0011 * (swirlPass === 0 ? 1 : -0.72);
+      graphics.lineStyle(swirlPass === 0 ? 2 : 1, color, alpha);
+      graphics.beginPath();
+
+      for (let step = 0; step <= CENTER_ANOMALY_SWIRL_SEGMENTS; step += 1) {
+        const unit = step / CENTER_ANOMALY_SWIRL_SEGMENTS;
+        const theta = unit * TAU;
+        const wobble = Math.sin(theta * 3.1 + phase) * ringThickness;
+        const radius = ringRadius + wobble;
+        const x = center.x + Math.cos(theta + phase) * radius;
+        const y = center.y + Math.sin(theta + phase) * radius;
+        if (step === 0) {
+          graphics.moveTo(x, y);
+        } else {
+          graphics.lineTo(x, y);
+        }
+      }
+
+      graphics.strokePath();
+    }
+
+    graphics.fillStyle(0x000000, 0.9);
+    graphics.fillCircle(center.x, center.y, coreRadius * 0.7);
+  }
+
+  private drawHitboxes(graphics: Phaser.GameObjects.Graphics, frame: RenderFrame): void {
+    if (!this.debugHitboxesVisible) {
+      return;
+    }
+
+    this.drawHitArcBand(
+      graphics,
+      frame,
+      this.state.playerTheta,
+      playerHitArc(),
+      0,
+      playerHitDepthWindow(),
+      0xff6f7a,
+      0.42
+    );
+
+    for (const enemy of this.state.enemies) {
+      if (!enemy.alive) {
+        continue;
+      }
+
+      this.drawHitArcBand(
+        graphics,
+        frame,
+        enemy.theta,
+        enemyHitArc(enemy.enemyClass, enemy.depth),
+        enemy.depth,
+        enemyHitDepthWindow(enemy.enemyClass, enemy.depth),
+        0x7dffb4,
+        0.42
+      );
+    }
+  }
+
+  private drawHitArcBand(
+    graphics: Phaser.GameObjects.Graphics,
+    frame: RenderFrame,
+    centerTheta: number,
+    halfArc: number,
+    centerDepth: number,
+    halfDepth: number,
+    color: number,
+    alpha: number
+  ): void {
+    const segments = 18;
+    const fromTheta = centerTheta - halfArc;
+    const toTheta = centerTheta + halfArc;
+    const nearDepth = centerDepth - halfDepth;
+    const farDepth = centerDepth + halfDepth;
+
+    graphics.fillStyle(color, alpha * 0.12);
+    graphics.lineStyle(1, color, alpha);
+    graphics.beginPath();
+
+    for (let index = 0; index <= segments; index += 1) {
+      const unit = index / segments;
+      const theta = fromTheta + (toTheta - fromTheta) * unit;
+      const point = projectPolarSmooth(theta, nearDepth, frame, this.renderTuning);
+      if (index === 0) {
+        graphics.moveTo(point.x, point.y);
+      } else {
+        graphics.lineTo(point.x, point.y);
+      }
+    }
+
+    for (let index = segments; index >= 0; index -= 1) {
+      const unit = index / segments;
+      const theta = fromTheta + (toTheta - fromTheta) * unit;
+      const point = projectPolarSmooth(theta, farDepth, frame, this.renderTuning);
+      graphics.lineTo(point.x, point.y);
+    }
+
+    graphics.closePath();
+    graphics.fillPath();
+    graphics.strokePath();
   }
 
   private drawDebugRings(graphics: Phaser.GameObjects.Graphics, frame: RenderFrame): void {
@@ -629,7 +993,13 @@ export class TunnelInvadersScene extends Phaser.Scene {
 
     this.playerSprite.setVisible(true);
     const playerRadiusOffset = this.state.playerJumpTimer > 0 ? 18 : 7;
-    const position = projectPolar(this.state.playerTheta, 0, frame, this.renderTuning, playerRadiusOffset);
+    const position = projectPolarSmooth(
+      this.state.playerTheta,
+      0,
+      frame,
+      this.renderTuning,
+      playerRadiusOffset
+    );
     const center = centerForDepth(1, frame);
     const facingCenterAngle = Phaser.Math.Angle.Between(position.x, position.y, center.x, center.y);
 
@@ -645,9 +1015,13 @@ export class TunnelInvadersScene extends Phaser.Scene {
 
   private drawEnemies(frame: RenderFrame): void {
     for (const enemy of this.state.enemies) {
-      const sprite = this.enemySprites.get(enemy.id);
+      let sprite = this.enemySprites.get(enemy.id);
       if (sprite === undefined) {
-        throw new Error(`Missing enemy sprite for id ${enemy.id}.`);
+        const spriteKey = isLargeEnemy(enemy.enemyClass) ? ENEMY_LARGE_SPRITE_KEY : ENEMY_SPRITE_KEY;
+        sprite = this.add.image(this.scale.width / 2, this.scale.height / 2, spriteKey);
+        sprite.setOrigin(0.5, 0.5);
+        sprite.setScale(ENEMY_SPRITE_SCALE_FAR);
+        this.enemySprites.set(enemy.id, sprite);
       }
 
       if (!enemy.alive) {
@@ -655,8 +1029,7 @@ export class TunnelInvadersScene extends Phaser.Scene {
         continue;
       }
 
-      const renderTheta = enemy.theta + enemyWaveOffset(enemy.id, enemy.depth, frame.timeSeconds);
-      const position = projectPolar(renderTheta, enemy.depth, frame, this.renderTuning);
+      const position = projectPolarSmooth(enemy.theta, enemy.depth, frame, this.renderTuning);
       const outwardAngle = Phaser.Math.Angle.Between(
         position.centerX,
         position.centerY,
@@ -666,35 +1039,137 @@ export class TunnelInvadersScene extends Phaser.Scene {
 
       sprite.setVisible(true);
       sprite.setPosition(position.x, position.y);
-      sprite.setRotation(outwardAngle + Math.PI / 2);
-      sprite.setScale(lerp(ENEMY_SPRITE_SCALE_NEAR, ENEMY_SPRITE_SCALE_FAR, clamp01(enemy.depth)));
+      sprite.setRotation(outwardAngle + Math.PI / 2 + Math.PI);
+      const depthCurve = Math.pow(clamp01(enemy.depth), 0.55);
+      const baseScale = lerp(ENEMY_SPRITE_SCALE_NEAR, ENEMY_SPRITE_SCALE_FAR, depthCurve);
+      const scaleMultiplier = isLargeEnemy(enemy.enemyClass) ? ENEMY_LARGE_SCALE_MULTIPLIER : 1;
+      sprite.setScale(baseScale * scaleMultiplier);
+
+      const healthRatio = enemy.maxHp === 0 ? 1 : enemy.hp / enemy.maxHp;
+      const damageRatio = 1 - clamp01(healthRatio);
+      if (damageRatio <= 0) {
+        sprite.clearTint();
+      } else {
+        const tintColor = Phaser.Display.Color.GetColor(
+          255,
+          Math.round(lerp(255, 124, damageRatio)),
+          Math.round(lerp(255, 92, damageRatio))
+        );
+        sprite.setTint(tintColor);
+      }
+    }
+  }
+
+  private syncEnemySprites(): void {
+    const activeIds = new Set(this.state.enemies.map((enemy) => enemy.id));
+    for (const [id, sprite] of this.enemySprites.entries()) {
+      if (activeIds.has(id)) {
+        continue;
+      }
+
+      sprite.destroy();
+      this.enemySprites.delete(id);
     }
   }
 
   private drawBullets(graphics: Phaser.GameObjects.Graphics, frame: RenderFrame): void {
     for (const bullet of this.state.bullets) {
-      const depth = clamp01(bullet.depth);
+      const depth = bullet.owner === 'enemy' ? bullet.depth : clamp01(bullet.depth);
+      const visualDepth = clamp01(depth);
       const head = projectPolar(bullet.theta, depth, frame, this.renderTuning);
-      const headSize = quantizeSize(lerp(5, 2, depth), head.pixelSize);
+      if (bullet.owner === 'enemy') {
+        const enemySize = quantizeSize(
+          lerp(ENEMY_BULLET_CORE_SIZE_NEAR, ENEMY_BULLET_CORE_SIZE_FAR, visualDepth),
+          head.pixelSize
+        );
+        const glowDepth = depth - 0.04;
+        const glow = projectPolar(bullet.theta, glowDepth, frame, this.renderTuning);
+        const glowSize = quantizeSize(enemySize + ENEMY_BULLET_GLOW_SIZE_BONUS, glow.pixelSize);
+        const trailDepth = depth - ENEMY_BULLET_TRAIL_DEPTH;
+        const trail = projectPolar(bullet.theta, trailDepth, frame, this.renderTuning);
+        const trailSize = quantizeSize(enemySize * 0.86, trail.pixelSize);
+
+        graphics.fillStyle(0xff4656, 0.45);
+        graphics.fillRect(
+          snapToGrid(glow.x - glowSize / 2, glow.pixelSize),
+          snapToGrid(glow.y - glowSize / 2, glow.pixelSize),
+          glowSize,
+          glowSize
+        );
+
+        graphics.fillStyle(0xff7b42, 0.55);
+        graphics.fillRect(
+          snapToGrid(trail.x - trailSize / 2, trail.pixelSize),
+          snapToGrid(trail.y - trailSize / 2, trail.pixelSize),
+          trailSize,
+          trailSize
+        );
+
+        graphics.fillStyle(0xffc8cf, 0.95);
+        graphics.fillRect(
+          snapToGrid(head.x - enemySize / 2, head.pixelSize),
+          snapToGrid(head.y - enemySize / 2, head.pixelSize),
+          enemySize,
+          enemySize
+        );
+        continue;
+      }
+
+      const noseSize = quantizeSize(lerp(4.2, 2.2, visualDepth), head.pixelSize);
       const trailDepth = clamp01(depth - 0.06);
       const trail = projectPolar(bullet.theta, trailDepth, frame, this.renderTuning);
-      const trailSize = quantizeSize(headSize + 1, trail.pixelSize);
+      const bodySize = quantizeSize(Math.max(noseSize * 0.7, head.pixelSize), head.pixelSize);
+      const finSize = quantizeSize(Math.max(noseSize * 0.55, head.pixelSize), head.pixelSize);
 
-      graphics.fillStyle(0xffb866, 0.35);
-      graphics.fillRect(
-        snapToGrid(trail.x - trailSize / 2, trail.pixelSize),
-        snapToGrid(trail.y - trailSize / 2, trail.pixelSize),
-        trailSize,
-        trailSize
-      );
+      const deltaX = head.x - trail.x;
+      const deltaY = head.y - trail.y;
+      const deltaLength = Math.hypot(deltaX, deltaY);
+      const dirX = deltaLength === 0 ? Math.cos(bullet.theta) : deltaX / deltaLength;
+      const dirY = deltaLength === 0 ? Math.sin(bullet.theta) : deltaY / deltaLength;
+      const sideX = -dirY;
+      const sideY = dirX;
+      const step = Math.max(head.pixelSize, noseSize * 0.8);
 
-      graphics.fillStyle(0xffef96, 1);
-      graphics.fillRect(
-        snapToGrid(head.x - headSize / 2, head.pixelSize),
-        snapToGrid(head.y - headSize / 2, head.pixelSize),
-        headSize,
-        headSize
+      const drawPixelBlock = (cx: number, cy: number, size: number, color: number, alpha: number): void => {
+        graphics.fillStyle(color, alpha);
+        graphics.fillRect(
+          snapToGrid(cx - size / 2, head.pixelSize),
+          snapToGrid(cy - size / 2, head.pixelSize),
+          size,
+          size
+        );
+      };
+
+      drawPixelBlock(trail.x, trail.y, quantizeSize(bodySize * 0.8, head.pixelSize), 0xff8a42, 0.42);
+      drawPixelBlock(
+        head.x - dirX * step * 2.2,
+        head.y - dirY * step * 2.2,
+        bodySize,
+        0xffb866,
+        0.72
       );
+      drawPixelBlock(
+        head.x - dirX * step * 1.25,
+        head.y - dirY * step * 1.25,
+        bodySize,
+        0xffd39a,
+        0.95
+      );
+      drawPixelBlock(
+        head.x - dirX * step * 1.4 + sideX * step * 0.9,
+        head.y - dirY * step * 1.4 + sideY * step * 0.9,
+        finSize,
+        0xffa95f,
+        0.88
+      );
+      drawPixelBlock(
+        head.x - dirX * step * 1.4 - sideX * step * 0.9,
+        head.y - dirY * step * 1.4 - sideY * step * 0.9,
+        finSize,
+        0xffa95f,
+        0.88
+      );
+      drawPixelBlock(head.x, head.y, noseSize, 0xfff6b2, 1);
     }
   }
 
@@ -712,6 +1187,10 @@ export class TunnelInvadersScene extends Phaser.Scene {
 
     if (justDownAny(this.debugKeys.toggleRings)) {
       this.debugRingsVisible = !this.debugRingsVisible;
+    }
+
+    if (justDownAny(this.debugKeys.toggleHitboxes)) {
+      this.debugHitboxesVisible = !this.debugHitboxesVisible;
     }
 
     if (justDownAny(this.debugKeys.depthDown)) {
@@ -787,8 +1266,9 @@ export class TunnelInvadersScene extends Phaser.Scene {
     const near = Math.max(mid, 4 + this.renderTuning.pixelOffset);
 
     this.debugText.setText(
-      `DEBUG TUNING [F1]\nPIXELS [ ] / 9 0: ${far}/${mid}/${near}\nFLOW - + / PgDn PgUp / S W: ${this.renderTuning.flowSpeed.toFixed(2)}\nTWIST , . / Z X: ${this.renderTuning.twistScale.toFixed(2)}\nDEPTH D/F (PgDn/PgUp): ${this.renderTuning.depthScale.toFixed(1)}\nRINGS R: ${this.debugRingsVisible ? 'ON' : 'OFF'}`
+      `DEBUG TUNING [F1]\nPIXELS [ ] / 9 0: ${far}/${mid}/${near}\nFLOW - + / S W: ${this.renderTuning.flowSpeed.toFixed(2)}\nTWIST , . / Z X: ${this.renderTuning.twistScale.toFixed(2)}\nDEPTH D/F (PgDn/PgUp): ${this.renderTuning.depthScale.toFixed(1)}\nRINGS R: ${this.debugRingsVisible ? 'ON' : 'OFF'}\nHITBOX H: ${this.debugHitboxesVisible ? 'ON' : 'OFF'}`
     );
+    this.debugText.setPosition(20, Math.max(20, this.scale.height - this.debugText.height - 20));
   }
 
   private drawHud(): void {

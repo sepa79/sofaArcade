@@ -22,6 +22,7 @@ export const ENEMY_GAP_Y = 54;
 export const ENEMY_DESCEND_STEP = 20;
 export const ENEMY_SPEED_START = 74;
 export const ENEMY_SPEED_STEP = 10;
+export const ENEMY_DRIFT_DOWN_SPEED = 9;
 export const ENEMY_BULLET_SPEED = 290;
 export const ENEMY_FIRE_INTERVAL = 0.9;
 

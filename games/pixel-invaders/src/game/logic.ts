@@ -2,6 +2,7 @@ import {
   BULLET_HEIGHT,
   ENEMY_BULLET_SPEED,
   ENEMY_DESCEND_STEP,
+  ENEMY_DRIFT_DOWN_SPEED,
   ENEMY_FIRE_INTERVAL,
   ENEMY_HEIGHT,
   ENEMY_SPEED_STEP,
@@ -79,7 +80,8 @@ function moveEnemies(
     enemy.alive
       ? {
           ...enemy,
-          x: enemy.x + direction * speed * dt
+          x: enemy.x + direction * speed * dt,
+          y: enemy.y + ENEMY_DRIFT_DOWN_SPEED * dt
         }
       : enemy
   );
