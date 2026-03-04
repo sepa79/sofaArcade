@@ -6,3 +6,4 @@ export {
   type MotionSoundState
 } from './audio/retro-sfx';
 export { getGlobalDebugMode, setGlobalDebugMode, toggleGlobalDebugMode } from './runtime/global-debug-mode';
+export { clearCachedAlphaMasks, getCachedAlphaMaskFromSource } from './runtime/alpha-mask-cache';

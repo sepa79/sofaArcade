@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import {
   RetroSfx,
+  getCachedAlphaMaskFromSource,
   getGlobalDebugMode,
   toggleGlobalDebugMode,
   type AudioMixProfileId
@@ -42,7 +43,6 @@ import {
   WORLD_WIDTH
 } from '../game/constants';
 import {
-  createAlphaMaskFromRgba,
   createCollisionRuntime,
   createEmptyCollisionDebugFrame,
   mergeAlphaMasks,
@@ -838,28 +838,12 @@ export class PixelInvadersScene extends Phaser.Scene {
     if (sourceImage === null) {
       throw new Error(`Texture source image is missing for key "${textureKey}".`);
     }
-    if (!Number.isFinite(sourceImage.width) || !Number.isFinite(sourceImage.height)) {
-      throw new Error(`Texture source dimensions are invalid for key "${textureKey}".`);
-    }
-
-    const width = Math.floor(sourceImage.width);
-    const height = Math.floor(sourceImage.height);
-    if (width <= 0 || height <= 0) {
-      throw new Error(`Texture source dimensions must be positive for key "${textureKey}", got ${width}x${height}.`);
-    }
-
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const context = canvas.getContext('2d');
-    if (context === null) {
-      throw new Error(`Failed to create 2D canvas context for mask extraction of "${textureKey}".`);
-    }
-
-    context.clearRect(0, 0, width, height);
-    context.drawImage(sourceImage, 0, 0, width, height);
-    const imageData = context.getImageData(0, 0, width, height);
-    return createAlphaMaskFromRgba(width, height, imageData.data, 10);
+    const cached = getCachedAlphaMaskFromSource(sourceImage, 10);
+    return {
+      width: cached.width,
+      height: cached.height,
+      alpha: cached.alpha
+    };
   }
 
   private drawPlayer(): void {

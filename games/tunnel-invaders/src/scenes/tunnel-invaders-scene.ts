@@ -1695,7 +1695,7 @@ export class TunnelInvadersScene extends Phaser.Scene {
     const near = Math.max(mid, 4 + this.renderTuning.pixelOffset);
 
     this.debugText.setText(
-      `DEBUG MODE [F1]\nPIXELS [ ] / 9 0: ${far}/${mid}/${near}\nFLOW - + / S W: ${this.renderTuning.flowSpeed.toFixed(2)}\nTWIST , . / Z X: ${this.renderTuning.twistScale.toFixed(2)}\nDEPTH D/F (PgDn/PgUp): ${this.renderTuning.depthScale.toFixed(1)}\nMIX M: ${this.sfx.getMixProfile()}\nRINGS R: ${this.debugRingsVisible ? 'ON' : 'OFF'}\nHITBOX H: ${this.debugHitboxesVisible ? 'ON' : 'OFF'}`
+      `DEBUG MODE [F6]\nPIXELS [ ] / 9 0: ${far}/${mid}/${near}\nFLOW - + / S W: ${this.renderTuning.flowSpeed.toFixed(2)}\nTWIST , . / Z X: ${this.renderTuning.twistScale.toFixed(2)}\nDEPTH D/F (PgDn/PgUp): ${this.renderTuning.depthScale.toFixed(1)}\nMIX M: ${this.sfx.getMixProfile()}\nRINGS R: ${this.debugRingsVisible ? 'ON' : 'OFF'}\nHITBOX H: ${this.debugHitboxesVisible ? 'ON' : 'OFF'}`
     );
     this.debugText.setPosition(20, Math.max(20, this.scale.height - this.debugText.height - 20));
   }

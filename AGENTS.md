@@ -16,19 +16,22 @@
 - Keep side effects at module boundaries.
 
 ## SSOT Map
-- Runtime settings schema: `packages/core/src/config/settings.ts`
+- Relay runtime config schema: `apps/relay-server/src/config.ts`
+- Web portal runtime config schema: `apps/web-portal/src/config.ts`
 - Action catalog: `packages/core/src/input/actions.ts`
 - Input binding schema and profile format: `packages/core/src/input/profile.ts`
 - Game input profile data: `games/*/src/profiles/*.input-profile.json`
-- HTTP transport behavior (leaderboards/services): `packages/net/src/client.ts`
+- Relay protocol contract: `packages/core/src/phone/protocol.ts`
+- Relay transport behavior: `apps/relay-server/src/server.ts`
 
 ## Module Boundaries
-- `packages/core/src/config/*`: validation + typed config only
-- `packages/core/src/input/*`: devices, polling, action mapping, profiles
-- `packages/core/src/storage/*`: persistence and migrations only
-- `packages/core/src/time/*`: fixed timestep and frame timing only
-- `packages/game-sdk/src/*`: lifecycle, scenes, and game-facing abstractions
-- `games/*/src/*`: pure game logic + assets usage only
+- `packages/core/src/input/*`: actions, polling/runtime, mapping, profiles
+- `packages/core/src/phone/*`: relay protocol + phone provider logic
+- `packages/core/src/storage/*`: browser persistence only
+- `packages/game-sdk/src/audio/*`: shared audio engine only
+- `packages/game-sdk/src/runtime/*`: shared runtime toggles/caches only
+- `games/*/src/game/*`: pure game logic, constants, state, tests
+- `games/*/src/scenes/*`: scene wiring, render, audio usage
 - `apps/*/src/*`: composition roots and runtime wiring only
 
 ## Quality Bar
