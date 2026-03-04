@@ -10,18 +10,18 @@ import {
   TAU,
   TUNNEL_INNER_RADIUS,
   TUNNEL_OUTER_RADIUS
-} from '../tunnel/game/constants';
-import { enemyHitArc, enemyHitDepthWindow, playerHitArc, playerHitDepthWindow } from '../tunnel/game/hitbox';
-import { createInputContext, readFrameInput } from '../tunnel/game/input';
-import { stepGame } from '../tunnel/game/logic';
-import { createInitialState } from '../tunnel/game/state';
+} from '../game/constants';
+import { enemyHitArc, enemyHitDepthWindow, playerHitArc, playerHitDepthWindow } from '../game/hitbox';
+import { createInputContext, readFrameInput } from '../game/input';
+import { stepGame } from '../game/logic';
+import { createInitialState } from '../game/state';
 import explosionSrc1Image from '../assets/explosion_src_1.png';
 import explosionSrc2Image from '../assets/explosion_src_2.png';
 import enemyFighterImage from '../assets/sprite_enemy_1.png';
 import enemyLargeImage from '../assets/sprite_enemy_3.png';
 import fighterShipImage from '../assets/sprite_player_1.png';
-import type { InputContext } from '../tunnel/game/input';
-import type { Enemy, GameState, TunnelPhase } from '../tunnel/game/types';
+import type { InputContext } from '../game/input';
+import type { Enemy, GameState, TunnelPhase } from '../game/types';
 
 export const TUNNEL_INVADERS_SCENE_KEY = 'tunnel-invaders';
 const PLAYER_SPRITE_KEY = 'tunnel-player-ship';

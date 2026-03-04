@@ -1,14 +1,25 @@
+export type EnemyClass = 'standard' | 'large';
+export type EnemyWaveMode = 'spread' | 'spiral';
+
 export interface Enemy {
   readonly id: number;
   readonly theta: number;
   readonly depth: number;
   readonly alive: boolean;
+  readonly enemyClass: EnemyClass;
+  readonly maxHp: number;
+  readonly hp: number;
+  readonly shootCooldown: number;
 }
+
+export type BulletOwner = 'player' | 'enemy';
 
 export interface Bullet {
   readonly theta: number;
   readonly depth: number;
+  readonly depthVelocity: number;
   readonly ttl: number;
+  readonly owner: BulletOwner;
 }
 
 export type TunnelPhase = 'ready' | 'playing' | 'paused' | 'won' | 'lost';
@@ -32,6 +43,8 @@ export interface GameState {
   readonly playerJumpCooldownTimer: number;
   readonly enemyDirection: -1 | 1;
   readonly enemyDirectionTimer: number;
+  readonly enemyWaveMode: EnemyWaveMode;
+  readonly nextEnemyId: number;
   readonly enemies: ReadonlyArray<Enemy>;
   readonly bullets: ReadonlyArray<Bullet>;
 }

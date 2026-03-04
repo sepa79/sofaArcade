@@ -84,6 +84,9 @@ importers:
       phaser:
         specifier: ^3.90.0
         version: 3.90.0
+      tunnel-invaders:
+        specifier: workspace:*
+        version: link:../tunnel-invaders
     devDependencies:
       '@eslint/js':
         specifier: ^9.39.3

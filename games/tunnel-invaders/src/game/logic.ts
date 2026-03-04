@@ -1,13 +1,24 @@
 import {
   BULLET_DEPTH_SPEED,
-  BULLET_HIT_ARC,
-  BULLET_HIT_DEPTH,
   BULLET_LIFETIME,
   ENEMY_ANGULAR_SPEED,
+  ENEMY_BEHIND_DESPAWN_DEPTH,
+  ENEMY_BULLET_DEPTH_SPEED,
+  ENEMY_BULLET_LIFETIME,
   ENEMY_DEPTH_SPEED,
   ENEMY_DIRECTION_SWITCH_INTERVAL,
+  ENEMY_LARGE_HP,
+  ENEMY_REINFORCEMENT_BASE_DEPTH,
+  ENEMY_REINFORCEMENT_COUNT,
+  ENEMY_REINFORCEMENT_DEPTH_STEP,
+  ENEMY_REINFORCEMENT_THETA_OFFSET,
+  ENEMY_SHOOT_INTERVAL,
+  ENEMY_SPIRAL_DEPTH_ACCEL,
+  ENEMY_SPIRAL_SPAWN_THETA,
+  ENEMY_SPIRAL_SWAY_AMPLITUDE,
+  ENEMY_SPIRAL_SWAY_FREQUENCY,
+  ENEMY_STANDARD_HP,
   PLAYER_ANGULAR_SPEED,
-  PLAYER_HIT_ARC,
   PLAYER_INVULNERABILITY,
   PLAYER_JUMP_COOLDOWN,
   PLAYER_JUMP_DURATION,
@@ -15,8 +26,9 @@ import {
   SCORE_PER_ENEMY,
   TAU
 } from './constants';
+import { enemyHitArc, enemyHitDepthWindow, playerHitArc, playerHitDepthWindow } from './hitbox';
 import { createInitialState } from './state';
-import type { Bullet, Enemy, FrameInput, GameState } from './types';
+import type { Bullet, Enemy, EnemyWaveMode, FrameInput, GameState } from './types';
 
 function normalizeAngle(theta: number): number {
   const wrapped = theta % TAU;
@@ -36,18 +48,40 @@ function tickTimer(value: number, dt: number): number {
   return Math.max(0, value - dt);
 }
 
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+function enemyMaxHpForClass(enemyClass: Enemy['enemyClass']): number {
+  return enemyClass === 'large' ? ENEMY_LARGE_HP : ENEMY_STANDARD_HP;
+}
+
 function moveEnemies(
   enemies: ReadonlyArray<Enemy>,
   direction: -1 | 1,
+  enemyWaveMode: EnemyWaveMode,
   dt: number
 ): ReadonlyArray<Enemy> {
   return enemies.map((enemy) =>
     enemy.alive
-      ? {
-          ...enemy,
-          theta: normalizeAngle(enemy.theta + direction * ENEMY_ANGULAR_SPEED * dt),
-          depth: enemy.depth - ENEMY_DEPTH_SPEED * dt
-        }
+      ? (() => {
+          const depth01 = clamp01(enemy.depth);
+          const spiralProgress = 1 - depth01;
+          const baseAngularVelocity = direction * ENEMY_ANGULAR_SPEED;
+          const spiralVelocity =
+            enemyWaveMode === 'spiral'
+              ? baseAngularVelocity * (1 + spiralProgress * ENEMY_SPIRAL_DEPTH_ACCEL) +
+                Math.sin(spiralProgress * TAU * ENEMY_SPIRAL_SWAY_FREQUENCY + enemy.id * 0.67) *
+                  ENEMY_SPIRAL_SWAY_AMPLITUDE
+              : baseAngularVelocity;
+
+          return {
+            ...enemy,
+            theta: normalizeAngle(enemy.theta + spiralVelocity * dt),
+            depth: enemy.depth - ENEMY_DEPTH_SPEED * dt,
+            shootCooldown: tickTimer(enemy.shootCooldown, dt)
+          };
+        })()
       : enemy
   );
 }
@@ -56,10 +90,20 @@ function moveBullets(bullets: ReadonlyArray<Bullet>, dt: number): ReadonlyArray<
   return bullets
     .map((bullet) => ({
       ...bullet,
-      depth: bullet.depth + BULLET_DEPTH_SPEED * dt,
+      depth: bullet.depth + bullet.depthVelocity * dt,
       ttl: bullet.ttl - dt
     }))
-    .filter((bullet) => bullet.ttl > 0 && bullet.depth <= 1.05);
+    .filter((bullet) => {
+      if (bullet.ttl <= 0) {
+        return false;
+      }
+
+      if (bullet.owner === 'player') {
+        return bullet.depth <= 1.05;
+      }
+
+      return bullet.depth >= ENEMY_BEHIND_DESPAWN_DEPTH && bullet.depth <= 1.05;
+    });
 }
 
 function resolveBulletHits(
@@ -71,89 +115,233 @@ function resolveBulletHits(
   readonly bullets: ReadonlyArray<Bullet>;
   readonly score: number;
 } {
-  const aliveById = new Set<number>();
-  for (const enemy of enemies) {
-    if (enemy.alive) {
-      aliveById.add(enemy.id);
-    }
-  }
-
+  const nextEnemies = enemies.map((enemy) => ({ ...enemy }));
   let nextScore = score;
   const survivingBullets: Bullet[] = [];
 
   for (const bullet of bullets) {
-    const hitEnemy = enemies.find(
-      (enemy) =>
-        enemy.alive &&
-        aliveById.has(enemy.id) &&
-        angleDistance(enemy.theta, bullet.theta) <= BULLET_HIT_ARC &&
-        Math.abs(enemy.depth - bullet.depth) <= BULLET_HIT_DEPTH
-    );
-
-    if (hitEnemy === undefined) {
+    if (bullet.owner !== 'player') {
       survivingBullets.push(bullet);
       continue;
     }
 
-    aliveById.delete(hitEnemy.id);
+    const hitEnemyIndex = nextEnemies.findIndex((enemy) => {
+      if (!enemy.alive) {
+        return false;
+      }
+
+      const hitArc = enemyHitArc(enemy.enemyClass, enemy.depth);
+      const hitDepthWindow = enemyHitDepthWindow(enemy.enemyClass, enemy.depth);
+      return (
+        angleDistance(enemy.theta, bullet.theta) <= hitArc &&
+        Math.abs(enemy.depth - bullet.depth) <= hitDepthWindow
+      );
+    });
+
+    if (hitEnemyIndex === -1) {
+      survivingBullets.push(bullet);
+      continue;
+    }
+
+    const hitEnemy = nextEnemies[hitEnemyIndex];
+    if (hitEnemy.hp > 1) {
+      nextEnemies[hitEnemyIndex] = {
+        ...hitEnemy,
+        hp: hitEnemy.hp - 1
+      };
+      continue;
+    }
+
+    nextEnemies[hitEnemyIndex] = {
+      ...hitEnemy,
+      alive: false,
+      hp: 0
+    };
     nextScore += SCORE_PER_ENEMY;
   }
 
   return {
-    enemies: enemies.map((enemy) => ({
-      ...enemy,
-      alive: aliveById.has(enemy.id)
-    })),
+    enemies: nextEnemies,
     bullets: survivingBullets,
     score: nextScore
   };
 }
 
-function resolveTunnelEdge(
-  enemies: ReadonlyArray<Enemy>,
+function createEnemyReinforcements(
+  sourceEnemy: Enemy,
+  nextEnemyId: number,
+  enemyWaveMode: EnemyWaveMode
+): {
+  readonly enemies: ReadonlyArray<Enemy>;
+  readonly nextEnemyId: number;
+} {
+  const enemies: Enemy[] = [];
+
+  for (let index = 0; index < ENEMY_REINFORCEMENT_COUNT; index += 1) {
+    const id = nextEnemyId + index;
+    const centeredIndex = index - (ENEMY_REINFORCEMENT_COUNT - 1) / 2;
+    const theta =
+      enemyWaveMode === 'spiral'
+        ? ENEMY_SPIRAL_SPAWN_THETA
+        : normalizeAngle(sourceEnemy.theta + centeredIndex * ENEMY_REINFORCEMENT_THETA_OFFSET);
+    const maxHp = enemyMaxHpForClass(sourceEnemy.enemyClass);
+    enemies.push({
+      id,
+      theta,
+      depth: ENEMY_REINFORCEMENT_BASE_DEPTH + index * ENEMY_REINFORCEMENT_DEPTH_STEP,
+      alive: true,
+      enemyClass: sourceEnemy.enemyClass,
+      maxHp,
+      hp: maxHp,
+      shootCooldown: enemyWaveMode === 'spiral' ? (index + 1) * 0.34 : (index + 1) * 0.24
+    });
+  }
+
+  return {
+    enemies,
+    nextEnemyId: nextEnemyId + ENEMY_REINFORCEMENT_COUNT
+  };
+}
+
+function resolveEnemyBulletHits(
+  bullets: ReadonlyArray<Bullet>,
   lives: number,
   playerTheta: number,
   playerInvulnerabilityTimer: number,
   playerJumpTimer: number
 ): {
-  readonly enemies: ReadonlyArray<Enemy>;
+  readonly bullets: ReadonlyArray<Bullet>;
   readonly lives: number;
   readonly playerInvulnerabilityTimer: number;
   readonly phase: 'playing' | 'lost';
 } {
   let nextLives = lives;
   let nextInvulnerability = playerInvulnerabilityTimer;
+  const playerArc = playerHitArc();
+  const playerDepthWindow = playerHitDepthWindow();
+  const survivingBullets: Bullet[] = [];
 
-  const nextEnemies = enemies.map((enemy) => {
-    if (!enemy.alive || enemy.depth > 0) {
-      return enemy;
+  for (const bullet of bullets) {
+    if (bullet.owner !== 'enemy') {
+      survivingBullets.push(bullet);
+      continue;
     }
 
-    const atPlayerSector = angleDistance(enemy.theta, playerTheta) <= PLAYER_HIT_ARC;
+    if (Math.abs(bullet.depth) > playerDepthWindow) {
+      survivingBullets.push(bullet);
+      continue;
+    }
+
+    const atPlayerSector = angleDistance(bullet.theta, playerTheta) <= playerArc;
     const canDamagePlayer =
       atPlayerSector && nextInvulnerability === 0 && playerJumpTimer === 0 && nextLives > 0;
 
     if (canDamagePlayer) {
       nextLives -= 1;
       nextInvulnerability = nextLives > 0 ? PLAYER_INVULNERABILITY : 0;
-      return {
-        ...enemy,
-        alive: false,
-        depth: 0
-      };
     }
-
-    return {
-      ...enemy,
-      depth: 1
-    };
-  });
+  }
 
   return {
-    enemies: nextEnemies,
+    bullets: survivingBullets,
     lives: nextLives,
     playerInvulnerabilityTimer: nextInvulnerability,
     phase: nextLives > 0 ? 'playing' : 'lost'
+  };
+}
+
+function resolveEnemyLifecycle(
+  enemies: ReadonlyArray<Enemy>,
+  bullets: ReadonlyArray<Bullet>,
+  nextEnemyId: number,
+  enemyWaveMode: EnemyWaveMode,
+  lives: number,
+  playerTheta: number,
+  playerInvulnerabilityTimer: number,
+  playerJumpTimer: number
+): {
+  readonly enemies: ReadonlyArray<Enemy>;
+  readonly bullets: ReadonlyArray<Bullet>;
+  readonly nextEnemyId: number;
+  readonly lives: number;
+  readonly playerInvulnerabilityTimer: number;
+  readonly phase: 'playing' | 'lost';
+} {
+  let nextLives = lives;
+  let nextInvulnerability = playerInvulnerabilityTimer;
+  const playerArc = playerHitArc();
+  let nextNextEnemyId = nextEnemyId;
+  let nextBullets = bullets.slice();
+  const nextEnemies: Enemy[] = [];
+
+  for (const enemy of enemies) {
+    if (!enemy.alive) {
+      nextEnemies.push(enemy);
+      continue;
+    }
+
+    let current = enemy;
+
+    if (current.depth <= 0) {
+      const atPlayerSector = angleDistance(current.theta, playerTheta) <= playerArc;
+      const canDamagePlayer =
+        atPlayerSector && nextInvulnerability === 0 && playerJumpTimer === 0 && nextLives > 0;
+
+      if (canDamagePlayer) {
+        nextLives -= 1;
+        nextInvulnerability = nextLives > 0 ? PLAYER_INVULNERABILITY : 0;
+        nextEnemies.push({
+          ...current,
+          alive: false,
+          depth: 0
+        });
+        continue;
+      }
+    }
+
+    const canShootFromFront = current.enemyClass === 'large' && current.depth >= 0;
+    if (current.depth < 0 || canShootFromFront) {
+      if (current.shootCooldown === 0) {
+        const depthVelocity = current.depth >= 0 ? -ENEMY_BULLET_DEPTH_SPEED : ENEMY_BULLET_DEPTH_SPEED;
+        nextBullets = nextBullets.concat({
+          theta: current.theta,
+          depth: current.depth,
+          depthVelocity,
+          ttl: ENEMY_BULLET_LIFETIME,
+          owner: 'enemy'
+        });
+        current = {
+          ...current,
+          shootCooldown: ENEMY_SHOOT_INTERVAL
+        };
+      }
+
+      if (current.depth <= ENEMY_BEHIND_DESPAWN_DEPTH) {
+        const reinforcement = createEnemyReinforcements(current, nextNextEnemyId, enemyWaveMode);
+        nextNextEnemyId = reinforcement.nextEnemyId;
+        nextEnemies.push(...reinforcement.enemies);
+        continue;
+      }
+    }
+
+    nextEnemies.push(current);
+  }
+
+  const enemyBulletHits = resolveEnemyBulletHits(
+    nextBullets,
+    nextLives,
+    playerTheta,
+    nextInvulnerability,
+    playerJumpTimer
+  );
+
+  return {
+    enemies: nextEnemies,
+    bullets: enemyBulletHits.bullets,
+    nextEnemyId: nextNextEnemyId,
+    lives: enemyBulletHits.lives,
+    playerInvulnerabilityTimer: enemyBulletHits.playerInvulnerabilityTimer,
+    phase: enemyBulletHits.phase
   };
 }
 
@@ -191,7 +379,7 @@ export function stepGame(state: GameState, input: FrameInput, dt: number): GameS
   if (state.phase === 'won' || state.phase === 'lost') {
     return input.startPressed
       ? {
-          ...createInitialState(),
+          ...createInitialState(state.enemyWaveMode),
           phase: 'playing'
         }
       : state;
@@ -217,7 +405,9 @@ export function stepGame(state: GameState, input: FrameInput, dt: number): GameS
     bullets = bullets.concat({
       theta: nextPlayerTheta,
       depth: 0.02,
-      ttl: BULLET_LIFETIME
+      depthVelocity: BULLET_DEPTH_SPEED,
+      ttl: BULLET_LIFETIME,
+      owner: 'player'
     });
     shootCooldown = PLAYER_SHOOT_COOLDOWN;
   }
@@ -234,33 +424,38 @@ export function stepGame(state: GameState, input: FrameInput, dt: number): GameS
     enemyDirectionTimer = ENEMY_DIRECTION_SWITCH_INTERVAL;
   }
 
-  const movedEnemies = moveEnemies(state.enemies, enemyDirection, dt);
+  const movedEnemies = moveEnemies(state.enemies, enemyDirection, state.enemyWaveMode, dt);
   const afterBulletHits = resolveBulletHits(movedEnemies, bullets, state.score);
-  const edgeResult = resolveTunnelEdge(
+  const lifecycleResult = resolveEnemyLifecycle(
     afterBulletHits.enemies,
+    afterBulletHits.bullets,
+    state.nextEnemyId,
+    state.enemyWaveMode,
     state.lives,
     nextPlayerTheta,
     invulnerabilityTimer,
     jumpTimer
   );
 
-  let phase: GameState['phase'] = edgeResult.phase;
-  if (phase === 'playing' && allEnemiesDefeated(edgeResult.enemies)) {
+  let phase: GameState['phase'] = lifecycleResult.phase;
+  if (phase === 'playing' && allEnemiesDefeated(lifecycleResult.enemies)) {
     phase = 'won';
   }
 
   return {
     phase,
     score: afterBulletHits.score,
-    lives: edgeResult.lives,
+    lives: lifecycleResult.lives,
     playerTheta: nextPlayerTheta,
-    playerInvulnerabilityTimer: edgeResult.playerInvulnerabilityTimer,
+    playerInvulnerabilityTimer: lifecycleResult.playerInvulnerabilityTimer,
     playerShootCooldownTimer: shootCooldown,
     playerJumpTimer: jumpTimer,
     playerJumpCooldownTimer: jumpCooldown,
     enemyDirection,
     enemyDirectionTimer,
-    enemies: edgeResult.enemies,
-    bullets: afterBulletHits.bullets
+    enemyWaveMode: state.enemyWaveMode,
+    nextEnemyId: lifecycleResult.nextEnemyId,
+    enemies: lifecycleResult.enemies,
+    bullets: lifecycleResult.bullets
   };
 }

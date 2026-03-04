@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { TUNNEL_INVADERS_SCENE_KEY, type TunnelInvadersSceneData } from 'tunnel-invaders';
 
 import { RetroSfx } from '../audio/retro-sfx';
 import {
@@ -10,7 +11,6 @@ import {
 } from '../launcher/model';
 import { GAME_OPTIONS, type ControllerOption, type GameOption } from '../launcher/options';
 import { PIXEL_INVADERS_SCENE_KEY, type PixelInvadersSceneData } from './pixel-invaders-scene';
-import { TUNNEL_INVADERS_SCENE_KEY, type TunnelInvadersSceneData } from './tunnel-invaders-scene';
 
 export const LAUNCHER_SCENE_KEY = 'launcher';
 

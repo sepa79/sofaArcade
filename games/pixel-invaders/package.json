@@ -12,7 +12,8 @@
   },
   "dependencies": {
     "@light80/core": "workspace:*",
-    "phaser": "^3.90.0"
+    "phaser": "^3.90.0",
+    "tunnel-invaders": "workspace:*"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.3",
