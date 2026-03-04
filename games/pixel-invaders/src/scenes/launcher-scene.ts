@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { TUNNEL_INVADERS_SCENE_KEY, type TunnelInvadersSceneData } from 'tunnel-invaders';
 
 import { RetroSfx } from '../audio/retro-sfx';
+import arcadeLogoImage from '../assets/logo_cropped.png';
 import {
   MENU_ROW_CONTROLLER,
   MENU_ROW_GAME,
@@ -14,8 +15,16 @@ import { PIXEL_INVADERS_SCENE_KEY, type PixelInvadersSceneData } from './pixel-i
 
 export const LAUNCHER_SCENE_KEY = 'launcher';
 
+const LAUNCHER_LOGO_KEY = 'launcher-logo';
 const STAR_COUNT = 220;
 const STAR_COLORS: readonly number[] = [0x63d6ff, 0xff58d6, 0xffcf5e, 0xa78bff];
+const HORIZON_LINE_COUNT = 10;
+const HORIZON_FLOW_SPEED_PX_PER_SEC = 60;
+const PERSPECTIVE_TOP_SPACING = 33;
+const PERSPECTIVE_BOTTOM_SPREAD = 5;
+const PERSPECTIVE_FADE_SEGMENTS = 12;
+const PERSPECTIVE_PARALLAX_MAX_X = 18;
+const PERSPECTIVE_PARALLAX_LERP = 0.12;
 
 interface MenuKeys {
   readonly up: Phaser.Input.Keyboard.Key;
@@ -124,9 +133,9 @@ export class LauncherScene extends Phaser.Scene {
   private panelGraphics!: Phaser.GameObjects.Graphics;
   private stars: MenuStar[] = [];
   private pointerWasDown = false;
+  private perspectiveParallaxX = 0;
 
-  private titleGlowText!: Phaser.GameObjects.Text;
-  private titleText!: Phaser.GameObjects.Text;
+  private logoImage!: Phaser.GameObjects.Image;
   private subtitleText!: Phaser.GameObjects.Text;
   private gameTitleTexts: Phaser.GameObjects.Text[] = [];
   private gameDescriptionTexts: Phaser.GameObjects.Text[] = [];
@@ -146,6 +155,10 @@ export class LauncherScene extends Phaser.Scene {
     super(LAUNCHER_SCENE_KEY);
   }
 
+  preload(): void {
+    this.load.image(LAUNCHER_LOGO_KEY, arcadeLogoImage);
+  }
+
   create(): void {
     const keyboard = requireKeyboard(this);
     this.keys = {
@@ -162,22 +175,7 @@ export class LauncherScene extends Phaser.Scene {
 
     this.backdropGraphics = this.add.graphics().setDepth(-200);
     this.panelGraphics = this.add.graphics().setDepth(-100);
-
-    this.titleGlowText = this.add.text(0, 0, 'LIGHT80 ARCADE', {
-      fontFamily: 'Impact, Trebuchet MS, sans-serif',
-      fontSize: '90px',
-      color: '#ff5dd8',
-      align: 'center'
-    });
-    this.titleGlowText.setOrigin(0.5, 0.5).setAlpha(0.45).setDepth(20);
-
-    this.titleText = this.add.text(0, 0, 'LIGHT80 ARCADE', {
-      fontFamily: 'Impact, Trebuchet MS, sans-serif',
-      fontSize: '86px',
-      color: '#ffdf4f',
-      align: 'center'
-    });
-    this.titleText.setOrigin(0.5, 0.5).setDepth(30);
+    this.logoImage = this.add.image(0, 0, LAUNCHER_LOGO_KEY).setDepth(30);
 
     this.subtitleText = this.add.text(0, 0, 'Plug in. Play together.', {
       fontFamily: 'Trebuchet MS',
@@ -186,6 +184,7 @@ export class LauncherScene extends Phaser.Scene {
       align: 'center'
     });
     this.subtitleText.setOrigin(0.5, 0.5).setDepth(30);
+    this.subtitleText.setShadow(0, 3, '#000000', 0.55, true, true);
 
     for (let index = 0; index < GAME_OPTIONS.length; index += 1) {
       const title = this.add.text(0, 0, '', {
@@ -431,23 +430,63 @@ export class LauncherScene extends Phaser.Scene {
       graphics.fillRect(Math.round(star.x), Math.round(star.y), star.size, star.size);
     }
 
-    graphics.lineStyle(2, 0x5f2dff, 0.45);
-    for (let i = -12; i <= 12; i += 1) {
-      const xTop = width / 2 + i * 22;
-      const xBottom = width / 2 + i * 110;
-      graphics.beginPath();
-      graphics.moveTo(xTop, horizonY);
-      graphics.lineTo(xBottom, height);
-      graphics.strokePath();
+    const pointerNormalizedX = Math.max(-1, Math.min(1, (this.input.activePointer.x / width) * 2 - 1));
+    const targetParallaxX = pointerNormalizedX * PERSPECTIVE_PARALLAX_MAX_X;
+    this.perspectiveParallaxX = lerp(
+      this.perspectiveParallaxX,
+      targetParallaxX,
+      PERSPECTIVE_PARALLAX_LERP
+    );
+
+    const centerX = width / 2 + this.perspectiveParallaxX;
+    const perspectiveCount = Math.ceil((width * 0.5) / PERSPECTIVE_TOP_SPACING) + 2;
+    for (let i = -perspectiveCount; i <= perspectiveCount; i += 1) {
+      const xTop = centerX + i * PERSPECTIVE_TOP_SPACING;
+      const xBottom = centerX + i * PERSPECTIVE_TOP_SPACING * PERSPECTIVE_BOTTOM_SPREAD;
+      for (let segment = 0; segment < PERSPECTIVE_FADE_SEGMENTS; segment += 1) {
+        const t0 = segment / PERSPECTIVE_FADE_SEGMENTS;
+        const t1 = (segment + 1) / PERSPECTIVE_FADE_SEGMENTS;
+        const y0 = lerp(horizonY, height, t0);
+        const y1 = lerp(horizonY, height, t1);
+        const sx0 = lerp(xTop, xBottom, t0);
+        const sx1 = lerp(xTop, xBottom, t1);
+        const depthUnit = (t0 + t1) * 0.5;
+        graphics.lineStyle(2, 0x5f2dff, lerp(0.12, 0.65, depthUnit));
+        graphics.beginPath();
+        graphics.moveTo(sx0, y0);
+        graphics.lineTo(sx1, y1);
+        graphics.strokePath();
+      }
     }
 
-    for (let line = 0; line < 10; line += 1) {
-      const t = line / 9;
-      const y = lerp(horizonY, height + 2, t * t);
-      graphics.lineStyle(2, 0x5f2dff, lerp(0.65, 0.12, t));
+    const nearestY = height + 2;
+    const travelRange = nearestY - horizonY;
+    const spacing = travelRange / HORIZON_LINE_COUNT;
+    const flowOffset = ((timeMs * HORIZON_FLOW_SPEED_PX_PER_SEC) / 1000) % spacing;
+    const drawnRows = new Set<number>();
+    for (let line = -1; line <= HORIZON_LINE_COUNT; line += 1) {
+      let y = horizonY + line * spacing + flowOffset;
+      if (y < horizonY) {
+        y += travelRange;
+      }
+      if (y > nearestY) {
+        y -= travelRange;
+      }
+      if (y < horizonY || y > nearestY) {
+        continue;
+      }
+
+      const yRow = Math.round(y);
+      if (drawnRows.has(yRow)) {
+        continue;
+      }
+      drawnRows.add(yRow);
+
+      const depthUnit = (yRow - horizonY) / travelRange;
+      graphics.lineStyle(2, 0x5f2dff, lerp(0.12, 0.65, depthUnit));
       graphics.beginPath();
-      graphics.moveTo(0, y);
-      graphics.lineTo(width, y);
+      graphics.moveTo(0, yRow);
+      graphics.lineTo(width, yRow);
       graphics.strokePath();
     }
   }
@@ -562,9 +601,8 @@ export class LauncherScene extends Phaser.Scene {
     const controllerOption = requireControllerOption(this.state);
     const pulse = 0.7 + 0.3 * Math.sin(timeMs * 0.005);
 
-    this.titleGlowText.setAlpha(0.36 + pulse * 0.22);
-    this.titleText.setColor('#ffd85c');
     this.subtitleText.setText('Plug in. Play together.');
+    this.subtitleText.setFontSize(Math.max(30, Math.floor(this.scale.height * 0.035)));
 
     for (let index = 0; index < GAME_OPTIONS.length; index += 1) {
       const option = GAME_OPTIONS[index];
@@ -585,17 +623,26 @@ export class LauncherScene extends Phaser.Scene {
         throw new Error(`Missing launcher text object for game index ${index}.`);
       }
 
+      const titleSize = Math.max(42, Math.floor(row.height * 0.22));
+      const descriptionSize = Math.max(18, Math.floor(row.height * 0.12));
+      const buttonSize = Math.max(30, Math.floor(row.height * 0.2));
+      const previewSize = Math.max(24, Math.floor(row.height * 0.13));
+      title.setFontSize(titleSize);
+      description.setFontSize(descriptionSize);
+      button.setFontSize(buttonSize);
+      preview.setFontSize(previewSize);
+
       title.setText(`${selectedGame ? '>' : ' '} ${option.label}`);
-      title.setPosition(row.x + 24, row.y + 16);
+      title.setPosition(row.x + 24, row.y + Math.floor(row.height * 0.08));
       title.setColor(gameFocus ? '#fff6c8' : selectedGame ? '#ffe8a8' : '#a8bedf');
 
       description.setText(option.description);
-      description.setPosition(row.x + 24, row.y + 64);
+      description.setPosition(row.x + 24, row.y + Math.floor(row.height * 0.44));
       description.setWordWrapWidth(row.width * 0.58, true);
       description.setColor(selectedGame ? '#d6e7ff' : '#7e95bc');
 
       const buttonCenterX = row.x + Math.min(250, row.width * 0.33) / 2 + 26;
-      const buttonCenterY = row.bottom - 38;
+      const buttonCenterY = row.bottom - Math.max(28, Math.floor(row.height * 0.2));
       button.setPosition(buttonCenterX, buttonCenterY);
       if (selectedGame) {
         button.setText(startFocus ? 'PRESS START' : 'START');
@@ -615,11 +662,13 @@ export class LauncherScene extends Phaser.Scene {
     this.controllerHeaderText.setText(
       `${this.state.cursorIndex === MENU_ROW_CONTROLLER ? '>' : ' '} PLUG IN ANY CONTROLLER`
     );
+    this.controllerHeaderText.setFontSize(Math.max(38, Math.floor(this.controlsBounds.height * 0.2)));
     this.controllerHeaderText.setColor(
       this.state.cursorIndex === MENU_ROW_CONTROLLER ? '#d8f7ff' : '#9ce7ff'
     );
 
     this.controllerDescriptionText.setText(controllerOption.description);
+    this.controllerDescriptionText.setFontSize(Math.max(20, Math.floor(this.controlsBounds.height * 0.11)));
     this.controllerDescriptionText.setColor('#a7c8e9');
 
     this.ensureControllerChipCount(gameOption.controllerOptions.length);
@@ -707,7 +756,7 @@ export class LauncherScene extends Phaser.Scene {
   }
 
   private layoutControllerChips(gameOption: GameOption): void {
-    const chipsTop = this.controlsBounds.y + Math.floor(this.controlsBounds.height * 0.56);
+    const chipsTop = this.controlsChipsTop();
     const availableWidth = this.controlsBounds.width - 56;
     const chipCount = gameOption.controllerOptions.length;
     const slotWidth = availableWidth / chipCount;
@@ -749,7 +798,7 @@ export class LauncherScene extends Phaser.Scene {
       throw new Error(`Game "${gameOption.id}" must define at least one controller option.`);
     }
 
-    const chipsTop = this.controlsBounds.y + Math.floor(this.controlsBounds.height * 0.56);
+    const chipsTop = this.controlsChipsTop();
     const availableWidth = this.controlsBounds.width - 56;
     const slotWidth = availableWidth / chipCount;
     const chipHeight = 44;
@@ -776,15 +825,39 @@ export class LauncherScene extends Phaser.Scene {
     const width = this.scale.width;
     const height = this.scale.height;
     const centerX = width / 2;
+    const logoFrame = this.logoImage.frame;
+    const logoWidth = logoFrame.width;
+    const logoHeight = logoFrame.height;
+    if (logoWidth <= 0 || logoHeight <= 0) {
+      throw new Error('Launcher logo frame has invalid size.');
+    }
 
-    this.titleGlowText.setPosition(centerX, Math.floor(height * 0.09));
-    this.titleText.setPosition(centerX, Math.floor(height * 0.088));
-    this.subtitleText.setPosition(centerX, Math.floor(height * 0.145));
+    const baseLogoMaxWidth = Math.min(width * 0.64, 920);
+    const baseLogoMaxHeight = Math.min(height * 0.31, 420);
+    const baseLogoScale = Math.min(baseLogoMaxWidth / logoWidth, baseLogoMaxHeight / logoHeight);
+    const doubledLogoScale = baseLogoScale * 2;
+    const viewportSafeScale = Math.min((width * 0.92) / logoWidth, (height * 0.48) / logoHeight);
+    const logoScale = Math.min(doubledLogoScale, viewportSafeScale);
+    this.logoImage.setScale(logoScale);
+    const logoTop = Math.max(8, Math.floor(height * 0.015));
+    this.logoImage.setPosition(
+      centerX,
+      logoTop + Math.ceil(this.logoImage.displayHeight * 0.5)
+    );
+
+    const subtitleY = this.logoImage.y + this.logoImage.displayHeight * 0.42;
+    this.subtitleText.setPosition(centerX, subtitleY);
 
     const cabinetWidth = Math.floor(Math.min(width * 0.88, 1240));
-    const cabinetHeight = Math.floor(Math.min(height * 0.62, 860));
+    const topSectionBottom = this.subtitleText.y + this.subtitleText.height * 0.5;
+    const cabinetY = Math.floor(Math.max(height * 0.18, topSectionBottom + 10));
+    const desiredCabinetHeight = Math.floor(Math.min(height * 0.68, 900));
+    const maxCabinetHeight = Math.floor(height - cabinetY - 56);
+    if (maxCabinetHeight < 320) {
+      throw new Error(`Launcher layout overflow: height=${height}, cabinetY=${cabinetY}.`);
+    }
+    const cabinetHeight = Math.max(320, Math.min(desiredCabinetHeight, maxCabinetHeight));
     const cabinetX = Math.floor((width - cabinetWidth) / 2);
-    const cabinetY = Math.floor(height * 0.205);
     this.cabinetBounds.setTo(cabinetX, cabinetY, cabinetWidth, cabinetHeight);
 
     const sectionPadding = 18;
@@ -821,11 +894,21 @@ export class LauncherScene extends Phaser.Scene {
       );
     }
 
-    this.controllerHeaderText.setPosition(this.controlsBounds.centerX, this.controlsBounds.y + 42);
-    this.controllerDescriptionText.setPosition(this.controlsBounds.centerX, this.controlsBounds.y + 86);
+    this.controllerHeaderText.setPosition(
+      this.controlsBounds.centerX,
+      this.controlsBounds.y + Math.floor(this.controlsBounds.height * 0.24)
+    );
+    this.controllerDescriptionText.setPosition(
+      this.controlsBounds.centerX,
+      this.controlsBounds.y + Math.floor(this.controlsBounds.height * 0.44)
+    );
     this.controllerDescriptionText.setWordWrapWidth(this.controlsBounds.width - 60, true);
 
     this.hintText.setPosition(centerX, height - 28);
+  }
+
+  private controlsChipsTop(): number {
+    return this.controlsBounds.y + Math.floor(this.controlsBounds.height * 0.76);
   }
 
   private toggleFullscreen(): void {
