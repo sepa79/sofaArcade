@@ -11,7 +11,8 @@ import './style.css';
 const TUNNEL_BOOTSTRAP_SCENE_KEY = 'tunnel-bootstrap';
 const DEFAULT_LAUNCH_DATA: TunnelInvadersSceneData = {
   controllerProfileId: 'tunnel-invaders-keyboard-gamepad',
-  controllerLabel: 'Keyboard + Gamepad'
+  controllerLabel: 'Keyboard + Gamepad',
+  audioMixProfileId: 'cinema'
 };
 
 class TunnelBootstrapScene extends Phaser.Scene {

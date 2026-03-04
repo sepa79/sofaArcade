@@ -1,8 +1,10 @@
 import Phaser from 'phaser';
 import { TUNNEL_INVADERS_SCENE_KEY, type TunnelInvadersSceneData } from 'tunnel-invaders';
-import { RetroSfx } from '@light80/game-sdk';
+import { AUDIO_MIX_PROFILE_IDS, RetroSfx, type AudioMixProfileId } from '@light80/game-sdk';
 
 import arcadeLogoImage from '../assets/logo_cropped.png';
+import launcherJoystickImage from '../assets/launcher_joystick.png';
+import launcherSpeakerImage from '../assets/launcher_speaker.png';
 import {
   MENU_ROW_CONTROLLER,
   MENU_ROW_GAME,
@@ -15,7 +17,6 @@ import { PIXEL_INVADERS_SCENE_KEY, type PixelInvadersSceneData } from './pixel-i
 
 export const LAUNCHER_SCENE_KEY = 'launcher';
 
-const LAUNCHER_LOGO_KEY = 'launcher-logo';
 const STAR_COUNT = 220;
 const STAR_COLORS: readonly number[] = [0x63d6ff, 0xff58d6, 0xffcf5e, 0xa78bff];
 const HORIZON_LINE_COUNT = 10;
@@ -34,6 +35,8 @@ interface MenuKeys {
   readonly enter: Phaser.Input.Keyboard.Key;
   readonly space: Phaser.Input.Keyboard.Key;
   readonly fullscreen: Phaser.Input.Keyboard.Key;
+  readonly mixNext: Phaser.Input.Keyboard.Key;
+  readonly loopToggle: Phaser.Input.Keyboard.Key;
 }
 
 interface MenuStar {
@@ -45,10 +48,27 @@ interface MenuStar {
   readonly color: number;
 }
 
-interface PointerSelectionResult {
-  readonly state: LauncherState;
-  readonly selectionChanged: boolean;
-  readonly startRequested: boolean;
+type SettingsPanelMode = 'home' | 'controllers' | 'audio';
+
+interface LauncherDom {
+  readonly root: HTMLDivElement;
+  readonly subtitle: HTMLDivElement;
+  readonly gameCard: HTMLElement;
+  readonly arrowLeftButton: HTMLButtonElement;
+  readonly arrowRightButton: HTMLButtonElement;
+  readonly gameTitle: HTMLDivElement;
+  readonly gameDescription: HTMLDivElement;
+  readonly startButton: HTMLButtonElement;
+  readonly previewLabel: HTMLDivElement;
+  readonly settingsPanel: HTMLElement;
+  readonly joystickButton: HTMLButtonElement;
+  readonly speakerButton: HTMLButtonElement;
+  readonly settingsTitle: HTMLDivElement;
+  readonly settingsDescription: HTMLDivElement;
+  readonly controllerChips: HTMLDivElement;
+  readonly audioMixButton: HTMLButtonElement;
+  readonly audioLoopButton: HTMLButtonElement;
+  readonly hint: HTMLDivElement;
 }
 
 function requireKeyboard(scene: Phaser.Scene): Phaser.Input.Keyboard.KeyboardPlugin {
@@ -104,6 +124,15 @@ function requireControllerOption(state: LauncherState): ControllerOption {
   return controllerOption;
 }
 
+function requireAudioMixProfileId(index: number): AudioMixProfileId {
+  const mixProfileId = AUDIO_MIX_PROFILE_IDS[index];
+  if (mixProfileId === undefined) {
+    throw new Error(`Audio mix profile is missing for index ${index}.`);
+  }
+
+  return mixProfileId;
+}
+
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
 }
@@ -120,43 +149,36 @@ function previewLabel(game: GameOption): string {
   return 'RETRO PREVIEW';
 }
 
+function stateEquals(a: LauncherState, b: LauncherState): boolean {
+  return (
+    a.cursorIndex === b.cursorIndex &&
+    a.gameIndex === b.gameIndex &&
+    a.controllerIndex === b.controllerIndex &&
+    a.audioMixProfileIndex === b.audioMixProfileIndex &&
+    a.sfxLoopEnabled === b.sfxLoopEnabled &&
+    a.startRequested === b.startRequested
+  );
+}
+
 export class LauncherScene extends Phaser.Scene {
   private state: LauncherState = createInitialLauncherState();
+  private settingsPanelMode: SettingsPanelMode = 'home';
   private readonly sfx = new RetroSfx();
   private readonly onResize = (): void => {
-    this.layoutMenu();
-    this.redrawUi(this.time.now);
+    this.renderDom();
+    this.drawBackdrop(this.time.now);
   };
 
   private keys!: MenuKeys;
   private backdropGraphics!: Phaser.GameObjects.Graphics;
-  private panelGraphics!: Phaser.GameObjects.Graphics;
   private stars: MenuStar[] = [];
-  private pointerWasDown = false;
   private perspectiveParallaxX = 0;
-
-  private logoImage!: Phaser.GameObjects.Image;
-  private subtitleText!: Phaser.GameObjects.Text;
-  private gameTitleTexts: Phaser.GameObjects.Text[] = [];
-  private gameDescriptionTexts: Phaser.GameObjects.Text[] = [];
-  private gameButtonTexts: Phaser.GameObjects.Text[] = [];
-  private gamePreviewTexts: Phaser.GameObjects.Text[] = [];
-  private controllerHeaderText!: Phaser.GameObjects.Text;
-  private controllerDescriptionText!: Phaser.GameObjects.Text;
-  private controllerChipTexts: Phaser.GameObjects.Text[] = [];
-  private hintText!: Phaser.GameObjects.Text;
-
-  private cabinetBounds = new Phaser.Geom.Rectangle();
-  private gamesBounds = new Phaser.Geom.Rectangle();
-  private controlsBounds = new Phaser.Geom.Rectangle();
-  private gameRowBounds: Phaser.Geom.Rectangle[] = [];
+  private sfxLoopTimer = 0;
+  private sfxLoopStep = 0;
+  private dom: LauncherDom | null = null;
 
   constructor() {
     super(LAUNCHER_SCENE_KEY);
-  }
-
-  preload(): void {
-    this.load.image(LAUNCHER_LOGO_KEY, arcadeLogoImage);
   }
 
   create(): void {
@@ -168,93 +190,26 @@ export class LauncherScene extends Phaser.Scene {
       right: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.RIGHT),
       enter: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER),
       space: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE),
-      fullscreen: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F)
+      fullscreen: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F),
+      mixNext: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.M),
+      loopToggle: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.L)
     };
 
     this.cameras.main.setBackgroundColor('#040716');
-
     this.backdropGraphics = this.add.graphics().setDepth(-200);
-    this.panelGraphics = this.add.graphics().setDepth(-100);
-    this.logoImage = this.add.image(0, 0, LAUNCHER_LOGO_KEY).setDepth(30);
-
-    this.subtitleText = this.add.text(0, 0, 'Plug in. Play together.', {
-      fontFamily: 'Trebuchet MS',
-      fontSize: '42px',
-      color: '#b9ebff',
-      align: 'center'
-    });
-    this.subtitleText.setOrigin(0.5, 0.5).setDepth(30);
-    this.subtitleText.setShadow(0, 3, '#000000', 0.55, true, true);
-
-    for (let index = 0; index < GAME_OPTIONS.length; index += 1) {
-      const title = this.add.text(0, 0, '', {
-        fontFamily: 'Trebuchet MS',
-        fontSize: '42px',
-        color: '#d2e4ff'
-      });
-      title.setDepth(35);
-
-      const description = this.add.text(0, 0, '', {
-        fontFamily: 'Trebuchet MS',
-        fontSize: '28px',
-        color: '#88a9d8'
-      });
-      description.setDepth(35);
-
-      const button = this.add.text(0, 0, '', {
-        fontFamily: 'Trebuchet MS',
-        fontSize: '36px',
-        color: '#fff8da'
-      });
-      button.setOrigin(0.5, 0.5).setDepth(35);
-
-      const preview = this.add.text(0, 0, '', {
-        fontFamily: 'Trebuchet MS',
-        fontSize: '24px',
-        color: '#8be0ff',
-        align: 'center'
-      });
-      preview.setOrigin(0.5, 0.5).setDepth(35);
-
-      this.gameTitleTexts.push(title);
-      this.gameDescriptionTexts.push(description);
-      this.gameButtonTexts.push(button);
-      this.gamePreviewTexts.push(preview);
-      this.gameRowBounds.push(new Phaser.Geom.Rectangle());
-    }
-
-    this.controllerHeaderText = this.add.text(0, 0, 'PLUG IN ANY CONTROLLER', {
-      fontFamily: 'Trebuchet MS',
-      fontSize: '42px',
-      color: '#9ce7ff'
-    });
-    this.controllerHeaderText.setOrigin(0.5, 0.5).setDepth(35);
-
-    this.controllerDescriptionText = this.add.text(0, 0, '', {
-      fontFamily: 'Trebuchet MS',
-      fontSize: '24px',
-      color: '#9ab8da',
-      align: 'center'
-    });
-    this.controllerDescriptionText.setOrigin(0.5, 0.5).setDepth(35);
-
-    this.hintText = this.add.text(0, 0, '', {
-      fontFamily: 'Trebuchet MS',
-      fontSize: '24px',
-      color: '#8aa6e2'
-    });
-    this.hintText.setOrigin(0.5, 0.5).setDepth(35);
 
     this.state = normalizeControllerIndex(this.state);
+    this.sfx.setMixProfile(requireAudioMixProfileId(this.state.audioMixProfileIndex));
     this.stars = this.createStars();
+
+    this.mountDom();
+    this.renderDom();
 
     this.scale.on(Phaser.Scale.Events.RESIZE, this.onResize);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.scale.off(Phaser.Scale.Events.RESIZE, this.onResize);
+      this.unmountDom();
     });
-
-    this.layoutMenu();
-    this.redrawUi(this.time.now);
   }
 
   update(_: number, delta: number): void {
@@ -265,8 +220,8 @@ export class LauncherScene extends Phaser.Scene {
     const enterPressed = Phaser.Input.Keyboard.JustDown(this.keys.enter);
     const spacePressed = Phaser.Input.Keyboard.JustDown(this.keys.space);
     const fullscreenPressed = Phaser.Input.Keyboard.JustDown(this.keys.fullscreen);
-    const pointerDown = this.input.activePointer.isDown;
-    const pointerPressed = pointerDown && !this.pointerWasDown;
+    const mixNextPressed = Phaser.Input.Keyboard.JustDown(this.keys.mixNext);
+    const loopTogglePressed = Phaser.Input.Keyboard.JustDown(this.keys.loopToggle);
     const confirmPressed = enterPressed || spacePressed;
 
     if (
@@ -276,7 +231,8 @@ export class LauncherScene extends Phaser.Scene {
       rightPressed ||
       confirmPressed ||
       fullscreenPressed ||
-      pointerPressed
+      mixNextPressed ||
+      loopTogglePressed
     ) {
       this.sfx.unlock();
     }
@@ -286,40 +242,82 @@ export class LauncherScene extends Phaser.Scene {
     }
 
     const previousState = this.state;
+    const previousMode = this.settingsPanelMode;
     let nextState = previousState;
     let selectionChanged = false;
 
     if (upPressed !== downPressed) {
-      const delta = upPressed ? -1 : 1;
+      const cursorDelta = upPressed ? -1 : 1;
       nextState = {
         ...nextState,
-        cursorIndex: MENU_ROW_GAME,
-        gameIndex: normalizeIndex(nextState.gameIndex + delta, GAME_OPTIONS.length)
+        cursorIndex: normalizeIndex(nextState.cursorIndex + cursorDelta, 3)
       };
-      nextState = normalizeControllerIndex(nextState);
       selectionChanged = true;
     }
 
     if (leftPressed !== rightPressed) {
-      const delta = leftPressed ? -1 : 1;
-      const gameOption = requireGameOption(nextState.gameIndex);
+      const deltaIndex = leftPressed ? -1 : 1;
+      if (nextState.cursorIndex === MENU_ROW_GAME) {
+        nextState = normalizeControllerIndex({
+          ...nextState,
+          gameIndex: normalizeIndex(nextState.gameIndex + deltaIndex, GAME_OPTIONS.length)
+        });
+        selectionChanged = true;
+      } else if (nextState.cursorIndex === MENU_ROW_CONTROLLER) {
+        if (this.settingsPanelMode === 'controllers') {
+          const gameOption = requireGameOption(nextState.gameIndex);
+          nextState = {
+            ...nextState,
+            controllerIndex: normalizeIndex(nextState.controllerIndex + deltaIndex, gameOption.controllerOptions.length)
+          };
+          selectionChanged = true;
+        } else if (this.settingsPanelMode === 'home') {
+          this.settingsPanelMode = deltaIndex < 0 ? 'controllers' : 'audio';
+          selectionChanged = true;
+        } else {
+          nextState = {
+            ...nextState,
+            audioMixProfileIndex: normalizeIndex(nextState.audioMixProfileIndex + deltaIndex, AUDIO_MIX_PROFILE_IDS.length)
+          };
+          selectionChanged = true;
+        }
+      }
+    }
+
+    if (mixNextPressed) {
+      this.settingsPanelMode = 'audio';
       nextState = {
         ...nextState,
-        cursorIndex: MENU_ROW_CONTROLLER,
-        controllerIndex: normalizeIndex(
-          nextState.controllerIndex + delta,
-          gameOption.controllerOptions.length
-        )
+        audioMixProfileIndex: normalizeIndex(nextState.audioMixProfileIndex + 1, AUDIO_MIX_PROFILE_IDS.length)
+      };
+      selectionChanged = true;
+    }
+
+    if (loopTogglePressed) {
+      this.settingsPanelMode = 'audio';
+      nextState = {
+        ...nextState,
+        sfxLoopEnabled: !nextState.sfxLoopEnabled
       };
       selectionChanged = true;
     }
 
     if (confirmPressed) {
-      nextState = {
-        ...nextState,
-        cursorIndex: MENU_ROW_START,
-        startRequested: true
-      };
+      if (nextState.cursorIndex === MENU_ROW_START) {
+        nextState = {
+          ...nextState,
+          startRequested: true
+        };
+      } else if (nextState.cursorIndex === MENU_ROW_CONTROLLER && this.settingsPanelMode === 'home') {
+        this.settingsPanelMode = 'controllers';
+        selectionChanged = true;
+      } else {
+        nextState = {
+          ...nextState,
+          cursorIndex: MENU_ROW_START,
+          startRequested: true
+        };
+      }
     } else if (nextState.startRequested) {
       nextState = {
         ...nextState,
@@ -327,49 +325,396 @@ export class LauncherScene extends Phaser.Scene {
       };
     }
 
-    if (pointerPressed) {
-      const pointerResult = this.applyPointerSelection(
-        nextState,
-        this.input.activePointer.x,
-        this.input.activePointer.y
-      );
-      nextState = pointerResult.state;
-      selectionChanged = selectionChanged || pointerResult.selectionChanged;
-      if (pointerResult.startRequested) {
-        nextState = {
-          ...nextState,
-          cursorIndex: MENU_ROW_START,
-          startRequested: true
-        };
-      }
-    }
-
-    this.state = nextState;
+    this.state = normalizeControllerIndex(nextState);
+    this.applyAudioSettings(previousState, this.state);
 
     if (this.state.startRequested) {
-      this.pointerWasDown = pointerDown;
       this.sfx.playUiConfirm();
       this.startSelectedGame();
       return;
     }
 
-    if (selectionChanged) {
+    if (selectionChanged || previousMode !== this.settingsPanelMode) {
       this.sfx.playUiMove();
     }
 
+    if (!stateEquals(previousState, this.state) || previousMode !== this.settingsPanelMode) {
+      this.renderDom();
+    }
+
     this.updateStars(delta);
-    this.redrawUi(this.time.now);
-    this.pointerWasDown = pointerDown;
+    this.updateSfxLoop(delta);
+    this.drawBackdrop(this.time.now);
   }
 
-  private redrawUi(timeMs: number): void {
-    this.drawBackdrop(timeMs);
-    this.drawCabinet(timeMs);
-    this.renderMenu(timeMs);
+  private mountDom(): void {
+    const host = this.game.canvas.parentElement;
+    if (host === null) {
+      throw new Error('Launcher requires the game canvas parent element.');
+    }
+
+    host.classList.add('launcher-host');
+
+    const root = document.createElement('div');
+    root.className = 'launcher-overlay';
+
+    const header = document.createElement('div');
+    header.className = 'launcher-header';
+
+    const logo = document.createElement('img');
+    logo.className = 'launcher-logo';
+    logo.src = arcadeLogoImage;
+    logo.alt = 'Light80';
+
+    const subtitle = document.createElement('div');
+    subtitle.className = 'launcher-subtitle';
+
+    header.append(logo, subtitle);
+
+    const shell = document.createElement('div');
+    shell.className = 'launcher-shell';
+
+    const gamePanel = document.createElement('section');
+    gamePanel.className = 'launcher-game-panel';
+
+    const arrowLeftButton = document.createElement('button');
+    arrowLeftButton.className = 'launcher-arrow launcher-arrow-left';
+    arrowLeftButton.type = 'button';
+    arrowLeftButton.textContent = '◀';
+
+    const arrowRightButton = document.createElement('button');
+    arrowRightButton.className = 'launcher-arrow launcher-arrow-right';
+    arrowRightButton.type = 'button';
+    arrowRightButton.textContent = '▶';
+
+    const gameCard = document.createElement('article');
+    gameCard.className = 'launcher-game-card';
+
+    const gameTitle = document.createElement('div');
+    gameTitle.className = 'launcher-game-title';
+
+    const gameDescription = document.createElement('div');
+    gameDescription.className = 'launcher-game-description';
+
+    const startButton = document.createElement('button');
+    startButton.className = 'launcher-start-button';
+    startButton.type = 'button';
+
+    const previewLabel = document.createElement('div');
+    previewLabel.className = 'launcher-preview-label';
+
+    const leftColumn = document.createElement('div');
+    leftColumn.className = 'launcher-game-left';
+    leftColumn.append(gameTitle, gameDescription, startButton);
+
+    const rightColumn = document.createElement('div');
+    rightColumn.className = 'launcher-game-right';
+    rightColumn.append(previewLabel);
+
+    gameCard.append(leftColumn, rightColumn);
+    gamePanel.append(arrowLeftButton, gameCard, arrowRightButton);
+
+    const settingsPanel = document.createElement('section');
+    settingsPanel.className = 'launcher-settings-panel';
+
+    const joystickButton = document.createElement('button');
+    joystickButton.className = 'launcher-icon-button launcher-icon-left';
+    joystickButton.type = 'button';
+    const joystickImage = document.createElement('img');
+    joystickImage.className = 'launcher-icon-image';
+    joystickImage.src = launcherJoystickImage;
+    joystickImage.alt = 'Controller settings';
+    joystickButton.append(joystickImage);
+
+    const speakerButton = document.createElement('button');
+    speakerButton.className = 'launcher-icon-button launcher-icon-right';
+    speakerButton.type = 'button';
+    const speakerImage = document.createElement('img');
+    speakerImage.className = 'launcher-icon-image launcher-icon-image-speaker';
+    speakerImage.src = launcherSpeakerImage;
+    speakerImage.alt = 'Audio settings';
+    speakerButton.append(speakerImage);
+
+    const settingsContent = document.createElement('div');
+    settingsContent.className = 'launcher-settings-content';
+
+    const settingsTitle = document.createElement('div');
+    settingsTitle.className = 'launcher-settings-title';
+
+    const settingsDescription = document.createElement('div');
+    settingsDescription.className = 'launcher-settings-description';
+
+    const controllerChips = document.createElement('div');
+    controllerChips.className = 'launcher-controller-chips';
+
+    const audioMixButton = document.createElement('button');
+    audioMixButton.className = 'launcher-audio-row';
+    audioMixButton.type = 'button';
+
+    const audioLoopButton = document.createElement('button');
+    audioLoopButton.className = 'launcher-audio-row';
+    audioLoopButton.type = 'button';
+
+    settingsContent.append(settingsTitle, settingsDescription, controllerChips, audioMixButton, audioLoopButton);
+    settingsPanel.append(joystickButton, settingsContent, speakerButton);
+
+    const hint = document.createElement('div');
+    hint.className = 'launcher-hint';
+
+    shell.append(gamePanel, settingsPanel);
+    root.append(header, shell, hint);
+    host.append(root);
+
+    this.dom = {
+      root,
+      subtitle,
+      gameCard,
+      arrowLeftButton,
+      arrowRightButton,
+      gameTitle,
+      gameDescription,
+      startButton,
+      previewLabel,
+      settingsPanel,
+      joystickButton,
+      speakerButton,
+      settingsTitle,
+      settingsDescription,
+      controllerChips,
+      audioMixButton,
+      audioLoopButton,
+      hint
+    };
+
+    arrowLeftButton.addEventListener('click', () => {
+      this.sfx.unlock();
+      this.applyUiState(
+        normalizeControllerIndex({
+          ...this.state,
+          cursorIndex: MENU_ROW_GAME,
+          gameIndex: normalizeIndex(this.state.gameIndex - 1, GAME_OPTIONS.length)
+        }),
+        true
+      );
+    });
+
+    arrowRightButton.addEventListener('click', () => {
+      this.sfx.unlock();
+      this.applyUiState(
+        normalizeControllerIndex({
+          ...this.state,
+          cursorIndex: MENU_ROW_GAME,
+          gameIndex: normalizeIndex(this.state.gameIndex + 1, GAME_OPTIONS.length)
+        }),
+        true
+      );
+    });
+
+    gameCard.addEventListener('click', () => {
+      this.sfx.unlock();
+      this.applyUiState({ ...this.state, cursorIndex: MENU_ROW_GAME }, false);
+    });
+
+    startButton.addEventListener('click', (event) => {
+      event.stopPropagation();
+      this.sfx.unlock();
+      this.sfx.playUiConfirm();
+      this.startSelectedGame();
+    });
+
+    joystickButton.addEventListener('click', () => {
+      this.sfx.unlock();
+      this.settingsPanelMode = 'controllers';
+      this.applyUiState({ ...this.state, cursorIndex: MENU_ROW_CONTROLLER }, true);
+    });
+
+    speakerButton.addEventListener('click', () => {
+      this.sfx.unlock();
+      this.settingsPanelMode = 'audio';
+      this.applyUiState({ ...this.state, cursorIndex: MENU_ROW_CONTROLLER }, true);
+    });
+
+    settingsPanel.addEventListener('click', () => {
+      this.sfx.unlock();
+      this.applyUiState({ ...this.state, cursorIndex: MENU_ROW_CONTROLLER }, false);
+    });
+
+    audioMixButton.addEventListener('click', () => {
+      this.sfx.unlock();
+      this.settingsPanelMode = 'audio';
+      this.applyUiState(
+        {
+          ...this.state,
+          cursorIndex: MENU_ROW_CONTROLLER,
+          audioMixProfileIndex: normalizeIndex(this.state.audioMixProfileIndex + 1, AUDIO_MIX_PROFILE_IDS.length)
+        },
+        true
+      );
+    });
+
+    audioLoopButton.addEventListener('click', () => {
+      this.sfx.unlock();
+      this.settingsPanelMode = 'audio';
+      this.applyUiState(
+        {
+          ...this.state,
+          cursorIndex: MENU_ROW_CONTROLLER,
+          sfxLoopEnabled: !this.state.sfxLoopEnabled
+        },
+        true
+      );
+    });
+  }
+
+  private unmountDom(): void {
+    if (this.dom === null) {
+      return;
+    }
+
+    this.dom.root.remove();
+    this.dom = null;
+  }
+
+  private applyUiState(nextState: LauncherState, playMove: boolean): void {
+    const previousState = this.state;
+    this.state = normalizeControllerIndex(nextState);
+    this.applyAudioSettings(previousState, this.state);
+
+    if (playMove) {
+      this.sfx.playUiMove();
+    }
+
+    this.renderDom();
+  }
+
+  private renderDom(): void {
+    if (this.dom === null) {
+      return;
+    }
+
+    const gameOption = requireGameOption(this.state.gameIndex);
+    const controllerOption = requireControllerOption(this.state);
+
+    this.dom.subtitle.textContent = 'Plug in. Play together.';
+    this.dom.gameTitle.textContent = `${this.state.cursorIndex === MENU_ROW_GAME ? '>' : ''} ${gameOption.label}`;
+    this.dom.gameDescription.textContent = gameOption.description;
+    this.dom.startButton.textContent = this.state.cursorIndex === MENU_ROW_START ? 'PRESS START' : 'START';
+    this.dom.previewLabel.textContent = previewLabel(gameOption);
+
+    this.dom.gameCard.classList.toggle('is-focused', this.state.cursorIndex === MENU_ROW_GAME);
+    this.dom.startButton.classList.toggle('is-focused', this.state.cursorIndex === MENU_ROW_START);
+
+    if (this.settingsPanelMode === 'home') {
+      this.dom.settingsTitle.textContent = `${this.state.cursorIndex === MENU_ROW_CONTROLLER ? '>' : ''} SETTINGS`;
+      this.dom.settingsDescription.textContent = 'JOYSTICK: kontrolery | SPEAKER: audio';
+      this.dom.controllerChips.style.display = 'none';
+      this.dom.audioMixButton.style.display = 'none';
+      this.dom.audioLoopButton.style.display = 'none';
+    } else if (this.settingsPanelMode === 'controllers') {
+      this.dom.settingsTitle.textContent = `${this.state.cursorIndex === MENU_ROW_CONTROLLER ? '>' : ''} CONTROLLER`;
+      this.dom.settingsDescription.textContent = controllerOption.description;
+      this.dom.controllerChips.style.display = 'flex';
+      this.dom.audioMixButton.style.display = 'none';
+      this.dom.audioLoopButton.style.display = 'none';
+      this.renderControllerChips(gameOption);
+    } else {
+      this.dom.settingsTitle.textContent = `${this.state.cursorIndex === MENU_ROW_CONTROLLER ? '>' : ''} AUDIO`;
+      this.dom.settingsDescription.textContent = 'Mix i test petli SFX.';
+      this.dom.controllerChips.style.display = 'none';
+      this.dom.audioMixButton.style.display = 'block';
+      this.dom.audioLoopButton.style.display = 'block';
+      const mixProfileId = requireAudioMixProfileId(this.state.audioMixProfileIndex);
+      this.dom.audioMixButton.textContent = `AUDIO MIX [M / CLICK]: ${mixProfileId.toUpperCase()}`;
+      this.dom.audioLoopButton.textContent = `SFX TEST LOOP [L / CLICK]: ${this.state.sfxLoopEnabled ? 'ON' : 'OFF'}`;
+      this.dom.audioLoopButton.classList.toggle('is-on', this.state.sfxLoopEnabled);
+    }
+
+    this.dom.joystickButton.classList.toggle('is-active', this.settingsPanelMode === 'controllers');
+    this.dom.speakerButton.classList.toggle('is-active', this.settingsPanelMode === 'audio');
+    this.dom.settingsPanel.classList.toggle('is-focused', this.state.cursorIndex === MENU_ROW_CONTROLLER);
+
+    this.dom.hint.textContent =
+      'UP/DOWN: karta  LEFT/RIGHT: zmiana gry  ENTER: start  M/L: audio  F: fullscreen';
+  }
+
+  private renderControllerChips(gameOption: GameOption): void {
+    if (this.dom === null) {
+      return;
+    }
+
+    this.dom.controllerChips.replaceChildren();
+
+    for (let index = 0; index < gameOption.controllerOptions.length; index += 1) {
+      const option = gameOption.controllerOptions[index];
+      if (option === undefined) {
+        throw new Error(`Missing controller option at index ${index} for game ${gameOption.id}.`);
+      }
+
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'launcher-controller-chip';
+      chip.textContent = option.label.toUpperCase();
+      chip.classList.toggle('is-active', this.state.controllerIndex === index);
+      chip.addEventListener('click', () => {
+        this.sfx.unlock();
+        this.settingsPanelMode = 'controllers';
+        this.applyUiState(
+          {
+            ...this.state,
+            cursorIndex: MENU_ROW_CONTROLLER,
+            controllerIndex: index
+          },
+          true
+        );
+      });
+      this.dom.controllerChips.append(chip);
+    }
+  }
+
+  private applyAudioSettings(previousState: LauncherState, nextState: LauncherState): void {
+    if (previousState.audioMixProfileIndex !== nextState.audioMixProfileIndex) {
+      this.sfx.setMixProfile(requireAudioMixProfileId(nextState.audioMixProfileIndex));
+    }
+
+    if (!previousState.sfxLoopEnabled && nextState.sfxLoopEnabled) {
+      this.sfxLoopTimer = 0;
+      this.sfxLoopStep = 0;
+    }
+
+    if (previousState.sfxLoopEnabled && !nextState.sfxLoopEnabled) {
+      this.sfxLoopTimer = 0;
+    }
+  }
+
+  private updateSfxLoop(delta: number): void {
+    if (!this.state.sfxLoopEnabled) {
+      return;
+    }
+
+    this.sfxLoopTimer -= delta;
+    if (this.sfxLoopTimer > 0) {
+      return;
+    }
+
+    const step = this.sfxLoopStep % 5;
+    if (step === 0) {
+      this.sfx.playPlayerShot({ pan: -0.65, depth: 0.08 });
+    } else if (step === 1) {
+      this.sfx.playEnemyShot({ pan: 0.5, depth: 0.3 });
+    } else if (step === 2) {
+      this.sfx.playExplosion({ pan: -0.2, depth: 0.35, large: false });
+    } else if (step === 3) {
+      this.sfx.playPlayerHit({ pan: 0.1, depth: 0.05 });
+    } else {
+      this.sfx.playExplosion({ pan: 0.38, depth: 0.18, large: true });
+    }
+
+    this.sfxLoopStep += 1;
+    this.sfxLoopTimer = 420;
   }
 
   private createStars(): MenuStar[] {
-    const rng = new Phaser.Math.RandomDataGenerator(['launcher-stars-v4']);
+    const rng = new Phaser.Math.RandomDataGenerator(['launcher-stars-v5']);
     const stars: MenuStar[] = [];
     const width = this.scale.width;
     const height = this.scale.height;
@@ -432,11 +777,7 @@ export class LauncherScene extends Phaser.Scene {
 
     const pointerNormalizedX = Math.max(-1, Math.min(1, (this.input.activePointer.x / width) * 2 - 1));
     const targetParallaxX = pointerNormalizedX * PERSPECTIVE_PARALLAX_MAX_X;
-    this.perspectiveParallaxX = lerp(
-      this.perspectiveParallaxX,
-      targetParallaxX,
-      PERSPECTIVE_PARALLAX_LERP
-    );
+    this.perspectiveParallaxX = lerp(this.perspectiveParallaxX, targetParallaxX, PERSPECTIVE_PARALLAX_LERP);
 
     const centerX = width / 2 + this.perspectiveParallaxX;
     const perspectiveCount = Math.ceil((width * 0.5) / PERSPECTIVE_TOP_SPACING) + 2;
@@ -464,6 +805,7 @@ export class LauncherScene extends Phaser.Scene {
     const spacing = travelRange / HORIZON_LINE_COUNT;
     const flowOffset = ((timeMs * HORIZON_FLOW_SPEED_PX_PER_SEC) / 1000) % spacing;
     const drawnRows = new Set<number>();
+
     for (let line = -1; line <= HORIZON_LINE_COUNT; line += 1) {
       let y = horizonY + line * spacing + flowOffset;
       if (y < horizonY) {
@@ -491,426 +833,6 @@ export class LauncherScene extends Phaser.Scene {
     }
   }
 
-  private drawCabinet(timeMs: number): void {
-    const graphics = this.panelGraphics;
-    graphics.clear();
-
-    const pulse = 0.58 + 0.42 * Math.sin(timeMs * 0.004);
-    const c = this.cabinetBounds;
-
-    graphics.fillStyle(0xff48d5, 0.16 + pulse * 0.12);
-    graphics.fillRoundedRect(c.x - 12, c.y - 12, c.width + 24, c.height + 24, 34);
-
-    graphics.fillStyle(0x0d0722, 0.94);
-    graphics.fillRoundedRect(c.x, c.y, c.width, c.height, 30);
-    graphics.lineStyle(6, 0xff4bd6, 0.92);
-    graphics.strokeRoundedRect(c.x, c.y, c.width, c.height, 30);
-    graphics.lineStyle(2, 0x62d4ff, 0.9);
-    graphics.strokeRoundedRect(c.x + 8, c.y + 8, c.width - 16, c.height - 16, 24);
-
-    graphics.fillStyle(0x050b1f, 0.95);
-    graphics.fillRoundedRect(this.gamesBounds.x, this.gamesBounds.y, this.gamesBounds.width, this.gamesBounds.height, 22);
-    graphics.lineStyle(2, 0x5247d0, 0.8);
-    graphics.strokeRoundedRect(this.gamesBounds.x, this.gamesBounds.y, this.gamesBounds.width, this.gamesBounds.height, 22);
-
-    for (let index = 0; index < this.gameRowBounds.length; index += 1) {
-      const row = this.gameRowBounds[index];
-      const selectedGame = this.state.gameIndex === index;
-      const rowFocus = selectedGame && this.state.cursorIndex === MENU_ROW_GAME;
-      const buttonFocus = selectedGame && this.state.cursorIndex === MENU_ROW_START;
-      const rowGlow = selectedGame ? 0.25 + pulse * 0.12 : 0.08;
-
-      graphics.fillStyle(selectedGame ? 0x121e4a : 0x0b112d, 0.92);
-      graphics.fillRoundedRect(row.x, row.y, row.width, row.height, 16);
-      graphics.lineStyle(
-        rowFocus ? 3 : 2,
-        rowFocus ? 0xffce55 : selectedGame ? 0xff5fd8 : 0x3a4f98,
-        selectedGame ? 1 : 0.65
-      );
-      graphics.strokeRoundedRect(row.x, row.y, row.width, row.height, 16);
-
-      if (selectedGame) {
-        graphics.fillStyle(0xff5fd8, rowGlow);
-        graphics.fillRoundedRect(row.x - 4, row.y - 4, row.width + 8, row.height + 8, 18);
-      }
-
-      const previewWidth = Math.floor(Math.min(320, row.width * 0.32));
-      const previewHeight = row.height - 26;
-      const previewX = row.right - previewWidth - 12;
-      const previewY = row.y + 13;
-      graphics.fillStyle(0x143a78, 0.9);
-      graphics.fillRoundedRect(previewX, previewY, previewWidth, previewHeight, 10);
-      graphics.lineStyle(2, selectedGame ? 0x63d6ff : 0x325a9b, 0.95);
-      graphics.strokeRoundedRect(previewX, previewY, previewWidth, previewHeight, 10);
-
-      for (let line = 0; line < previewHeight; line += 4) {
-        graphics.fillStyle(0xffffff, 0.04);
-        graphics.fillRect(previewX + 2, previewY + line, previewWidth - 4, 1);
-      }
-
-      if (selectedGame) {
-        graphics.fillStyle(0x63d6ff, 0.12 + pulse * 0.08);
-        graphics.fillRoundedRect(previewX - 3, previewY - 3, previewWidth + 6, previewHeight + 6, 12);
-      }
-
-      const buttonWidth = Math.min(250, row.width * 0.33);
-      const buttonHeight = 44;
-      const buttonX = row.x + 26;
-      const buttonY = row.bottom - buttonHeight - 16;
-      const buttonColor = selectedGame
-        ? buttonFocus
-          ? 0xff9a23
-          : 0xec7818
-        : 0x2c355f;
-      const buttonGlow = selectedGame
-        ? buttonFocus
-          ? 0.45 + pulse * 0.2
-          : 0.2 + pulse * 0.1
-        : 0.1;
-
-      graphics.fillStyle(buttonColor, 0.9);
-      graphics.fillRoundedRect(buttonX, buttonY, buttonWidth, buttonHeight, 12);
-      graphics.fillStyle(0xffffff, buttonGlow);
-      graphics.fillRoundedRect(buttonX + 4, buttonY + 4, buttonWidth - 8, 10, 6);
-      graphics.lineStyle(2, selectedGame ? 0xfff2b8 : 0x7480ad, 0.9);
-      graphics.strokeRoundedRect(buttonX, buttonY, buttonWidth, buttonHeight, 12);
-    }
-
-    graphics.fillStyle(0x071028, 0.96);
-    graphics.fillRoundedRect(
-      this.controlsBounds.x,
-      this.controlsBounds.y,
-      this.controlsBounds.width,
-      this.controlsBounds.height,
-      20
-    );
-    graphics.lineStyle(2, 0x4f73d8, 0.92);
-    graphics.strokeRoundedRect(
-      this.controlsBounds.x,
-      this.controlsBounds.y,
-      this.controlsBounds.width,
-      this.controlsBounds.height,
-      20
-    );
-  }
-
-  private renderMenu(timeMs: number): void {
-    this.layoutMenu();
-
-    const gameOption = requireGameOption(this.state.gameIndex);
-    const controllerOption = requireControllerOption(this.state);
-    const pulse = 0.7 + 0.3 * Math.sin(timeMs * 0.005);
-
-    this.subtitleText.setText('Plug in. Play together.');
-    this.subtitleText.setFontSize(Math.max(30, Math.floor(this.scale.height * 0.035)));
-
-    for (let index = 0; index < GAME_OPTIONS.length; index += 1) {
-      const option = GAME_OPTIONS[index];
-      const row = this.gameRowBounds[index];
-      if (row === undefined) {
-        throw new Error(`Missing row bounds for game index ${index}.`);
-      }
-
-      const selectedGame = this.state.gameIndex === index;
-      const gameFocus = selectedGame && this.state.cursorIndex === MENU_ROW_GAME;
-      const startFocus = selectedGame && this.state.cursorIndex === MENU_ROW_START;
-      const title = this.gameTitleTexts[index];
-      const description = this.gameDescriptionTexts[index];
-      const button = this.gameButtonTexts[index];
-      const preview = this.gamePreviewTexts[index];
-
-      if (title === undefined || description === undefined || button === undefined || preview === undefined) {
-        throw new Error(`Missing launcher text object for game index ${index}.`);
-      }
-
-      const titleSize = Math.max(42, Math.floor(row.height * 0.22));
-      const descriptionSize = Math.max(18, Math.floor(row.height * 0.12));
-      const buttonSize = Math.max(30, Math.floor(row.height * 0.2));
-      const previewSize = Math.max(24, Math.floor(row.height * 0.13));
-      title.setFontSize(titleSize);
-      description.setFontSize(descriptionSize);
-      button.setFontSize(buttonSize);
-      preview.setFontSize(previewSize);
-
-      title.setText(`${selectedGame ? '>' : ' '} ${option.label}`);
-      title.setPosition(row.x + 24, row.y + Math.floor(row.height * 0.08));
-      title.setColor(gameFocus ? '#fff6c8' : selectedGame ? '#ffe8a8' : '#a8bedf');
-
-      description.setText(option.description);
-      description.setPosition(row.x + 24, row.y + Math.floor(row.height * 0.44));
-      description.setWordWrapWidth(row.width * 0.58, true);
-      description.setColor(selectedGame ? '#d6e7ff' : '#7e95bc');
-
-      const buttonCenterX = row.x + Math.min(250, row.width * 0.33) / 2 + 26;
-      const buttonCenterY = row.bottom - Math.max(28, Math.floor(row.height * 0.2));
-      button.setPosition(buttonCenterX, buttonCenterY);
-      if (selectedGame) {
-        button.setText(startFocus ? 'PRESS START' : 'START');
-        button.setColor(startFocus ? '#fffde1' : '#fff2ca');
-        button.setScale(startFocus ? 1 + pulse * 0.04 : 1);
-      } else {
-        button.setText('SELECT GAME');
-        button.setColor('#d8ddf3');
-        button.setScale(1);
-      }
-
-      preview.setText(previewLabel(option));
-      preview.setPosition(row.right - Math.floor(Math.min(320, row.width * 0.32)) / 2 - 12, row.centerY);
-      preview.setColor(selectedGame ? '#9ff3ff' : '#89a2ca');
-    }
-
-    this.controllerHeaderText.setText(
-      `${this.state.cursorIndex === MENU_ROW_CONTROLLER ? '>' : ' '} PLUG IN ANY CONTROLLER`
-    );
-    this.controllerHeaderText.setFontSize(Math.max(38, Math.floor(this.controlsBounds.height * 0.2)));
-    this.controllerHeaderText.setColor(
-      this.state.cursorIndex === MENU_ROW_CONTROLLER ? '#d8f7ff' : '#9ce7ff'
-    );
-
-    this.controllerDescriptionText.setText(controllerOption.description);
-    this.controllerDescriptionText.setFontSize(Math.max(20, Math.floor(this.controlsBounds.height * 0.11)));
-    this.controllerDescriptionText.setColor('#a7c8e9');
-
-    this.ensureControllerChipCount(gameOption.controllerOptions.length);
-    this.layoutControllerChips(gameOption);
-
-    this.hintText.setText('UP/DOWN: game  LEFT/RIGHT: controller  ENTER: start  MOUSE: click  F: fullscreen');
-  }
-
-  private applyPointerSelection(
-    state: LauncherState,
-    pointerX: number,
-    pointerY: number
-  ): PointerSelectionResult {
-    let nextState = state;
-    let selectionChanged = false;
-
-    for (let index = 0; index < this.gameRowBounds.length; index += 1) {
-      const row = this.gameRowBounds[index];
-      if (row === undefined) {
-        throw new Error(`Missing game row bounds for pointer hit-test at index ${index}.`);
-      }
-
-      if (!Phaser.Geom.Rectangle.Contains(row, pointerX, pointerY)) {
-        continue;
-      }
-
-      const previousGameIndex = nextState.gameIndex;
-      const previousControllerIndex = nextState.controllerIndex;
-      nextState = normalizeControllerIndex({
-        ...nextState,
-        cursorIndex: MENU_ROW_GAME,
-        gameIndex: index
-      });
-      selectionChanged =
-        selectionChanged ||
-        nextState.gameIndex !== previousGameIndex ||
-        nextState.controllerIndex !== previousControllerIndex;
-
-      const startButtonBounds = this.startButtonBoundsForRow(row);
-      return {
-        state: nextState,
-        selectionChanged,
-        startRequested: Phaser.Geom.Rectangle.Contains(startButtonBounds, pointerX, pointerY)
-      };
-    }
-
-    const gameOption = requireGameOption(nextState.gameIndex);
-    const chipIndex = this.controllerChipIndexAt(pointerX, pointerY, gameOption);
-    if (chipIndex !== null) {
-      const previousControllerIndex = nextState.controllerIndex;
-      nextState = {
-        ...nextState,
-        cursorIndex: MENU_ROW_CONTROLLER,
-        controllerIndex: chipIndex
-      };
-      selectionChanged = selectionChanged || previousControllerIndex !== chipIndex;
-    }
-
-    return {
-      state: nextState,
-      selectionChanged,
-      startRequested: false
-    };
-  }
-
-  private ensureControllerChipCount(count: number): void {
-    while (this.controllerChipTexts.length < count) {
-      const chip = this.add.text(0, 0, '', {
-        fontFamily: 'Trebuchet MS',
-        fontSize: '22px',
-        color: '#d6ebff',
-        backgroundColor: '#13234a'
-      });
-      chip.setOrigin(0.5, 0.5).setPadding(16, 8, 16, 8).setDepth(35);
-      this.controllerChipTexts.push(chip);
-    }
-
-    for (let index = 0; index < this.controllerChipTexts.length; index += 1) {
-      const chip = this.controllerChipTexts[index];
-      if (chip === undefined) {
-        throw new Error(`Missing controller chip at index ${index}.`);
-      }
-      chip.setVisible(index < count);
-    }
-  }
-
-  private layoutControllerChips(gameOption: GameOption): void {
-    const chipsTop = this.controlsChipsTop();
-    const availableWidth = this.controlsBounds.width - 56;
-    const chipCount = gameOption.controllerOptions.length;
-    const slotWidth = availableWidth / chipCount;
-
-    for (let index = 0; index < chipCount; index += 1) {
-      const option = gameOption.controllerOptions[index];
-      const chip = this.controllerChipTexts[index];
-      if (option === undefined || chip === undefined) {
-        throw new Error(`Missing controller option/chip at index ${index}.`);
-      }
-
-      const selected = this.state.controllerIndex === index;
-      const focused = selected && this.state.cursorIndex === MENU_ROW_CONTROLLER;
-
-      chip.setText(option.label.toUpperCase());
-      chip.setPosition(this.controlsBounds.x + 28 + slotWidth * index + slotWidth / 2, chipsTop);
-      chip.setColor(selected ? '#fff3cd' : '#b2ccf5');
-      chip.setStyle({
-        backgroundColor: focused
-          ? '#ff8f21'
-          : selected
-            ? '#8f2cb4'
-            : '#152147'
-      });
-    }
-  }
-
-  private startButtonBoundsForRow(row: Phaser.Geom.Rectangle): Phaser.Geom.Rectangle {
-    const buttonWidth = Math.min(250, row.width * 0.33);
-    const buttonHeight = 44;
-    const buttonX = row.x + 26;
-    const buttonY = row.bottom - buttonHeight - 16;
-    return new Phaser.Geom.Rectangle(buttonX, buttonY, buttonWidth, buttonHeight);
-  }
-
-  private controllerChipIndexAt(pointerX: number, pointerY: number, gameOption: GameOption): number | null {
-    const chipCount = gameOption.controllerOptions.length;
-    if (chipCount === 0) {
-      throw new Error(`Game "${gameOption.id}" must define at least one controller option.`);
-    }
-
-    const chipsTop = this.controlsChipsTop();
-    const availableWidth = this.controlsBounds.width - 56;
-    const slotWidth = availableWidth / chipCount;
-    const chipHeight = 44;
-    const chipWidth = Math.max(140, slotWidth - 14);
-
-    for (let index = 0; index < chipCount; index += 1) {
-      const centerX = this.controlsBounds.x + 28 + slotWidth * index + slotWidth / 2;
-      const chipBounds = new Phaser.Geom.Rectangle(
-        centerX - chipWidth / 2,
-        chipsTop - chipHeight / 2,
-        chipWidth,
-        chipHeight
-      );
-
-      if (Phaser.Geom.Rectangle.Contains(chipBounds, pointerX, pointerY)) {
-        return index;
-      }
-    }
-
-    return null;
-  }
-
-  private layoutMenu(): void {
-    const width = this.scale.width;
-    const height = this.scale.height;
-    const centerX = width / 2;
-    const logoFrame = this.logoImage.frame;
-    const logoWidth = logoFrame.width;
-    const logoHeight = logoFrame.height;
-    if (logoWidth <= 0 || logoHeight <= 0) {
-      throw new Error('Launcher logo frame has invalid size.');
-    }
-
-    const baseLogoMaxWidth = Math.min(width * 0.64, 920);
-    const baseLogoMaxHeight = Math.min(height * 0.31, 420);
-    const baseLogoScale = Math.min(baseLogoMaxWidth / logoWidth, baseLogoMaxHeight / logoHeight);
-    const doubledLogoScale = baseLogoScale * 2;
-    const viewportSafeScale = Math.min((width * 0.92) / logoWidth, (height * 0.48) / logoHeight);
-    const logoScale = Math.min(doubledLogoScale, viewportSafeScale);
-    this.logoImage.setScale(logoScale);
-    const logoTop = Math.max(8, Math.floor(height * 0.015));
-    this.logoImage.setPosition(
-      centerX,
-      logoTop + Math.ceil(this.logoImage.displayHeight * 0.5)
-    );
-
-    const subtitleY = this.logoImage.y + this.logoImage.displayHeight * 0.42;
-    this.subtitleText.setPosition(centerX, subtitleY);
-
-    const cabinetWidth = Math.floor(Math.min(width * 0.88, 1240));
-    const topSectionBottom = this.subtitleText.y + this.subtitleText.height * 0.5;
-    const cabinetY = Math.floor(Math.max(height * 0.18, topSectionBottom + 10));
-    const desiredCabinetHeight = Math.floor(Math.min(height * 0.68, 900));
-    const maxCabinetHeight = Math.floor(height - cabinetY - 56);
-    if (maxCabinetHeight < 320) {
-      throw new Error(`Launcher layout overflow: height=${height}, cabinetY=${cabinetY}.`);
-    }
-    const cabinetHeight = Math.max(320, Math.min(desiredCabinetHeight, maxCabinetHeight));
-    const cabinetX = Math.floor((width - cabinetWidth) / 2);
-    this.cabinetBounds.setTo(cabinetX, cabinetY, cabinetWidth, cabinetHeight);
-
-    const sectionPadding = 18;
-    const gamesHeight = Math.floor(cabinetHeight * 0.62);
-    this.gamesBounds.setTo(
-      cabinetX + sectionPadding,
-      cabinetY + sectionPadding,
-      cabinetWidth - sectionPadding * 2,
-      gamesHeight
-    );
-
-    this.controlsBounds.setTo(
-      cabinetX + sectionPadding,
-      this.gamesBounds.bottom + sectionPadding,
-      cabinetWidth - sectionPadding * 2,
-      cabinetY + cabinetHeight - sectionPadding - (this.gamesBounds.bottom + sectionPadding)
-    );
-
-    const rowPadding = 12;
-    const rowHeight =
-      (this.gamesBounds.height - rowPadding * (GAME_OPTIONS.length + 1)) / Math.max(1, GAME_OPTIONS.length);
-
-    for (let index = 0; index < GAME_OPTIONS.length; index += 1) {
-      const row = this.gameRowBounds[index];
-      if (row === undefined) {
-        throw new Error(`Missing game row bounds for index ${index}.`);
-      }
-
-      row.setTo(
-        this.gamesBounds.x + rowPadding,
-        this.gamesBounds.y + rowPadding + index * (rowHeight + rowPadding),
-        this.gamesBounds.width - rowPadding * 2,
-        rowHeight
-      );
-    }
-
-    this.controllerHeaderText.setPosition(
-      this.controlsBounds.centerX,
-      this.controlsBounds.y + Math.floor(this.controlsBounds.height * 0.24)
-    );
-    this.controllerDescriptionText.setPosition(
-      this.controlsBounds.centerX,
-      this.controlsBounds.y + Math.floor(this.controlsBounds.height * 0.44)
-    );
-    this.controllerDescriptionText.setWordWrapWidth(this.controlsBounds.width - 60, true);
-
-    this.hintText.setPosition(centerX, height - 28);
-  }
-
-  private controlsChipsTop(): number {
-    return this.controlsBounds.y + Math.floor(this.controlsBounds.height * 0.76);
-  }
-
   private toggleFullscreen(): void {
     if (this.scale.isFullscreen) {
       this.scale.stopFullscreen();
@@ -927,11 +849,13 @@ export class LauncherScene extends Phaser.Scene {
 
     const gameOption = requireGameOption(this.state.gameIndex);
     const controllerOption = requireControllerOption(this.state);
+    const audioMixProfileId = requireAudioMixProfileId(this.state.audioMixProfileIndex);
 
     if (gameOption.sceneKey === PIXEL_INVADERS_SCENE_KEY) {
       const data: PixelInvadersSceneData = {
         controllerProfileId: controllerOption.profileId,
-        controllerLabel: controllerOption.label
+        controllerLabel: controllerOption.label,
+        audioMixProfileId
       };
 
       this.scene.start(PIXEL_INVADERS_SCENE_KEY, data);
@@ -941,7 +865,8 @@ export class LauncherScene extends Phaser.Scene {
     if (gameOption.sceneKey === TUNNEL_INVADERS_SCENE_KEY) {
       const data: TunnelInvadersSceneData = {
         controllerProfileId: controllerOption.profileId,
-        controllerLabel: controllerOption.label
+        controllerLabel: controllerOption.label,
+        audioMixProfileId
       };
 
       this.scene.start(TUNNEL_INVADERS_SCENE_KEY, data);

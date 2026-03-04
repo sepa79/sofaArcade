@@ -1,9 +1,11 @@
 import Phaser from 'phaser';
-import { RetroSfx } from '@light80/game-sdk';
+import { RetroSfx, type AudioMixProfileId } from '@light80/game-sdk';
 
 import {
   FIXED_TIMESTEP,
+  PLAYER_SHIELD_MAX,
   PLAYER_SPRITE_SCALE,
+  PLAYER_RESPAWN_ENTRY_DURATION,
   ENEMY_SPRITE_SCALE_FAR,
   ENEMY_SPRITE_SCALE_NEAR,
   ENEMY_LARGE_SCALE_MULTIPLIER,
@@ -20,6 +22,7 @@ import explosionSrc1Image from '../assets/explosion_src_1.png';
 import explosionSrc2Image from '../assets/explosion_src_2.png';
 import asteroidSpriteImage from '../assets/sprite_asteroid_1.png';
 import enemyFighterImage from '../assets/sprite_enemy_1.png';
+import enemyFighterImageAlt from '../assets/sprite_enemy_2.png';
 import enemyLargeImage from '../assets/sprite_enemy_3.png';
 import fighterShipAltImage from '../assets/sprite_player_1a.png';
 import fighterShipImage from '../assets/sprite_player_1.png';
@@ -30,6 +33,7 @@ export const TUNNEL_INVADERS_SCENE_KEY = 'tunnel-invaders';
 const PLAYER_SPRITE_KEY = 'tunnel-player-ship';
 const PLAYER_SPRITE_ALT_KEY = 'tunnel-player-ship-alt';
 const ENEMY_SPRITE_KEY = 'tunnel-enemy-ship';
+const ENEMY_SPRITE_ALT_KEY = 'tunnel-enemy-ship-alt';
 const ENEMY_LARGE_SPRITE_KEY = 'tunnel-enemy-ship-large';
 const ASTEROID_SPRITE_KEY = 'tunnel-asteroid';
 const EXPLOSION_TEXTURE_KEY_1 = 'tunnel-explosion-1';
@@ -104,14 +108,21 @@ const CAMERA_ZOOM_SPEED = 1.8;
 const CAMERA_ZOOM_DEPTH_THRESHOLD = -0.02;
 const PLAYER_SPRITE_SCALE_JUMP = 2.46;
 const INNER_RADIUS_RATIO = TUNNEL_INNER_RADIUS / TUNNEL_OUTER_RADIUS;
-const ENEMY_BULLET_CORE_SIZE_NEAR = 8.4;
-const ENEMY_BULLET_CORE_SIZE_FAR = 4.4;
-const ENEMY_BULLET_GLOW_SIZE_BONUS = 8;
-const ENEMY_BULLET_TRAIL_DEPTH = 0.12;
+const ENEMY_BULLET_CORE_SIZE_NEAR = 5.2;
+const ENEMY_BULLET_CORE_SIZE_FAR = 2.8;
+const ENEMY_BULLET_SMOKE_HEAD_SCALE = 1.22;
+const ENEMY_BULLET_SMOKE_TAIL_SCALE = 1.08;
+const ENEMY_BULLET_TRAIL_DEPTH = 0.08;
 const CENTER_ANOMALY_CORE_RATIO = 0.56;
 const CENTER_ANOMALY_RING_RATIO = 1.28;
 const CENTER_ANOMALY_RING_THICKNESS_RATIO = 0.16;
 const CENTER_ANOMALY_SWIRL_SEGMENTS = 40;
+const PLAYER_DEATH_CLUSTER_DURATION_MS = 920;
+const PLAYER_DEATH_CLUSTER_BURST_INTERVAL_MS = 95;
+const PLAYER_DEATH_CLUSTER_BURST_COUNT = 3;
+const PLAYER_DEATH_CLUSTER_THETA_JITTER = 0.24;
+const PLAYER_DEATH_CLUSTER_DEPTH_JITTER = 0.11;
+const PLAYER_RESPAWN_DEPTH_START = -0.38;
 
 interface RenderFrame {
   readonly timeSeconds: number;
@@ -160,6 +171,12 @@ interface ExplosionGlowFx {
   readonly startAtMs: number;
 }
 
+interface PlayerDeathCluster {
+  readonly theta: number;
+  readonly remainingMs: number;
+  readonly burstTimerMs: number;
+}
+
 interface RenderTuning {
   readonly pixelOffset: number;
   readonly flowSpeed: number;
@@ -192,6 +209,7 @@ const DEFAULT_RENDER_TUNING: RenderTuning = {
 export interface TunnelInvadersSceneData {
   readonly controllerProfileId: string;
   readonly controllerLabel: string;
+  readonly audioMixProfileId: AudioMixProfileId;
 }
 
 function requireKeyboard(scene: Phaser.Scene): Phaser.Input.Keyboard.KeyboardPlugin {
@@ -216,9 +234,18 @@ function parseSceneData(rawData: unknown): TunnelInvadersSceneData {
     throw new Error('Tunnel Invaders scene requires a valid controllerLabel.');
   }
 
+  if (
+    data.audioMixProfileId !== 'cinema' &&
+    data.audioMixProfileId !== 'arcade' &&
+    data.audioMixProfileId !== 'late-night'
+  ) {
+    throw new Error('Tunnel Invaders scene requires a valid audioMixProfileId.');
+  }
+
   return {
     controllerProfileId: data.controllerProfileId,
-    controllerLabel: data.controllerLabel
+    controllerLabel: data.controllerLabel,
+    audioMixProfileId: data.audioMixProfileId
   };
 }
 
@@ -478,6 +505,14 @@ function isLargeEnemy(enemyClass: Enemy['enemyClass']): boolean {
   return enemyClass === 'large';
 }
 
+function enemySpriteKeyFor(enemy: Enemy): string {
+  if (isLargeEnemy(enemy.enemyClass)) {
+    return ENEMY_LARGE_SPRITE_KEY;
+  }
+
+  return enemy.formationRow % 2 === 0 ? ENEMY_SPRITE_KEY : ENEMY_SPRITE_ALT_KEY;
+}
+
 export class TunnelInvadersScene extends Phaser.Scene {
   private graphics!: Phaser.GameObjects.Graphics;
   private crtOverlay!: Phaser.GameObjects.Graphics;
@@ -505,6 +540,7 @@ export class TunnelInvadersScene extends Phaser.Scene {
   private crtOverlayWidth = -1;
   private crtOverlayHeight = -1;
   private launchData: TunnelInvadersSceneData | null = null;
+  private playerDeathCluster: PlayerDeathCluster | null = null;
 
   constructor() {
     super(TUNNEL_INVADERS_SCENE_KEY);
@@ -514,6 +550,7 @@ export class TunnelInvadersScene extends Phaser.Scene {
     this.load.image(PLAYER_SPRITE_KEY, fighterShipImage);
     this.load.image(PLAYER_SPRITE_ALT_KEY, fighterShipAltImage);
     this.load.image(ENEMY_SPRITE_KEY, enemyFighterImage);
+    this.load.image(ENEMY_SPRITE_ALT_KEY, enemyFighterImageAlt);
     this.load.image(ENEMY_LARGE_SPRITE_KEY, enemyLargeImage);
     this.load.image(ASTEROID_SPRITE_KEY, asteroidSpriteImage);
     this.load.audio(BACKGROUND_MUSIC_KEY, backgroundMusicTrack);
@@ -538,6 +575,8 @@ export class TunnelInvadersScene extends Phaser.Scene {
       throw new Error('Tunnel Invaders launchData is missing in create().');
     }
 
+    this.sfx.setMixProfile(this.launchData.audioMixProfileId);
+
     this.graphics = this.add.graphics();
     this.crtOverlay = this.add.graphics();
     this.crtOverlay.setDepth(10_000);
@@ -551,7 +590,7 @@ export class TunnelInvadersScene extends Phaser.Scene {
     this.tunnelStars = createTunnelStars();
 
     for (const enemy of this.state.enemies) {
-      const spriteKey = isLargeEnemy(enemy.enemyClass) ? ENEMY_LARGE_SPRITE_KEY : ENEMY_SPRITE_KEY;
+      const spriteKey = enemySpriteKeyFor(enemy);
       const sprite = this.add.image(this.scale.width / 2, this.scale.height / 2, spriteKey);
       sprite.setOrigin(0.5, 0.5);
       sprite.setScale(ENEMY_SPRITE_SCALE_FAR);
@@ -651,6 +690,7 @@ export class TunnelInvadersScene extends Phaser.Scene {
     this.applyDebugHotkeys();
     this.accumulator += delta / 1000;
     let enemyHit = false;
+    let shieldHit = false;
     let playerHit = false;
     let playerShot = false;
     let enemyShot = false;
@@ -661,6 +701,7 @@ export class TunnelInvadersScene extends Phaser.Scene {
     let playerShotTheta: number | null = null;
     let enemyShotSpatial: { readonly theta: number; readonly depth: number } | null = null;
     let maxMoveSpeed = 0;
+    let playerDeathTriggered = false;
 
     while (this.accumulator >= FIXED_TIMESTEP) {
       const input = readFrameInput(this.inputContext);
@@ -684,6 +725,7 @@ export class TunnelInvadersScene extends Phaser.Scene {
       const prevEnemyBullets = prevState.bullets.filter((bullet) => bullet.owner === 'enemy').length;
       const nextEnemyBullets = nextState.bullets.filter((bullet) => bullet.owner === 'enemy').length;
       enemyHit = enemyHit || nextState.score > prevState.score;
+      shieldHit = shieldHit || nextState.playerShield < prevState.playerShield;
       playerHit = playerHit || nextState.lives < prevState.lives;
       if (nextPlayerBullets > prevPlayerBullets) {
         playerShot = true;
@@ -713,6 +755,9 @@ export class TunnelInvadersScene extends Phaser.Scene {
       lost = lost || (prevState.phase === 'playing' && nextState.phase === 'lost');
       if (nextState.lives < prevState.lives) {
         playerExplosionTheta = prevState.playerTheta;
+      }
+      if (prevState.playerDeathTimer === 0 && nextState.playerDeathTimer > 0) {
+        playerDeathTriggered = true;
       }
 
       for (const prevEnemy of prevState.enemies) {
@@ -750,6 +795,11 @@ export class TunnelInvadersScene extends Phaser.Scene {
         pan: thetaToStereoPan(this.state.playerTheta),
         depth: 0
       });
+    } else if (shieldHit) {
+      this.sfx.playPlayerHit({
+        pan: thetaToStereoPan(this.state.playerTheta),
+        depth: 0
+      });
     }
     if (won) {
       this.sfx.playWin();
@@ -764,12 +814,14 @@ export class TunnelInvadersScene extends Phaser.Scene {
       active: this.state.phase === 'playing' && maxMoveSpeed > 0.02
     });
 
-    if (playerExplosionTheta !== null) {
+    if (playerDeathTriggered && playerExplosionTheta !== null) {
+      this.startPlayerDeathCluster(playerExplosionTheta);
       this.spawnExplosion(playerExplosionTheta, 0);
     }
     for (const enemy of destroyedEnemies) {
       this.spawnExplosion(enemy.theta, enemy.depth);
     }
+    this.updatePlayerDeathCluster(delta);
     this.updateExplosionGlows();
 
     if (playerHit) {
@@ -816,6 +868,57 @@ export class TunnelInvadersScene extends Phaser.Scene {
   private triggerHitFeedback(flashAlpha: number, shakeDurationMs: number, shakeIntensity: number): void {
     this.hitFlashAlpha = Math.max(this.hitFlashAlpha, flashAlpha);
     this.cameras.main.shake(shakeDurationMs, shakeIntensity, true);
+  }
+
+  private startPlayerDeathCluster(theta: number): void {
+    this.playerDeathCluster = {
+      theta,
+      remainingMs: PLAYER_DEATH_CLUSTER_DURATION_MS,
+      burstTimerMs: 0
+    };
+  }
+
+  private updatePlayerDeathCluster(deltaMs: number): void {
+    if (this.playerDeathCluster === null) {
+      return;
+    }
+
+    const remainingMs = Math.max(0, this.playerDeathCluster.remainingMs - deltaMs);
+    let burstTimerMs = this.playerDeathCluster.burstTimerMs - deltaMs;
+    while (remainingMs > 0 && burstTimerMs <= 0) {
+      for (let index = 0; index < PLAYER_DEATH_CLUSTER_BURST_COUNT; index += 1) {
+        const thetaJitter = Phaser.Math.FloatBetween(
+          -PLAYER_DEATH_CLUSTER_THETA_JITTER,
+          PLAYER_DEATH_CLUSTER_THETA_JITTER
+        );
+        const depthJitter = Phaser.Math.FloatBetween(
+          -PLAYER_DEATH_CLUSTER_DEPTH_JITTER,
+          PLAYER_DEATH_CLUSTER_DEPTH_JITTER
+        );
+        this.spawnExplosion(
+          this.playerDeathCluster.theta + thetaJitter,
+          clamp01(0.06 + depthJitter)
+        );
+      }
+
+      this.sfx.playExplosion({
+        pan: thetaToStereoPan(this.playerDeathCluster.theta),
+        depth: 0,
+        large: true
+      });
+      burstTimerMs += PLAYER_DEATH_CLUSTER_BURST_INTERVAL_MS;
+    }
+
+    if (remainingMs === 0) {
+      this.playerDeathCluster = null;
+      return;
+    }
+
+    this.playerDeathCluster = {
+      theta: this.playerDeathCluster.theta,
+      remainingMs,
+      burstTimerMs
+    };
   }
 
   private setupExplosionAnimations(): void {
@@ -1134,6 +1237,11 @@ export class TunnelInvadersScene extends Phaser.Scene {
   }
 
   private drawPlayer(graphics: Phaser.GameObjects.Graphics, frame: RenderFrame): void {
+    if (this.state.playerDeathTimer > 0) {
+      this.playerSprite.setVisible(false);
+      return;
+    }
+
     const blink =
       this.state.playerInvulnerabilityTimer > 0 && Math.floor(this.time.now / 100) % 2 === 0;
     if (blink) {
@@ -1146,10 +1254,19 @@ export class TunnelInvadersScene extends Phaser.Scene {
     if (this.playerSprite.texture.key !== playerTextureKey) {
       this.playerSprite.setTexture(playerTextureKey);
     }
-    const playerRadiusOffset = this.state.playerJumpTimer > 0 ? 18 : 7;
+    const respawnProgress =
+      this.state.playerRespawnEntryTimer > 0
+        ? 1 - this.state.playerRespawnEntryTimer / PLAYER_RESPAWN_ENTRY_DURATION
+        : 1;
+    const playerDepth = this.state.playerRespawnEntryTimer > 0
+      ? lerp(PLAYER_RESPAWN_DEPTH_START, 0, clamp01(respawnProgress))
+      : 0;
+    const playerRadiusOffset = this.state.playerJumpTimer > 0
+      ? 18
+      : lerp(44, 7, clamp01(respawnProgress));
     const position = projectPolarSmooth(
       this.state.playerTheta,
-      0,
+      playerDepth,
       frame,
       this.renderTuning,
       playerRadiusOffset
@@ -1159,7 +1276,16 @@ export class TunnelInvadersScene extends Phaser.Scene {
 
     this.playerSprite.setPosition(position.x, position.y);
     this.playerSprite.setRotation(facingCenterAngle + Math.PI / 2);
-    this.playerSprite.setScale(this.state.playerJumpTimer > 0 ? PLAYER_SPRITE_SCALE_JUMP : PLAYER_SPRITE_SCALE);
+    const respawnScale = lerp(0.68, 1, clamp01(respawnProgress));
+    this.playerSprite.setScale(
+      (this.state.playerJumpTimer > 0 ? PLAYER_SPRITE_SCALE_JUMP : PLAYER_SPRITE_SCALE) * respawnScale
+    );
+
+    const shieldRatio = clamp01(this.state.playerShield / PLAYER_SHIELD_MAX);
+    if (shieldRatio > 0) {
+      graphics.lineStyle(2, 0x74d8ff, 0.24 + shieldRatio * 0.36);
+      graphics.strokeCircle(position.x, position.y, 22 + shieldRatio * 8);
+    }
 
     if (this.state.playerJumpTimer > 0) {
       graphics.fillStyle(0xb2f1ff, 0.3);
@@ -1169,13 +1295,15 @@ export class TunnelInvadersScene extends Phaser.Scene {
 
   private drawEnemies(frame: RenderFrame): void {
     for (const enemy of this.state.enemies) {
+      const spriteKey = enemySpriteKeyFor(enemy);
       let sprite = this.enemySprites.get(enemy.id);
       if (sprite === undefined) {
-        const spriteKey = isLargeEnemy(enemy.enemyClass) ? ENEMY_LARGE_SPRITE_KEY : ENEMY_SPRITE_KEY;
         sprite = this.add.image(this.scale.width / 2, this.scale.height / 2, spriteKey);
         sprite.setOrigin(0.5, 0.5);
         sprite.setScale(ENEMY_SPRITE_SCALE_FAR);
         this.enemySprites.set(enemy.id, sprite);
+      } else if (sprite.texture.key !== spriteKey) {
+        sprite.setTexture(spriteKey);
       }
 
       if (!enemy.alive) {
@@ -1193,7 +1321,8 @@ export class TunnelInvadersScene extends Phaser.Scene {
 
       sprite.setVisible(true);
       sprite.setPosition(position.x, position.y);
-      sprite.setRotation(outwardAngle + Math.PI / 2 + Math.PI);
+      const behindTurn = clamp01((-enemy.depth) / 0.18) * Math.PI;
+      sprite.setRotation(outwardAngle + Math.PI / 2 + Math.PI + behindTurn);
       const depthCurve = Math.pow(clamp01(enemy.depth), 0.55);
       const baseScale = lerp(ENEMY_SPRITE_SCALE_NEAR, ENEMY_SPRITE_SCALE_FAR, depthCurve);
       const scaleMultiplier = isLargeEnemy(enemy.enemyClass) ? ENEMY_LARGE_SCALE_MULTIPLIER : 1;
@@ -1266,39 +1395,54 @@ export class TunnelInvadersScene extends Phaser.Scene {
       const visualDepth = clamp01(depth);
       const head = projectPolar(bullet.theta, depth, frame, this.renderTuning);
       if (bullet.owner === 'enemy') {
-        const enemySize = quantizeSize(
+        const trailDirection = Math.sign(bullet.depthVelocity);
+        const coreSize = quantizeSize(
           lerp(ENEMY_BULLET_CORE_SIZE_NEAR, ENEMY_BULLET_CORE_SIZE_FAR, visualDepth),
           head.pixelSize
         );
-        const glowDepth = depth - 0.04;
-        const glow = projectPolar(bullet.theta, glowDepth, frame, this.renderTuning);
-        const glowSize = quantizeSize(enemySize + ENEMY_BULLET_GLOW_SIZE_BONUS, glow.pixelSize);
-        const trailDepth = depth - ENEMY_BULLET_TRAIL_DEPTH;
-        const trail = projectPolar(bullet.theta, trailDepth, frame, this.renderTuning);
-        const trailSize = quantizeSize(enemySize * 0.86, trail.pixelSize);
-
-        graphics.fillStyle(0xff4656, 0.45);
-        graphics.fillRect(
-          snapToGrid(glow.x - glowSize / 2, glow.pixelSize),
-          snapToGrid(glow.y - glowSize / 2, glow.pixelSize),
-          glowSize,
-          glowSize
+        const smokeHead = projectPolar(
+          bullet.theta,
+          depth - trailDirection * 0.03,
+          frame,
+          this.renderTuning
+        );
+        const smokeTail = projectPolar(
+          bullet.theta,
+          depth - trailDirection * ENEMY_BULLET_TRAIL_DEPTH,
+          frame,
+          this.renderTuning
+        );
+        const smokeHeadSize = quantizeSize(
+          Math.max(coreSize * ENEMY_BULLET_SMOKE_HEAD_SCALE, smokeHead.pixelSize),
+          smokeHead.pixelSize
+        );
+        const smokeTailSize = quantizeSize(
+          Math.max(coreSize * ENEMY_BULLET_SMOKE_TAIL_SCALE, smokeTail.pixelSize),
+          smokeTail.pixelSize
         );
 
-        graphics.fillStyle(0xff7b42, 0.55);
+        graphics.fillStyle(0xff4c56, 0.38);
         graphics.fillRect(
-          snapToGrid(trail.x - trailSize / 2, trail.pixelSize),
-          snapToGrid(trail.y - trailSize / 2, trail.pixelSize),
-          trailSize,
-          trailSize
+          snapToGrid(smokeHead.x - smokeHeadSize / 2, smokeHead.pixelSize),
+          snapToGrid(smokeHead.y - smokeHeadSize / 2, smokeHead.pixelSize),
+          smokeHeadSize,
+          smokeHeadSize
+        );
+
+        graphics.fillStyle(0xff7b42, 0.46);
+        graphics.fillRect(
+          snapToGrid(smokeTail.x - smokeTailSize / 2, smokeTail.pixelSize),
+          snapToGrid(smokeTail.y - smokeTailSize / 2, smokeTail.pixelSize),
+          smokeTailSize,
+          smokeTailSize
         );
 
         graphics.fillStyle(0xffc8cf, 0.95);
         graphics.fillRect(
-          snapToGrid(head.x - enemySize / 2, head.pixelSize),
-          snapToGrid(head.y - enemySize / 2, head.pixelSize),
-          enemySize,
-          enemySize
+          snapToGrid(head.x - coreSize / 2, head.pixelSize),
+          snapToGrid(head.y - coreSize / 2, head.pixelSize),
+          coreSize,
+          coreSize
         );
         continue;
       }
@@ -1482,8 +1626,9 @@ export class TunnelInvadersScene extends Phaser.Scene {
   }
 
   private drawHud(): void {
+    const shieldPercent = Math.round((this.state.playerShield / PLAYER_SHIELD_MAX) * 100);
     this.hudText.setText(
-      `SCORE ${this.state.score.toString().padStart(5, '0')}    LIVES ${this.state.lives}    JUMP ${(this.state.playerJumpCooldownTimer === 0).toString()}`
+      `SCORE ${this.state.score.toString().padStart(5, '0')}    LIVES ${this.state.lives}    SHIELD ${shieldPercent}%    JUMP ${(this.state.playerJumpCooldownTimer === 0).toString()}`
     );
     this.updateDebugOverlay();
   }

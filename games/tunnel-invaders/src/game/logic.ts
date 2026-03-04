@@ -1,40 +1,63 @@
 import {
+  ASTEROID_COLLISION_BOUNCE_DEPTH,
+  ASTEROID_COLLISION_SHIELD_DAMAGE,
+  ASTEROID_DEPTH_SPEED,
   ASTEROID_DESPAWN_DEPTH,
   ASTEROID_HIT_ARC,
   ASTEROID_HIT_DEPTH_WINDOW,
-  ASTEROID_DEPTH_SPEED,
+  ASTEROID_LATERAL_FOLLOW_SPEED,
+  ASTEROID_LATERAL_SWAY_AMPLITUDE,
+  ASTEROID_LATERAL_SWAY_FREQUENCY,
   ASTEROID_RESPAWN_DEPTH_START,
   ASTEROID_RESPAWN_DEPTH_STEP,
   BULLET_DEPTH_SPEED,
   BULLET_LIFETIME,
-  ENEMY_ANGULAR_SPEED,
   ENEMY_BEHIND_DESPAWN_DEPTH,
   ENEMY_BULLET_DEPTH_SPEED,
   ENEMY_BULLET_LIFETIME,
+  ENEMY_BULLET_SHIELD_DAMAGE,
+  ENEMY_COLLISION_BOUNCE_DEPTH,
+  ENEMY_COLLISION_SHIELD_DAMAGE_LARGE,
+  ENEMY_COLLISION_SHIELD_DAMAGE_STANDARD,
   ENEMY_DEPTH_SPEED,
-  ENEMY_DIRECTION_SWITCH_INTERVAL,
-  ENEMY_LARGE_HP,
-  ENEMY_REINFORCEMENT_BASE_DEPTH,
-  ENEMY_REINFORCEMENT_COUNT,
-  ENEMY_REINFORCEMENT_DEPTH_STEP,
-  ENEMY_REINFORCEMENT_THETA_OFFSET,
+  ENEMY_FORMATION_CENTER_THETA,
+  ENEMY_FORMATION_SWEEP_ARC,
+  ENEMY_FORMATION_SWEEP_SPEED,
+  ENEMY_LARGE_SWEEP_ARC,
   ENEMY_SHOOT_INTERVAL,
-  ENEMY_SPIRAL_DEPTH_ACCEL,
-  ENEMY_SPIRAL_SPAWN_THETA,
-  ENEMY_SPIRAL_SWAY_AMPLITUDE,
-  ENEMY_SPIRAL_SWAY_FREQUENCY,
-  ENEMY_STANDARD_HP,
+  ENEMY_SHOOT_INTERVAL_BEHIND,
   PLAYER_ANGULAR_SPEED,
+  PLAYER_COLLISION_INVULNERABILITY,
+  PLAYER_COLLISION_THETA_PUSH,
+  PLAYER_DEATH_SEQUENCE_DURATION,
   PLAYER_INVULNERABILITY,
   PLAYER_JUMP_COOLDOWN,
   PLAYER_JUMP_DURATION,
+  PLAYER_RESPAWN_ENTRY_DURATION,
+  PLAYER_RESPAWN_INVULNERABILITY,
+  PLAYER_SHIELD_MAX,
+  PLAYER_SHIELD_REGEN_DELAY,
+  PLAYER_SHIELD_REGEN_PER_SECOND,
   PLAYER_SHOOT_COOLDOWN,
+  PLAYER_SPIN_DAMPING_PER_SECOND,
+  PLAYER_SPIN_IMPULSE,
   SCORE_PER_ENEMY,
   TAU
 } from './constants';
 import { enemyHitArc, enemyHitDepthWindow, playerHitArc, playerHitDepthWindow } from './hitbox';
-import { createInitialState } from './state';
-import type { Asteroid, Bullet, Enemy, EnemyWaveMode, FrameInput, GameState } from './types';
+import { createEnemyWave, createInitialState } from './state';
+import type { Asteroid, Bullet, Enemy, FrameInput, GameState } from './types';
+
+interface PlayerImpactState {
+  readonly lives: number;
+  readonly shield: number;
+  readonly shieldRegenDelayTimer: number;
+  readonly invulnerabilityTimer: number;
+  readonly deathTimer: number;
+  readonly respawnEntryTimer: number;
+  readonly spinVelocity: number;
+  readonly phase: 'playing' | 'lost';
+}
 
 function normalizeAngle(theta: number): number {
   const wrapped = theta % TAU;
@@ -58,48 +81,113 @@ function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
 
-function enemyMaxHpForClass(enemyClass: Enemy['enemyClass']): number {
-  return enemyClass === 'large' ? ENEMY_LARGE_HP : ENEMY_STANDARD_HP;
+function shortestAngleDelta(fromTheta: number, toTheta: number): number {
+  const wrapped = normalizeAngle(toTheta - fromTheta);
+  return wrapped > Math.PI ? wrapped - TAU : wrapped;
+}
+
+function moveAngleTowards(currentTheta: number, targetTheta: number, maxStep: number): number {
+  const delta = shortestAngleDelta(currentTheta, targetTheta);
+  if (Math.abs(delta) <= maxStep) {
+    return normalizeAngle(targetTheta);
+  }
+
+  return normalizeAngle(currentTheta + Math.sign(delta) * maxStep);
+}
+
+function dampSignedVelocity(value: number, dampingPerSecond: number, dt: number): number {
+  const damping = dampingPerSecond * dt;
+  if (Math.abs(value) <= damping) {
+    return 0;
+  }
+
+  return value - Math.sign(value) * damping;
 }
 
 function moveEnemies(
   enemies: ReadonlyArray<Enemy>,
-  direction: -1 | 1,
-  enemyWaveMode: EnemyWaveMode,
+  formationCenterTheta: number,
+  formationDirection: -1 | 1,
   dt: number
-): ReadonlyArray<Enemy> {
-  return enemies.map((enemy) =>
-    enemy.alive
-      ? (() => {
-          const depth01 = clamp01(enemy.depth);
-          const spiralProgress = 1 - depth01;
-          const baseAngularVelocity = direction * ENEMY_ANGULAR_SPEED;
-          const spiralVelocity =
-            enemyWaveMode === 'spiral'
-              ? baseAngularVelocity * (1 + spiralProgress * ENEMY_SPIRAL_DEPTH_ACCEL) +
-                Math.sin(spiralProgress * TAU * ENEMY_SPIRAL_SWAY_FREQUENCY + enemy.id * 0.67) *
-                  ENEMY_SPIRAL_SWAY_AMPLITUDE
-              : baseAngularVelocity;
+): {
+  readonly enemies: ReadonlyArray<Enemy>;
+  readonly formationCenterTheta: number;
+  readonly formationDirection: -1 | 1;
+} {
+  const centerDelta = shortestAngleDelta(ENEMY_FORMATION_CENTER_THETA, formationCenterTheta);
+  let nextDirection: -1 | 1 = formationDirection;
+  let nextCenterDelta = centerDelta + nextDirection * ENEMY_FORMATION_SWEEP_SPEED * dt;
 
-          return {
-            ...enemy,
-            theta: normalizeAngle(enemy.theta + spiralVelocity * dt),
-            depth: enemy.depth - ENEMY_DEPTH_SPEED * dt,
-            shootCooldown: tickTimer(enemy.shootCooldown, dt)
-          };
-        })()
-      : enemy
-  );
+  if (nextCenterDelta > ENEMY_FORMATION_SWEEP_ARC) {
+    const overflow = nextCenterDelta - ENEMY_FORMATION_SWEEP_ARC;
+    nextCenterDelta = ENEMY_FORMATION_SWEEP_ARC - overflow;
+    nextDirection = -1;
+  } else if (nextCenterDelta < -ENEMY_FORMATION_SWEEP_ARC) {
+    const overflow = -ENEMY_FORMATION_SWEEP_ARC - nextCenterDelta;
+    nextCenterDelta = -ENEMY_FORMATION_SWEEP_ARC + overflow;
+    nextDirection = 1;
+  }
+
+  const nextFormationCenterTheta = normalizeAngle(ENEMY_FORMATION_CENTER_THETA + nextCenterDelta);
+  const enemiesNext = enemies.map((enemy) => {
+    if (!enemy.alive) {
+      return enemy;
+    }
+
+    const baseDepth = enemy.depth - ENEMY_DEPTH_SPEED * dt;
+    if (enemy.motion === 'formation') {
+      return {
+        ...enemy,
+        theta: normalizeAngle(nextFormationCenterTheta + enemy.laneTheta),
+        depth: baseDepth,
+        shootCooldown: tickTimer(enemy.shootCooldown, dt)
+      };
+    }
+
+    let nextLaneTheta = enemy.laneTheta + enemy.lateralSpeed * dt;
+    let nextLateralSpeed = enemy.lateralSpeed;
+    if (nextLaneTheta > ENEMY_LARGE_SWEEP_ARC) {
+      const overflow = nextLaneTheta - ENEMY_LARGE_SWEEP_ARC;
+      nextLaneTheta = ENEMY_LARGE_SWEEP_ARC - overflow;
+      nextLateralSpeed = -Math.abs(nextLateralSpeed);
+    } else if (nextLaneTheta < -ENEMY_LARGE_SWEEP_ARC) {
+      const overflow = -ENEMY_LARGE_SWEEP_ARC - nextLaneTheta;
+      nextLaneTheta = -ENEMY_LARGE_SWEEP_ARC + overflow;
+      nextLateralSpeed = Math.abs(nextLateralSpeed);
+    }
+
+    return {
+      ...enemy,
+      laneTheta: nextLaneTheta,
+      lateralSpeed: nextLateralSpeed,
+      theta: normalizeAngle(nextFormationCenterTheta + nextLaneTheta),
+      depth: baseDepth,
+      shootCooldown: tickTimer(enemy.shootCooldown, dt)
+    };
+  });
+
+  return {
+    enemies: enemiesNext,
+    formationCenterTheta: nextFormationCenterTheta,
+    formationDirection: nextDirection
+  };
 }
 
 function moveAsteroids(asteroids: ReadonlyArray<Asteroid>, dt: number): ReadonlyArray<Asteroid> {
   return asteroids.map((asteroid) => {
-    const nextTheta = normalizeAngle(asteroid.theta + asteroid.angularSpeed * dt);
+    const nextLaneTheta = normalizeAngle(asteroid.laneTheta + asteroid.angularSpeed * dt);
     const nextDepth = asteroid.depth - ASTEROID_DEPTH_SPEED * dt;
+    const approachProgress = 1 - clamp01(nextDepth);
+    const sway =
+      Math.sin(approachProgress * TAU * ASTEROID_LATERAL_SWAY_FREQUENCY + asteroid.id * 0.93) *
+      ASTEROID_LATERAL_SWAY_AMPLITUDE;
+    const desiredTheta = normalizeAngle(nextLaneTheta + sway);
+    const nextTheta = moveAngleTowards(asteroid.theta, desiredTheta, ASTEROID_LATERAL_FOLLOW_SPEED * dt);
 
     if (nextDepth > ASTEROID_DESPAWN_DEPTH) {
       return {
         ...asteroid,
+        laneTheta: nextLaneTheta,
         theta: nextTheta,
         depth: nextDepth
       };
@@ -107,7 +195,8 @@ function moveAsteroids(asteroids: ReadonlyArray<Asteroid>, dt: number): Readonly
 
     return {
       ...asteroid,
-      theta: normalizeAngle(nextTheta + Math.PI * (0.62 + (asteroid.id % 3) * 0.13)),
+      laneTheta: nextLaneTheta,
+      theta: nextTheta,
       depth: ASTEROID_RESPAWN_DEPTH_START + (asteroid.id % 4) * ASTEROID_RESPAWN_DEPTH_STEP
     };
   });
@@ -171,6 +260,10 @@ function resolveBulletHits(
     }
 
     const hitEnemy = nextEnemies[hitEnemyIndex];
+    if (hitEnemy === undefined) {
+      throw new Error(`Enemy at hit index ${hitEnemyIndex} is missing.`);
+    }
+
     if (hitEnemy.hp > 1) {
       nextEnemies[hitEnemyIndex] = {
         ...hitEnemy,
@@ -194,59 +287,191 @@ function resolveBulletHits(
   };
 }
 
-function createEnemyReinforcements(
-  sourceEnemy: Enemy,
-  nextEnemyId: number,
-  enemyWaveMode: EnemyWaveMode
-): {
-  readonly enemies: ReadonlyArray<Enemy>;
-  readonly nextEnemyId: number;
-} {
-  const enemies: Enemy[] = [];
+function collisionSpinDirection(playerTheta: number, impactTheta: number): -1 | 1 {
+  const delta = shortestAngleDelta(playerTheta, impactTheta);
+  if (delta < 0) {
+    return -1;
+  }
 
-  for (let index = 0; index < ENEMY_REINFORCEMENT_COUNT; index += 1) {
-    const id = nextEnemyId + index;
-    const centeredIndex = index - (ENEMY_REINFORCEMENT_COUNT - 1) / 2;
-    const theta =
-      enemyWaveMode === 'spiral'
-        ? ENEMY_SPIRAL_SPAWN_THETA
-        : normalizeAngle(sourceEnemy.theta + centeredIndex * ENEMY_REINFORCEMENT_THETA_OFFSET);
-    const maxHp = enemyMaxHpForClass(sourceEnemy.enemyClass);
-    enemies.push({
-      id,
-      theta,
-      depth: ENEMY_REINFORCEMENT_BASE_DEPTH + index * ENEMY_REINFORCEMENT_DEPTH_STEP,
-      alive: true,
-      enemyClass: sourceEnemy.enemyClass,
-      maxHp,
-      hp: maxHp,
-      shootCooldown: enemyWaveMode === 'spiral' ? (index + 1) * 0.34 : (index + 1) * 0.24
-    });
+  return 1;
+}
+
+function applyShieldDamage(
+  current: PlayerImpactState,
+  damage: number,
+  playerTheta: number,
+  impactTheta: number
+): PlayerImpactState {
+  if (current.phase !== 'playing' || current.lives <= 0) {
+    return current;
+  }
+
+  if (current.invulnerabilityTimer > 0) {
+    return current;
+  }
+
+  const spinDirection = collisionSpinDirection(playerTheta, impactTheta);
+  const nextSpinVelocity = current.spinVelocity + spinDirection * PLAYER_SPIN_IMPULSE;
+  const remainingShield = Math.max(0, current.shield - damage);
+
+  if (remainingShield > 0) {
+    return {
+      ...current,
+      shield: remainingShield,
+      shieldRegenDelayTimer: PLAYER_SHIELD_REGEN_DELAY,
+      invulnerabilityTimer: PLAYER_COLLISION_INVULNERABILITY,
+      spinVelocity: nextSpinVelocity
+    };
+  }
+
+  const remainingLives = current.lives - 1;
+  if (remainingLives <= 0) {
+    return {
+      ...current,
+      lives: 0,
+      shield: 0,
+      shieldRegenDelayTimer: 0,
+      invulnerabilityTimer: 0,
+      deathTimer: PLAYER_DEATH_SEQUENCE_DURATION,
+      respawnEntryTimer: 0,
+      spinVelocity: nextSpinVelocity,
+      phase: 'lost'
+    };
   }
 
   return {
-    enemies,
-    nextEnemyId: nextEnemyId + ENEMY_REINFORCEMENT_COUNT
+    ...current,
+    lives: remainingLives,
+    shield: PLAYER_SHIELD_MAX,
+    shieldRegenDelayTimer: PLAYER_SHIELD_REGEN_DELAY,
+    invulnerabilityTimer:
+      PLAYER_RESPAWN_INVULNERABILITY +
+      PLAYER_RESPAWN_ENTRY_DURATION +
+      PLAYER_DEATH_SEQUENCE_DURATION,
+    deathTimer: PLAYER_DEATH_SEQUENCE_DURATION,
+    respawnEntryTimer: PLAYER_DEATH_SEQUENCE_DURATION + PLAYER_RESPAWN_ENTRY_DURATION,
+    spinVelocity: nextSpinVelocity,
+    phase: 'playing'
+  };
+}
+
+function resolveEnemyLifecycle(
+  enemies: ReadonlyArray<Enemy>,
+  bullets: ReadonlyArray<Bullet>,
+  playerTheta: number,
+  playerJumpTimer: number,
+  playerImpact: PlayerImpactState
+): {
+  readonly enemies: ReadonlyArray<Enemy>;
+  readonly bullets: ReadonlyArray<Bullet>;
+  readonly playerImpact: PlayerImpactState;
+} {
+  const playerArc = playerHitArc();
+  const playerDepthWindow = playerHitDepthWindow();
+  const nextEnemies: Enemy[] = [];
+  let nextBullets = bullets.slice();
+  let nextImpact = playerImpact;
+
+  for (const enemy of enemies) {
+    if (!enemy.alive) {
+      nextEnemies.push(enemy);
+      continue;
+    }
+
+    let current = enemy;
+
+    if (current.depth >= 0 && current.shootCooldown === 0) {
+      nextBullets = nextBullets.concat({
+        theta: current.theta,
+        depth: current.depth,
+        depthVelocity: -ENEMY_BULLET_DEPTH_SPEED,
+        ttl: ENEMY_BULLET_LIFETIME,
+        owner: 'enemy'
+      });
+      current = {
+        ...current,
+        shootCooldown: ENEMY_SHOOT_INTERVAL
+      };
+    } else if (current.depth < 0 && current.shootCooldown === 0) {
+      nextBullets = nextBullets.concat({
+        theta: current.theta,
+        depth: current.depth,
+        depthVelocity: ENEMY_BULLET_DEPTH_SPEED,
+        ttl: ENEMY_BULLET_LIFETIME,
+        owner: 'enemy'
+      });
+      current = {
+        ...current,
+        shootCooldown: ENEMY_SHOOT_INTERVAL_BEHIND
+      };
+    }
+
+    const atPlayerSector = angleDistance(current.theta, playerTheta) <= playerArc;
+    const atPlayerDepth = Math.abs(current.depth) <= playerDepthWindow;
+    const canCollide =
+      atPlayerSector &&
+      atPlayerDepth &&
+      playerJumpTimer === 0 &&
+      nextImpact.phase === 'playing' &&
+      nextImpact.deathTimer === 0 &&
+      nextImpact.respawnEntryTimer === 0;
+
+    if (canCollide) {
+      const collisionDamage =
+        current.enemyClass === 'large'
+          ? ENEMY_COLLISION_SHIELD_DAMAGE_LARGE
+          : ENEMY_COLLISION_SHIELD_DAMAGE_STANDARD;
+      nextImpact = applyShieldDamage(nextImpact, collisionDamage, playerTheta, current.theta);
+
+      const pushDirection = collisionSpinDirection(playerTheta, current.theta);
+      const laneShift = pushDirection * PLAYER_COLLISION_THETA_PUSH;
+      const nextLaneTheta =
+        current.motion === 'formation'
+          ? current.laneTheta + laneShift
+          : current.laneTheta + laneShift * 0.45;
+
+      current = {
+        ...current,
+        laneTheta: nextLaneTheta,
+        theta: normalizeAngle(current.theta + laneShift),
+        depth: Math.max(current.depth, ENEMY_COLLISION_BOUNCE_DEPTH),
+        lateralSpeed:
+          current.motion === 'sweeper' ? -current.lateralSpeed : current.lateralSpeed,
+        shootCooldown: Math.max(current.shootCooldown, 0.85)
+      };
+    }
+
+    if (current.depth <= ENEMY_BEHIND_DESPAWN_DEPTH) {
+      nextEnemies.push({
+        ...current,
+        alive: false
+      });
+      continue;
+    }
+
+    nextEnemies.push(current);
+  }
+
+  return {
+    enemies: nextEnemies,
+    bullets: nextBullets,
+    playerImpact: nextImpact
   };
 }
 
 function resolveEnemyBulletHits(
   bullets: ReadonlyArray<Bullet>,
-  lives: number,
   playerTheta: number,
-  playerInvulnerabilityTimer: number,
-  playerJumpTimer: number
+  playerJumpTimer: number,
+  playerImpact: PlayerImpactState
 ): {
   readonly bullets: ReadonlyArray<Bullet>;
-  readonly lives: number;
-  readonly playerInvulnerabilityTimer: number;
-  readonly phase: 'playing' | 'lost';
+  readonly playerImpact: PlayerImpactState;
 } {
-  let nextLives = lives;
-  let nextInvulnerability = playerInvulnerabilityTimer;
   const playerArc = playerHitArc();
   const playerDepthWindow = playerHitDepthWindow();
   const survivingBullets: Bullet[] = [];
+  let nextImpact = playerImpact;
 
   for (const bullet of bullets) {
     if (bullet.owner !== 'enemy') {
@@ -260,153 +485,71 @@ function resolveEnemyBulletHits(
     }
 
     const atPlayerSector = angleDistance(bullet.theta, playerTheta) <= playerArc;
-    const canDamagePlayer =
-      atPlayerSector && nextInvulnerability === 0 && playerJumpTimer === 0 && nextLives > 0;
+    if (!atPlayerSector) {
+      survivingBullets.push(bullet);
+      continue;
+    }
 
-    if (canDamagePlayer) {
-      nextLives -= 1;
-      nextInvulnerability = nextLives > 0 ? PLAYER_INVULNERABILITY : 0;
+    if (
+      playerJumpTimer === 0 &&
+      nextImpact.phase === 'playing' &&
+      nextImpact.deathTimer === 0 &&
+      nextImpact.respawnEntryTimer === 0
+    ) {
+      nextImpact = applyShieldDamage(nextImpact, ENEMY_BULLET_SHIELD_DAMAGE, playerTheta, bullet.theta);
     }
   }
 
   return {
     bullets: survivingBullets,
-    lives: nextLives,
-    playerInvulnerabilityTimer: nextInvulnerability,
-    phase: nextLives > 0 ? 'playing' : 'lost'
-  };
-}
-
-function resolveEnemyLifecycle(
-  enemies: ReadonlyArray<Enemy>,
-  bullets: ReadonlyArray<Bullet>,
-  nextEnemyId: number,
-  enemyWaveMode: EnemyWaveMode,
-  lives: number,
-  playerTheta: number,
-  playerInvulnerabilityTimer: number,
-  playerJumpTimer: number
-): {
-  readonly enemies: ReadonlyArray<Enemy>;
-  readonly bullets: ReadonlyArray<Bullet>;
-  readonly nextEnemyId: number;
-  readonly lives: number;
-  readonly playerInvulnerabilityTimer: number;
-  readonly phase: 'playing' | 'lost';
-} {
-  let nextLives = lives;
-  let nextInvulnerability = playerInvulnerabilityTimer;
-  const playerArc = playerHitArc();
-  let nextNextEnemyId = nextEnemyId;
-  let nextBullets = bullets.slice();
-  const nextEnemies: Enemy[] = [];
-
-  for (const enemy of enemies) {
-    if (!enemy.alive) {
-      nextEnemies.push(enemy);
-      continue;
-    }
-
-    let current = enemy;
-
-    if (current.depth <= 0) {
-      const atPlayerSector = angleDistance(current.theta, playerTheta) <= playerArc;
-      const canDamagePlayer =
-        atPlayerSector && nextInvulnerability === 0 && playerJumpTimer === 0 && nextLives > 0;
-
-      if (canDamagePlayer) {
-        nextLives -= 1;
-        nextInvulnerability = nextLives > 0 ? PLAYER_INVULNERABILITY : 0;
-        nextEnemies.push({
-          ...current,
-          alive: false,
-          depth: 0
-        });
-        continue;
-      }
-    }
-
-    const canShootFromFront = current.enemyClass === 'large' && current.depth >= 0;
-    if (current.depth < 0 || canShootFromFront) {
-      if (current.shootCooldown === 0) {
-        const depthVelocity = current.depth >= 0 ? -ENEMY_BULLET_DEPTH_SPEED : ENEMY_BULLET_DEPTH_SPEED;
-        nextBullets = nextBullets.concat({
-          theta: current.theta,
-          depth: current.depth,
-          depthVelocity,
-          ttl: ENEMY_BULLET_LIFETIME,
-          owner: 'enemy'
-        });
-        current = {
-          ...current,
-          shootCooldown: ENEMY_SHOOT_INTERVAL
-        };
-      }
-
-      if (current.depth <= ENEMY_BEHIND_DESPAWN_DEPTH) {
-        const reinforcement = createEnemyReinforcements(current, nextNextEnemyId, enemyWaveMode);
-        nextNextEnemyId = reinforcement.nextEnemyId;
-        nextEnemies.push(...reinforcement.enemies);
-        continue;
-      }
-    }
-
-    nextEnemies.push(current);
-  }
-
-  const enemyBulletHits = resolveEnemyBulletHits(
-    nextBullets,
-    nextLives,
-    playerTheta,
-    nextInvulnerability,
-    playerJumpTimer
-  );
-
-  return {
-    enemies: nextEnemies,
-    bullets: enemyBulletHits.bullets,
-    nextEnemyId: nextNextEnemyId,
-    lives: enemyBulletHits.lives,
-    playerInvulnerabilityTimer: enemyBulletHits.playerInvulnerabilityTimer,
-    phase: enemyBulletHits.phase
+    playerImpact: nextImpact
   };
 }
 
 function resolveAsteroidHits(
   asteroids: ReadonlyArray<Asteroid>,
-  lives: number,
   playerTheta: number,
-  playerInvulnerabilityTimer: number,
-  playerJumpTimer: number
+  playerJumpTimer: number,
+  playerImpact: PlayerImpactState
 ): {
-  readonly lives: number;
-  readonly playerInvulnerabilityTimer: number;
-  readonly phase: 'playing' | 'lost';
+  readonly asteroids: ReadonlyArray<Asteroid>;
+  readonly playerImpact: PlayerImpactState;
 } {
-  let nextLives = lives;
-  let nextInvulnerability = playerInvulnerabilityTimer;
+  let nextImpact = playerImpact;
+  const nextAsteroids: Asteroid[] = [];
 
   for (const asteroid of asteroids) {
-    if (Math.abs(asteroid.depth) > ASTEROID_HIT_DEPTH_WINDOW) {
-      continue;
-    }
-
+    const atPlayerDepth = Math.abs(asteroid.depth) <= ASTEROID_HIT_DEPTH_WINDOW;
     const atPlayerSector = angleDistance(asteroid.theta, playerTheta) <= ASTEROID_HIT_ARC;
-    const canDamagePlayer =
-      atPlayerSector && nextInvulnerability === 0 && playerJumpTimer === 0 && nextLives > 0;
+    const canCollide =
+      atPlayerDepth &&
+      atPlayerSector &&
+      playerJumpTimer === 0 &&
+      nextImpact.phase === 'playing' &&
+      nextImpact.deathTimer === 0 &&
+      nextImpact.respawnEntryTimer === 0;
 
-    if (!canDamagePlayer) {
+    if (!canCollide) {
+      nextAsteroids.push(asteroid);
       continue;
     }
 
-    nextLives -= 1;
-    nextInvulnerability = nextLives > 0 ? PLAYER_INVULNERABILITY : 0;
+    nextImpact = applyShieldDamage(nextImpact, ASTEROID_COLLISION_SHIELD_DAMAGE, playerTheta, asteroid.theta);
+    const pushDirection = collisionSpinDirection(playerTheta, asteroid.theta);
+    const laneShift = pushDirection * PLAYER_COLLISION_THETA_PUSH;
+
+    nextAsteroids.push({
+      ...asteroid,
+      laneTheta: normalizeAngle(asteroid.laneTheta + laneShift),
+      theta: normalizeAngle(asteroid.theta + laneShift),
+      depth: Math.max(asteroid.depth, ASTEROID_COLLISION_BOUNCE_DEPTH),
+      angularSpeed: -asteroid.angularSpeed
+    });
   }
 
   return {
-    lives: nextLives,
-    playerInvulnerabilityTimer: nextInvulnerability,
-    phase: nextLives > 0 ? 'playing' : 'lost'
+    asteroids: nextAsteroids,
+    playerImpact: nextImpact
   };
 }
 
@@ -457,16 +600,22 @@ export function stepGame(state: GameState, input: FrameInput, dt: number): GameS
     };
   }
 
-  const moveXSigned = clampSigned(input.moveXSigned);
-  const nextPlayerTheta = normalizeAngle(state.playerTheta + moveXSigned * PLAYER_ANGULAR_SPEED * dt);
+  const deathTimer = tickTimer(state.playerDeathTimer, dt);
+  const respawnEntryTimer = tickTimer(state.playerRespawnEntryTimer, dt);
+  const canControlPlayer = deathTimer === 0 && respawnEntryTimer === 0;
+  const moveXSigned = canControlPlayer ? clampSigned(input.moveXSigned) : 0;
+
+  const nextSpinVelocity = dampSignedVelocity(state.playerSpinVelocity, PLAYER_SPIN_DAMPING_PER_SECOND, dt);
+  const nextPlayerTheta = normalizeAngle(
+    state.playerTheta + (moveXSigned * PLAYER_ANGULAR_SPEED + nextSpinVelocity) * dt
+  );
 
   let bullets = moveBullets(state.bullets, dt);
   let shootCooldown = tickTimer(state.playerShootCooldownTimer, dt);
   let jumpTimer = tickTimer(state.playerJumpTimer, dt);
   let jumpCooldown = tickTimer(state.playerJumpCooldownTimer, dt);
-  const invulnerabilityTimer = tickTimer(state.playerInvulnerabilityTimer, dt);
 
-  if (input.fireHeld && shootCooldown === 0) {
+  if (canControlPlayer && input.fireHeld && shootCooldown === 0) {
     bullets = bullets.concat({
       theta: nextPlayerTheta,
       depth: 0.02,
@@ -477,62 +626,111 @@ export function stepGame(state: GameState, input: FrameInput, dt: number): GameS
     shootCooldown = PLAYER_SHOOT_COOLDOWN;
   }
 
-  if (input.jumpPressed && jumpCooldown === 0) {
+  if (canControlPlayer && input.jumpPressed && jumpCooldown === 0) {
     jumpTimer = PLAYER_JUMP_DURATION;
     jumpCooldown = PLAYER_JUMP_COOLDOWN;
   }
 
-  let enemyDirection = state.enemyDirection;
-  let enemyDirectionTimer = state.enemyDirectionTimer - dt;
-  if (enemyDirectionTimer <= 0) {
-    enemyDirection = enemyDirection === 1 ? -1 : 1;
-    enemyDirectionTimer = ENEMY_DIRECTION_SWITCH_INTERVAL;
-  }
-
-  const movedEnemies = moveEnemies(state.enemies, enemyDirection, state.enemyWaveMode, dt);
+  const movedEnemyFormation = moveEnemies(
+    state.enemies,
+    state.enemyFormationCenterTheta,
+    state.enemyFormationDirection,
+    dt
+  );
   const movedAsteroids = moveAsteroids(state.asteroids, dt);
-  const afterBulletHits = resolveBulletHits(movedEnemies, bullets, state.score);
-  const lifecycleResult = resolveEnemyLifecycle(
+  const afterBulletHits = resolveBulletHits(movedEnemyFormation.enemies, bullets, state.score);
+
+  const baseImpact: PlayerImpactState = {
+    lives: state.lives,
+    shield: state.playerShield,
+    shieldRegenDelayTimer: tickTimer(state.playerShieldRegenDelayTimer, dt),
+    invulnerabilityTimer: tickTimer(state.playerInvulnerabilityTimer, dt),
+    deathTimer,
+    respawnEntryTimer,
+    spinVelocity: nextSpinVelocity,
+    phase: 'playing'
+  };
+
+  const afterLifecycle = resolveEnemyLifecycle(
     afterBulletHits.enemies,
     afterBulletHits.bullets,
-    state.nextEnemyId,
-    state.enemyWaveMode,
-    state.lives,
     nextPlayerTheta,
-    invulnerabilityTimer,
-    jumpTimer
+    jumpTimer,
+    baseImpact
   );
-  const asteroidHits = resolveAsteroidHits(
-    movedAsteroids,
-    lifecycleResult.lives,
+  const afterEnemyBullets = resolveEnemyBulletHits(
+    afterLifecycle.bullets,
     nextPlayerTheta,
-    lifecycleResult.playerInvulnerabilityTimer,
-    jumpTimer
+    jumpTimer,
+    afterLifecycle.playerImpact
+  );
+  const afterAsteroids = resolveAsteroidHits(
+    movedAsteroids,
+    nextPlayerTheta,
+    jumpTimer,
+    afterEnemyBullets.playerImpact
   );
 
-  let phase: GameState['phase'] = lifecycleResult.phase;
-  if (phase === 'playing' && asteroidHits.phase === 'lost') {
+  let phase: GameState['phase'] = afterAsteroids.playerImpact.phase;
+  let nextShield = afterAsteroids.playerImpact.shield;
+  const nextShieldRegenDelay = afterAsteroids.playerImpact.shieldRegenDelayTimer;
+
+  if (
+    phase === 'playing' &&
+    nextShieldRegenDelay === 0 &&
+    afterAsteroids.playerImpact.deathTimer === 0 &&
+    afterAsteroids.playerImpact.respawnEntryTimer === 0
+  ) {
+    nextShield = Math.min(PLAYER_SHIELD_MAX, nextShield + PLAYER_SHIELD_REGEN_PER_SECOND * dt);
+  }
+
+  let nextEnemyId = state.nextEnemyId;
+  let enemies = afterLifecycle.enemies;
+  let enemyFormationCenterTheta = movedEnemyFormation.formationCenterTheta;
+  let enemyFormationDirection = movedEnemyFormation.formationDirection;
+
+  if (phase === 'playing' && allEnemiesDefeated(enemies)) {
+    const enemyWave = createEnemyWave(nextEnemyId);
+    nextEnemyId = enemyWave.nextEnemyId;
+    enemies = enemyWave.enemies;
+    enemyFormationCenterTheta = ENEMY_FORMATION_CENTER_THETA;
+    enemyFormationDirection = 1;
+  }
+
+  if (phase !== 'playing' && phase !== 'lost') {
     phase = 'lost';
   }
-  if (phase === 'playing' && allEnemiesDefeated(lifecycleResult.enemies)) {
-    phase = 'won';
+
+  const lives = afterAsteroids.playerImpact.lives;
+  if (lives <= 0) {
+    phase = 'lost';
   }
+
+  const invulnerabilityTimer =
+    phase === 'playing' || phase === 'lost'
+      ? afterAsteroids.playerImpact.invulnerabilityTimer
+      : PLAYER_INVULNERABILITY;
 
   return {
     phase,
     score: afterBulletHits.score,
-    lives: asteroidHits.lives,
+    lives,
     playerTheta: nextPlayerTheta,
-    playerInvulnerabilityTimer: asteroidHits.playerInvulnerabilityTimer,
+    playerSpinVelocity: afterAsteroids.playerImpact.spinVelocity,
+    playerShield: nextShield,
+    playerShieldRegenDelayTimer: nextShieldRegenDelay,
+    playerDeathTimer: afterAsteroids.playerImpact.deathTimer,
+    playerRespawnEntryTimer: afterAsteroids.playerImpact.respawnEntryTimer,
+    playerInvulnerabilityTimer: invulnerabilityTimer,
     playerShootCooldownTimer: shootCooldown,
     playerJumpTimer: jumpTimer,
     playerJumpCooldownTimer: jumpCooldown,
-    enemyDirection,
-    enemyDirectionTimer,
+    enemyFormationCenterTheta,
+    enemyFormationDirection,
     enemyWaveMode: state.enemyWaveMode,
-    nextEnemyId: lifecycleResult.nextEnemyId,
-    enemies: lifecycleResult.enemies,
-    asteroids: movedAsteroids,
-    bullets: lifecycleResult.bullets
+    nextEnemyId,
+    enemies,
+    asteroids: afterAsteroids.asteroids,
+    bullets: afterEnemyBullets.bullets
   };
 }

@@ -10,6 +10,8 @@ export interface LauncherState {
   readonly cursorIndex: number;
   readonly gameIndex: number;
   readonly controllerIndex: number;
+  readonly audioMixProfileIndex: number;
+  readonly sfxLoopEnabled: boolean;
   readonly startRequested: boolean;
 }
 
@@ -58,6 +60,8 @@ export function createInitialLauncherState(): LauncherState {
     cursorIndex: MENU_ROW_GAME,
     gameIndex: 0,
     controllerIndex: 0,
+    audioMixProfileIndex: 0,
+    sfxLoopEnabled: false,
     startRequested: false
   };
 }

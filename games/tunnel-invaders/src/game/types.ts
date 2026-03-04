@@ -3,8 +3,12 @@ export type EnemyWaveMode = 'spread' | 'spiral';
 
 export interface Enemy {
   readonly id: number;
+  readonly motion: 'formation' | 'sweeper';
+  readonly formationRow: number;
+  readonly laneTheta: number;
   readonly theta: number;
   readonly depth: number;
+  readonly lateralSpeed: number;
   readonly alive: boolean;
   readonly enemyClass: EnemyClass;
   readonly maxHp: number;
@@ -14,6 +18,7 @@ export interface Enemy {
 
 export interface Asteroid {
   readonly id: number;
+  readonly laneTheta: number;
   readonly theta: number;
   readonly depth: number;
   readonly angularSpeed: number;
@@ -44,12 +49,17 @@ export interface GameState {
   readonly score: number;
   readonly lives: number;
   readonly playerTheta: number;
+  readonly playerSpinVelocity: number;
+  readonly playerShield: number;
+  readonly playerShieldRegenDelayTimer: number;
+  readonly playerDeathTimer: number;
+  readonly playerRespawnEntryTimer: number;
   readonly playerInvulnerabilityTimer: number;
   readonly playerShootCooldownTimer: number;
   readonly playerJumpTimer: number;
   readonly playerJumpCooldownTimer: number;
-  readonly enemyDirection: -1 | 1;
-  readonly enemyDirectionTimer: number;
+  readonly enemyFormationCenterTheta: number;
+  readonly enemyFormationDirection: -1 | 1;
   readonly enemyWaveMode: EnemyWaveMode;
   readonly nextEnemyId: number;
   readonly enemies: ReadonlyArray<Enemy>;

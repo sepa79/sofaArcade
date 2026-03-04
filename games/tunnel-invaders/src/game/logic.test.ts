@@ -2,14 +2,20 @@ import { describe, expect, it } from 'vitest';
 
 import {
   BULLET_DEPTH_SPEED,
-  ENEMY_ANGULAR_SPEED,
   ENEMY_BULLET_DEPTH_SPEED,
-  ENEMY_DEPTH_SPEED,
+  ENEMY_COUNT,
+  ENEMY_LARGE_COUNT,
   FIXED_TIMESTEP
 } from './constants';
 import { stepGame } from './logic';
 import { createInitialState } from './state';
 import type { GameState } from './types';
+
+function shortestAngleDelta(fromTheta: number, toTheta: number): number {
+  const twoPi = Math.PI * 2;
+  const wrapped = ((toTheta - fromTheta) % twoPi + twoPi) % twoPi;
+  return wrapped > Math.PI ? wrapped - twoPi : wrapped;
+}
 
 describe('stepGame (tunnel invaders depth model)', () => {
   it('starts game from ready on start press', () => {
@@ -51,6 +57,39 @@ describe('stepGame (tunnel invaders depth model)', () => {
     expect(next.playerTheta).not.toBe(base.playerTheta);
   });
 
+  it('moves enemy formation in X while preserving row spacing', () => {
+    const base = {
+      ...createInitialState('spread'),
+      phase: 'playing' as const
+    };
+
+    const next = stepGame(
+      base,
+      {
+        moveXSigned: 0,
+        fireHeld: false,
+        jumpPressed: false,
+        pausePressed: false,
+        startPressed: false
+      },
+      FIXED_TIMESTEP
+    );
+
+    expect(next.enemyFormationCenterTheta).not.toBe(base.enemyFormationCenterTheta);
+    expect(next.enemyFormationDirection).toBe(base.enemyFormationDirection);
+
+    const baseEnemyA = base.enemies[0];
+    const baseEnemyB = base.enemies[1];
+    const nextEnemyA = next.enemies[0];
+    const nextEnemyB = next.enemies[1];
+    const baseSpacing = shortestAngleDelta(baseEnemyA.theta, baseEnemyB.theta);
+    const nextSpacing = shortestAngleDelta(nextEnemyA.theta, nextEnemyB.theta);
+
+    expect(nextSpacing).toBeCloseTo(baseSpacing, 4);
+    expect(nextEnemyA.depth).toBeLessThan(baseEnemyA.depth);
+    expect(nextEnemyB.depth).toBeLessThan(baseEnemyB.depth);
+  });
+
   it('kills enemy and awards score when bullet intersects angle and depth', () => {
     const initial = createInitialState('spread');
     const target = initial.enemies[1];
@@ -63,6 +102,7 @@ describe('stepGame (tunnel invaders depth model)', () => {
         index === 1
           ? {
               ...enemy,
+              laneTheta: targetTheta,
               theta: targetTheta,
               depth: targetDepth,
               alive: true
@@ -114,27 +154,25 @@ describe('stepGame (tunnel invaders depth model)', () => {
     );
 
     expect(next.score).toBe(100);
-    expect(next.enemies[target.id].alive).toBe(false);
+    expect(next.enemies).toHaveLength(ENEMY_COUNT + ENEMY_LARGE_COUNT);
+    expect(next.enemies.find((enemy) => enemy.id === target.id)).toBeUndefined();
   });
 
   it('uses dynamic hit arc by enemy depth (same offset hits near, misses far)', () => {
     const initial = createInitialState('spread');
     const thetaBase = 1;
-    const angleStep = ENEMY_ANGULAR_SPEED * FIXED_TIMESTEP;
     const finalAngleOffset = 0.011;
     const finalDepthOffset = 0.005;
-    const depthStep = (BULLET_DEPTH_SPEED + ENEMY_DEPTH_SPEED) * FIXED_TIMESTEP;
 
     const runShot = (enemyDepth: number): GameState => {
-      const bulletDepth = enemyDepth - depthStep - finalDepthOffset;
-      const bulletTheta = thetaBase + angleStep - finalAngleOffset;
-      const state: GameState = {
+      const stateBeforeShot: GameState = {
         ...initial,
         phase: 'playing',
         enemies: initial.enemies.map((enemy, index) =>
           index === 1
             ? {
                 ...enemy,
+                laneTheta: thetaBase,
                 theta: thetaBase,
                 depth: enemyDepth,
                 alive: true
@@ -142,8 +180,28 @@ describe('stepGame (tunnel invaders depth model)', () => {
             : {
                 ...enemy,
                 alive: false
-              }
+            }
         ),
+        bullets: []
+      };
+
+      const projected = stepGame(
+        stateBeforeShot,
+        {
+          moveXSigned: 0,
+          fireHeld: false,
+          jumpPressed: false,
+          pausePressed: false,
+          startPressed: false
+        },
+        FIXED_TIMESTEP
+      );
+      const movedTarget = projected.enemies[1];
+
+      const bulletDepth = movedTarget.depth - BULLET_DEPTH_SPEED * FIXED_TIMESTEP - finalDepthOffset;
+      const bulletTheta = movedTarget.theta - finalAngleOffset;
+      const armedState: GameState = {
+        ...stateBeforeShot,
         bullets: [
           {
             theta: bulletTheta,
@@ -156,7 +214,7 @@ describe('stepGame (tunnel invaders depth model)', () => {
       };
 
       return stepGame(
-        state,
+        armedState,
         {
           moveXSigned: 0,
           fireHeld: false,
@@ -175,7 +233,7 @@ describe('stepGame (tunnel invaders depth model)', () => {
     expect(far.score).toBe(0);
   });
 
-  it('reduces life when enemy reaches edge in player sector', () => {
+  it('reduces shield when enemy reaches edge in player sector', () => {
     const initial = createInitialState();
 
     const state: GameState = {
@@ -185,6 +243,7 @@ describe('stepGame (tunnel invaders depth model)', () => {
         index === 0
           ? {
               ...enemy,
+              laneTheta: 0,
               theta: initial.playerTheta,
               depth: 0.001,
               alive: true
@@ -208,7 +267,8 @@ describe('stepGame (tunnel invaders depth model)', () => {
       FIXED_TIMESTEP
     );
 
-    expect(next.lives).toBe(2);
+    expect(next.lives).toBe(initial.lives);
+    expect(next.playerShield).toBeLessThan(initial.playerShield);
   });
 
   it('keeps life when enemy reaches edge during jump phase', () => {
@@ -222,6 +282,7 @@ describe('stepGame (tunnel invaders depth model)', () => {
         index === 0
           ? {
               ...enemy,
+              laneTheta: 0,
               theta: initial.playerTheta,
               depth: 0.001,
               alive: true
@@ -283,7 +344,7 @@ describe('stepGame (tunnel invaders depth model)', () => {
     expect(resumed.phase).toBe('playing');
   });
 
-  it('spawns two reinforcements of same class when enemy passes behind player', () => {
+  it('spawns a new wave when the last enemy leaves behind the player', () => {
     const initial = createInitialState();
     const state: GameState = {
       ...initial,
@@ -311,13 +372,13 @@ describe('stepGame (tunnel invaders depth model)', () => {
       FIXED_TIMESTEP
     );
 
-    const aliveEnemies = next.enemies.filter((enemy) => enemy.alive);
-    expect(aliveEnemies).toHaveLength(2);
-    expect(aliveEnemies.every((enemy) => enemy.enemyClass === 'large')).toBe(true);
-    expect(next.nextEnemyId).toBe(state.nextEnemyId + 2);
+    expect(next.phase).toBe('playing');
+    expect(next.enemies).toHaveLength(ENEMY_COUNT + ENEMY_LARGE_COUNT);
+    expect(next.enemies.every((enemy) => enemy.alive)).toBe(true);
+    expect(next.nextEnemyId).toBe(state.nextEnemyId + ENEMY_COUNT + ENEMY_LARGE_COUNT);
   });
 
-  it('enemy bullet can hit player when crossing player depth', () => {
+  it('enemy bullet can reduce shield when crossing player depth', () => {
     const initial = createInitialState();
     const state: GameState = {
       ...initial,
@@ -349,6 +410,7 @@ describe('stepGame (tunnel invaders depth model)', () => {
       FIXED_TIMESTEP
     );
 
-    expect(next.lives).toBe(initial.lives - 1);
+    expect(next.lives).toBe(initial.lives);
+    expect(next.playerShield).toBeLessThan(initial.playerShield);
   });
 });
