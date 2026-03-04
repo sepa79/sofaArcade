@@ -1,4 +1,8 @@
 import {
+  ASTEROID_BASE_ANGULAR_SPEED,
+  ASTEROID_COUNT,
+  ASTEROID_RESPAWN_DEPTH_START,
+  ASTEROID_RESPAWN_DEPTH_STEP,
   ENEMY_COUNT,
   ENEMY_DIRECTION_SWITCH_INTERVAL,
   ENEMY_LARGE_HP,
@@ -7,7 +11,7 @@ import {
   PLAYER_LIVES,
   TAU
 } from './constants';
-import type { Enemy, EnemyWaveMode, GameState } from './types';
+import type { Asteroid, Enemy, EnemyWaveMode, GameState } from './types';
 
 const DEFAULT_WAVE_MODE: EnemyWaveMode = 'spiral';
 const SPIRAL_SPAWN_DEPTH_START = 1.08;
@@ -50,6 +54,24 @@ function createEnemies(enemyWaveMode: EnemyWaveMode): ReadonlyArray<Enemy> {
   return enemies;
 }
 
+function createAsteroids(): ReadonlyArray<Asteroid> {
+  const spacing = TAU / ASTEROID_COUNT;
+  const asteroids: Asteroid[] = [];
+
+  for (let index = 0; index < ASTEROID_COUNT; index += 1) {
+    const direction = index % 2 === 0 ? 1 : -1;
+    const speedOffset = (index % 3) * 0.045;
+    asteroids.push({
+      id: index,
+      theta: normalizeAngle(index * spacing + Math.PI / 7),
+      depth: ASTEROID_RESPAWN_DEPTH_START + (index % 3) * ASTEROID_RESPAWN_DEPTH_STEP,
+      angularSpeed: direction * (ASTEROID_BASE_ANGULAR_SPEED + speedOffset)
+    });
+  }
+
+  return asteroids;
+}
+
 export function createInitialState(enemyWaveMode: EnemyWaveMode = DEFAULT_WAVE_MODE): GameState {
   return {
     phase: 'ready',
@@ -65,6 +87,7 @@ export function createInitialState(enemyWaveMode: EnemyWaveMode = DEFAULT_WAVE_M
     enemyWaveMode,
     nextEnemyId: ENEMY_COUNT,
     enemies: createEnemies(enemyWaveMode),
+    asteroids: createAsteroids(),
     bullets: []
   };
 }

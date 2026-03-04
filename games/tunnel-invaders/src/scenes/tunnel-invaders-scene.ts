@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
+import { RetroSfx } from '@light80/game-sdk';
 
-import { RetroSfx } from '../audio/retro-sfx';
 import {
   FIXED_TIMESTEP,
   PLAYER_SPRITE_SCALE,
@@ -11,26 +11,33 @@ import {
   TUNNEL_INNER_RADIUS,
   TUNNEL_OUTER_RADIUS
 } from '../game/constants';
+import backgroundMusicTrack from '../assets/game-bgm.mp3';
 import { enemyHitArc, enemyHitDepthWindow, playerHitArc, playerHitDepthWindow } from '../game/hitbox';
 import { createInputContext, readFrameInput } from '../game/input';
 import { stepGame } from '../game/logic';
 import { createInitialState } from '../game/state';
 import explosionSrc1Image from '../assets/explosion_src_1.png';
 import explosionSrc2Image from '../assets/explosion_src_2.png';
+import asteroidSpriteImage from '../assets/sprite_asteroid_1.png';
 import enemyFighterImage from '../assets/sprite_enemy_1.png';
 import enemyLargeImage from '../assets/sprite_enemy_3.png';
+import fighterShipAltImage from '../assets/sprite_player_1a.png';
 import fighterShipImage from '../assets/sprite_player_1.png';
 import type { InputContext } from '../game/input';
-import type { Enemy, GameState, TunnelPhase } from '../game/types';
+import type { Bullet, Enemy, GameState, TunnelPhase } from '../game/types';
 
 export const TUNNEL_INVADERS_SCENE_KEY = 'tunnel-invaders';
 const PLAYER_SPRITE_KEY = 'tunnel-player-ship';
+const PLAYER_SPRITE_ALT_KEY = 'tunnel-player-ship-alt';
 const ENEMY_SPRITE_KEY = 'tunnel-enemy-ship';
 const ENEMY_LARGE_SPRITE_KEY = 'tunnel-enemy-ship-large';
+const ASTEROID_SPRITE_KEY = 'tunnel-asteroid';
 const EXPLOSION_TEXTURE_KEY_1 = 'tunnel-explosion-1';
 const EXPLOSION_TEXTURE_KEY_2 = 'tunnel-explosion-2';
 const EXPLOSION_ANIM_KEY_1 = 'tunnel-explosion-anim-1';
 const EXPLOSION_ANIM_KEY_2 = 'tunnel-explosion-anim-2';
+const BACKGROUND_MUSIC_KEY = 'tunnel-invaders-background-music';
+const BACKGROUND_MUSIC_VOLUME = 0.42;
 
 const WORM_DRIFT_CAP_X = 18;
 const WORM_DRIFT_CAP_Y = 16;
@@ -51,8 +58,8 @@ const TWIST_SCALE_MIN = 0;
 const TWIST_SCALE_MAX = 2;
 const TWIST_SCALE_STEP = 0.05;
 const DEPTH_SCALE_DEFAULT = 1;
-const DEPTH_SCALE_DEEP = 4.5;
-const DEPTH_SCALE_MAX = 20;
+const DEPTH_SCALE_DEEP = 20;
+const DEPTH_SCALE_MAX = 50;
 const DEPTH_SCALE_STEP = 0.5;
 const DEPTH_CAMERA_NEAR = 8;
 const PLAYER_EDGE_MARGIN_RATIO = 0.15;
@@ -86,6 +93,11 @@ const EXPLOSION_FRAME_COUNT = 10;
 const EXPLOSION_ANIMATION_RATE = 28;
 const EXPLOSION_SCALE_NEAR = 1.5;
 const EXPLOSION_SCALE_FAR = 0.95;
+const EXPLOSION_GLOW_DURATION_MS = 260;
+const EXPLOSION_GLOW_RADIUS_NEAR = 44;
+const EXPLOSION_GLOW_RADIUS_FAR = 26;
+const ASTEROID_SPRITE_SCALE_NEAR = 2;
+const ASTEROID_SPRITE_SCALE_FAR = 0.22;
 const PLAYER_SPRITE_SCALE_JUMP = 2.46;
 const INNER_RADIUS_RATIO = TUNNEL_INNER_RADIUS / TUNNEL_OUTER_RADIUS;
 const ENEMY_BULLET_CORE_SIZE_NEAR = 8.4;
@@ -138,6 +150,12 @@ interface TunnelStar {
   readonly sizeScale: number;
 }
 
+interface ExplosionGlowFx {
+  readonly theta: number;
+  readonly depth: number;
+  readonly startAtMs: number;
+}
+
 interface RenderTuning {
   readonly pixelOffset: number;
   readonly flowSpeed: number;
@@ -154,13 +172,14 @@ interface DebugKeys {
   readonly twistUp: ReadonlyArray<Phaser.Input.Keyboard.Key>;
   readonly depthDown: ReadonlyArray<Phaser.Input.Keyboard.Key>;
   readonly depthUp: ReadonlyArray<Phaser.Input.Keyboard.Key>;
+  readonly nextMixProfile: ReadonlyArray<Phaser.Input.Keyboard.Key>;
   readonly toggleRings: ReadonlyArray<Phaser.Input.Keyboard.Key>;
   readonly toggleHitboxes: ReadonlyArray<Phaser.Input.Keyboard.Key>;
   readonly toggleOverlay: ReadonlyArray<Phaser.Input.Keyboard.Key>;
 }
 
 const DEFAULT_RENDER_TUNING: RenderTuning = {
-  pixelOffset: -3,
+  pixelOffset: -1,
   flowSpeed: TUNNEL_FLOW_SPEED,
   twistScale: 0.25,
   depthScale: DEPTH_SCALE_DEEP
@@ -221,6 +240,10 @@ function phaseMessage(phase: TunnelPhase): string {
 
 function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
+}
+
+function thetaToStereoPan(theta: number): number {
+  return Math.max(-1, Math.min(1, Math.cos(theta)));
 }
 
 function depthToRadius(depth: number, frame: RenderFrame): RenderRadius {
@@ -452,6 +475,7 @@ export class TunnelInvadersScene extends Phaser.Scene {
   private hitFlashOverlay!: Phaser.GameObjects.Rectangle;
   private playerSprite!: Phaser.GameObjects.Image;
   private enemySprites = new Map<number, Phaser.GameObjects.Image>();
+  private asteroidSprites = new Map<number, Phaser.GameObjects.Image>();
   private tunnelStars: ReadonlyArray<TunnelStar> = [];
   private hudText!: Phaser.GameObjects.Text;
   private debugText: Phaser.GameObjects.Text | null = null;
@@ -460,6 +484,8 @@ export class TunnelInvadersScene extends Phaser.Scene {
   private debugRingsVisible = false;
   private debugHitboxesVisible = false;
   private readonly sfx = new RetroSfx();
+  private explosionGlows: ReadonlyArray<ExplosionGlowFx> = [];
+  private backgroundMusic: Phaser.Sound.BaseSound | null = null;
   private renderTuning: RenderTuning = DEFAULT_RENDER_TUNING;
   private hintText!: Phaser.GameObjects.Text;
   private inputContext!: InputContext;
@@ -476,8 +502,11 @@ export class TunnelInvadersScene extends Phaser.Scene {
 
   preload(): void {
     this.load.image(PLAYER_SPRITE_KEY, fighterShipImage);
+    this.load.image(PLAYER_SPRITE_ALT_KEY, fighterShipAltImage);
     this.load.image(ENEMY_SPRITE_KEY, enemyFighterImage);
     this.load.image(ENEMY_LARGE_SPRITE_KEY, enemyLargeImage);
+    this.load.image(ASTEROID_SPRITE_KEY, asteroidSpriteImage);
+    this.load.audio(BACKGROUND_MUSIC_KEY, backgroundMusicTrack);
     this.load.spritesheet(EXPLOSION_TEXTURE_KEY_1, explosionSrc1Image, {
       frameWidth: EXPLOSION_FRAME_WIDTH,
       frameHeight: EXPLOSION_FRAME_HEIGHT,
@@ -517,6 +546,13 @@ export class TunnelInvadersScene extends Phaser.Scene {
       sprite.setOrigin(0.5, 0.5);
       sprite.setScale(ENEMY_SPRITE_SCALE_FAR);
       this.enemySprites.set(enemy.id, sprite);
+    }
+
+    for (const asteroid of this.state.asteroids) {
+      const sprite = this.add.image(this.scale.width / 2, this.scale.height / 2, ASTEROID_SPRITE_KEY);
+      sprite.setOrigin(0.5, 0.5);
+      sprite.setScale(ASTEROID_SPRITE_SCALE_FAR);
+      this.asteroidSprites.set(asteroid.id, sprite);
     }
     this.setupExplosionAnimations();
 
@@ -577,6 +613,7 @@ export class TunnelInvadersScene extends Phaser.Scene {
           keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F),
           keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.PAGE_UP)
         ],
+        nextMixProfile: [keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.M)],
         toggleRings: [keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R)],
         toggleHitboxes: [keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.H)],
         toggleOverlay: [keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F1)]
@@ -593,6 +630,11 @@ export class TunnelInvadersScene extends Phaser.Scene {
     this.inputContext = createInputContext(this, this.launchData.controllerProfileId);
     this.cameras.main.setBackgroundColor('#000000');
     this.refreshCrtOverlay();
+    this.initializeBackgroundMusic();
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.stopBackgroundMusic();
+      this.sfx.shutdown();
+    });
   }
 
   update(_: number, delta: number): void {
@@ -606,9 +648,13 @@ export class TunnelInvadersScene extends Phaser.Scene {
     let lost = false;
     const destroyedEnemies: Enemy[] = [];
     let playerExplosionTheta: number | null = null;
+    let playerShotTheta: number | null = null;
+    let enemyShotSpatial: { readonly theta: number; readonly depth: number } | null = null;
+    let maxMoveSpeed = 0;
 
     while (this.accumulator >= FIXED_TIMESTEP) {
       const input = readFrameInput(this.inputContext);
+      maxMoveSpeed = Math.max(maxMoveSpeed, Math.abs(input.moveXSigned));
       if (
         input.startPressed ||
         input.pausePressed ||
@@ -616,6 +662,8 @@ export class TunnelInvadersScene extends Phaser.Scene {
         input.fireHeld ||
         input.moveXSigned !== 0
       ) {
+        this.ensureFullscreenOnInteraction();
+        this.startBackgroundMusic();
         this.sfx.unlock();
       }
 
@@ -627,8 +675,30 @@ export class TunnelInvadersScene extends Phaser.Scene {
       const nextEnemyBullets = nextState.bullets.filter((bullet) => bullet.owner === 'enemy').length;
       enemyHit = enemyHit || nextState.score > prevState.score;
       playerHit = playerHit || nextState.lives < prevState.lives;
-      playerShot = playerShot || nextPlayerBullets > prevPlayerBullets;
-      enemyShot = enemyShot || nextEnemyBullets > prevEnemyBullets;
+      if (nextPlayerBullets > prevPlayerBullets) {
+        playerShot = true;
+        playerShotTheta = nextState.playerTheta;
+      }
+      if (nextEnemyBullets > prevEnemyBullets) {
+        enemyShot = true;
+        const newestEnemyBullet = nextState.bullets.reduce<Bullet | null>((current, bullet) => {
+          if (bullet.owner !== 'enemy') {
+            return current;
+          }
+
+          if (current === null || bullet.ttl > current.ttl) {
+            return bullet;
+          }
+
+          return current;
+        }, null);
+        if (newestEnemyBullet !== null) {
+          enemyShotSpatial = {
+            theta: newestEnemyBullet.theta,
+            depth: clamp01(newestEnemyBullet.depth)
+          };
+        }
+      }
       won = won || (prevState.phase === 'playing' && nextState.phase === 'won');
       lost = lost || (prevState.phase === 'playing' && nextState.phase === 'lost');
       if (nextState.lives < prevState.lives) {
@@ -647,16 +717,29 @@ export class TunnelInvadersScene extends Phaser.Scene {
     }
 
     if (playerShot) {
-      this.sfx.playPlayerShot();
+      this.sfx.playPlayerShot({
+        pan: thetaToStereoPan(playerShotTheta ?? this.state.playerTheta),
+        depth: 0
+      });
     }
-    if (enemyShot) {
-      this.sfx.playEnemyShot();
+    if (enemyShot && enemyShotSpatial !== null) {
+      this.sfx.playEnemyShot({
+        pan: thetaToStereoPan(enemyShotSpatial.theta),
+        depth: enemyShotSpatial.depth
+      });
     }
-    if (enemyHit) {
-      this.sfx.playExplosion();
+    for (const enemy of destroyedEnemies.slice(0, 3)) {
+      this.sfx.playExplosion({
+        pan: thetaToStereoPan(enemy.theta),
+        depth: clamp01(enemy.depth),
+        large: enemy.enemyClass === 'large'
+      });
     }
     if (playerHit) {
-      this.sfx.playPlayerHit();
+      this.sfx.playPlayerHit({
+        pan: thetaToStereoPan(this.state.playerTheta),
+        depth: 0
+      });
     }
     if (won) {
       this.sfx.playWin();
@@ -665,12 +748,19 @@ export class TunnelInvadersScene extends Phaser.Scene {
       this.sfx.playLose();
     }
 
+    this.sfx.updateTunnelMotion({
+      theta: this.state.playerTheta + Math.PI / 2,
+      speedUnit: clamp01(maxMoveSpeed),
+      active: this.state.phase === 'playing' && maxMoveSpeed > 0.02
+    });
+
     if (playerExplosionTheta !== null) {
       this.spawnExplosion(playerExplosionTheta, 0);
     }
     for (const enemy of destroyedEnemies) {
       this.spawnExplosion(enemy.theta, enemy.depth);
     }
+    this.updateExplosionGlows();
 
     if (playerHit) {
       this.triggerHitFeedback(HIT_FLASH_PLAYER, HIT_SHAKE_PLAYER_DURATION_MS, HIT_SHAKE_PLAYER_INTENSITY);
@@ -691,9 +781,12 @@ export class TunnelInvadersScene extends Phaser.Scene {
     this.hintText.setPosition(this.scale.width / 2, this.scale.height / 2);
 
     this.syncEnemySprites();
+    this.syncAsteroidSprites();
     this.drawTunnelStars(graphics, frame);
     this.drawCenterAnomaly(graphics, frame);
+    this.drawExplosionGlows(graphics, frame);
     this.drawDebugRings(graphics, frame);
+    this.drawAsteroids(frame);
     this.drawBullets(graphics, frame);
     this.drawEnemies(frame);
     this.drawHitboxes(graphics, frame);
@@ -751,6 +844,42 @@ export class TunnelInvadersScene extends Phaser.Scene {
     sprite.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => {
       sprite.destroy();
     });
+
+    this.explosionGlows = this.explosionGlows.concat({
+      theta,
+      depth,
+      startAtMs: this.time.now
+    });
+  }
+
+  private updateExplosionGlows(): void {
+    const now = this.time.now;
+    this.explosionGlows = this.explosionGlows.filter(
+      (explosionGlow) => now - explosionGlow.startAtMs < EXPLOSION_GLOW_DURATION_MS
+    );
+  }
+
+  private drawExplosionGlows(graphics: Phaser.GameObjects.Graphics, frame: RenderFrame): void {
+    const now = this.time.now;
+    for (const explosionGlow of this.explosionGlows) {
+      const progress = clamp01((now - explosionGlow.startAtMs) / EXPLOSION_GLOW_DURATION_MS);
+      const alpha = 1 - progress;
+      const projected = projectPolarSmooth(
+        explosionGlow.theta,
+        explosionGlow.depth,
+        frame,
+        this.renderTuning
+      );
+      const depth = clamp01(explosionGlow.depth);
+      const baseRadius = lerp(EXPLOSION_GLOW_RADIUS_NEAR, EXPLOSION_GLOW_RADIUS_FAR, depth);
+      const outerRadius = baseRadius * lerp(0.35, 1.15, progress);
+      const innerRadius = outerRadius * 0.44;
+
+      graphics.fillStyle(0xff7c3a, 0.42 * alpha);
+      graphics.fillCircle(projected.x, projected.y, outerRadius);
+      graphics.fillStyle(0xfff3b0, 0.84 * alpha);
+      graphics.fillCircle(projected.x, projected.y, innerRadius);
+    }
   }
 
   private refreshCrtOverlay(): void {
@@ -992,6 +1121,10 @@ export class TunnelInvadersScene extends Phaser.Scene {
     }
 
     this.playerSprite.setVisible(true);
+    const playerTextureKey = Math.floor(this.time.now / 120) % 2 === 0 ? PLAYER_SPRITE_KEY : PLAYER_SPRITE_ALT_KEY;
+    if (this.playerSprite.texture.key !== playerTextureKey) {
+      this.playerSprite.setTexture(playerTextureKey);
+    }
     const playerRadiusOffset = this.state.playerJumpTimer > 0 ? 18 : 7;
     const position = projectPolarSmooth(
       this.state.playerTheta,
@@ -1060,6 +1193,28 @@ export class TunnelInvadersScene extends Phaser.Scene {
     }
   }
 
+  private drawAsteroids(frame: RenderFrame): void {
+    for (const asteroid of this.state.asteroids) {
+      let sprite = this.asteroidSprites.get(asteroid.id);
+      if (sprite === undefined) {
+        sprite = this.add.image(this.scale.width / 2, this.scale.height / 2, ASTEROID_SPRITE_KEY);
+        sprite.setOrigin(0.5, 0.5);
+        sprite.setScale(ASTEROID_SPRITE_SCALE_FAR);
+        this.asteroidSprites.set(asteroid.id, sprite);
+      }
+
+      const position = projectPolarSmooth(asteroid.theta, asteroid.depth, frame, this.renderTuning);
+      const depthCurve = Math.pow(clamp01(asteroid.depth), 0.55);
+      const scale = lerp(ASTEROID_SPRITE_SCALE_NEAR, ASTEROID_SPRITE_SCALE_FAR, depthCurve);
+      const spin = this.time.now / 650 + asteroid.id * 0.58;
+
+      sprite.setVisible(true);
+      sprite.setPosition(position.x, position.y);
+      sprite.setRotation(spin);
+      sprite.setScale(scale);
+    }
+  }
+
   private syncEnemySprites(): void {
     const activeIds = new Set(this.state.enemies.map((enemy) => enemy.id));
     for (const [id, sprite] of this.enemySprites.entries()) {
@@ -1069,6 +1224,18 @@ export class TunnelInvadersScene extends Phaser.Scene {
 
       sprite.destroy();
       this.enemySprites.delete(id);
+    }
+  }
+
+  private syncAsteroidSprites(): void {
+    const activeIds = new Set(this.state.asteroids.map((asteroid) => asteroid.id));
+    for (const [id, sprite] of this.asteroidSprites.entries()) {
+      if (activeIds.has(id)) {
+        continue;
+      }
+
+      sprite.destroy();
+      this.asteroidSprites.delete(id);
     }
   }
 
@@ -1254,6 +1421,11 @@ export class TunnelInvadersScene extends Phaser.Scene {
         twistScale: next
       };
     }
+
+    if (justDownAny(this.debugKeys.nextMixProfile)) {
+      this.sfx.nextMixProfile();
+      this.sfx.playUiMove();
+    }
   }
 
   private updateDebugOverlay(): void {
@@ -1266,7 +1438,7 @@ export class TunnelInvadersScene extends Phaser.Scene {
     const near = Math.max(mid, 4 + this.renderTuning.pixelOffset);
 
     this.debugText.setText(
-      `DEBUG TUNING [F1]\nPIXELS [ ] / 9 0: ${far}/${mid}/${near}\nFLOW - + / S W: ${this.renderTuning.flowSpeed.toFixed(2)}\nTWIST , . / Z X: ${this.renderTuning.twistScale.toFixed(2)}\nDEPTH D/F (PgDn/PgUp): ${this.renderTuning.depthScale.toFixed(1)}\nRINGS R: ${this.debugRingsVisible ? 'ON' : 'OFF'}\nHITBOX H: ${this.debugHitboxesVisible ? 'ON' : 'OFF'}`
+      `DEBUG TUNING [F1]\nPIXELS [ ] / 9 0: ${far}/${mid}/${near}\nFLOW - + / S W: ${this.renderTuning.flowSpeed.toFixed(2)}\nTWIST , . / Z X: ${this.renderTuning.twistScale.toFixed(2)}\nDEPTH D/F (PgDn/PgUp): ${this.renderTuning.depthScale.toFixed(1)}\nMIX M: ${this.sfx.getMixProfile()}\nRINGS R: ${this.debugRingsVisible ? 'ON' : 'OFF'}\nHITBOX H: ${this.debugHitboxesVisible ? 'ON' : 'OFF'}`
     );
     this.debugText.setPosition(20, Math.max(20, this.scale.height - this.debugText.height - 20));
   }
@@ -1276,5 +1448,49 @@ export class TunnelInvadersScene extends Phaser.Scene {
       `SCORE ${this.state.score.toString().padStart(5, '0')}    LIVES ${this.state.lives}    JUMP ${(this.state.playerJumpCooldownTimer === 0).toString()}`
     );
     this.updateDebugOverlay();
+  }
+
+  private initializeBackgroundMusic(): void {
+    if (!this.cache.audio.exists(BACKGROUND_MUSIC_KEY)) {
+      throw new Error(`Missing audio asset for key "${BACKGROUND_MUSIC_KEY}".`);
+    }
+
+    this.backgroundMusic = this.sound.add(BACKGROUND_MUSIC_KEY, {
+      loop: true,
+      volume: BACKGROUND_MUSIC_VOLUME
+    });
+    this.startBackgroundMusic();
+  }
+
+  private requireBackgroundMusic(): Phaser.Sound.BaseSound {
+    if (this.backgroundMusic === null) {
+      throw new Error('Background music is not initialized in Tunnel Invaders scene.');
+    }
+
+    return this.backgroundMusic;
+  }
+
+  private startBackgroundMusic(): void {
+    const backgroundMusic = this.requireBackgroundMusic();
+    if (backgroundMusic.isPlaying) {
+      return;
+    }
+
+    backgroundMusic.play();
+  }
+
+  private stopBackgroundMusic(): void {
+    const backgroundMusic = this.requireBackgroundMusic();
+    backgroundMusic.stop();
+    backgroundMusic.destroy();
+    this.backgroundMusic = null;
+  }
+
+  private ensureFullscreenOnInteraction(): void {
+    if (this.scale.isFullscreen) {
+      return;
+    }
+
+    this.scale.startFullscreen();
   }
 }

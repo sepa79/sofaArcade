@@ -59,4 +59,13 @@ export const ENEMY_SPIRAL_SWAY_FREQUENCY = 2.8;
 export const ENEMY_STANDARD_HP = 1;
 export const ENEMY_LARGE_HP = 4;
 
+export const ASTEROID_COUNT = 5;
+export const ASTEROID_BASE_ANGULAR_SPEED = 0.22;
+export const ASTEROID_DEPTH_SPEED = 0.14;
+export const ASTEROID_DESPAWN_DEPTH = -0.74;
+export const ASTEROID_RESPAWN_DEPTH_START = 1.2;
+export const ASTEROID_RESPAWN_DEPTH_STEP = 0.1;
+export const ASTEROID_HIT_ARC = 0.082;
+export const ASTEROID_HIT_DEPTH_WINDOW = 0.075;
+
 export const SCORE_PER_ENEMY = 100;

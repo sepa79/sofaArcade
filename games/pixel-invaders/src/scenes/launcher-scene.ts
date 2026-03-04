@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { TUNNEL_INVADERS_SCENE_KEY, type TunnelInvadersSceneData } from 'tunnel-invaders';
+import { RetroSfx } from '@light80/game-sdk';
 
-import { RetroSfx } from '../audio/retro-sfx';
 import arcadeLogoImage from '../assets/logo_cropped.png';
 import {
   MENU_ROW_CONTROLLER,

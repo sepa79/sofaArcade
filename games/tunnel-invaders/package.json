@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@light80/core": "workspace:*",
+    "@light80/game-sdk": "workspace:*",
     "phaser": "^3.90.0"
   },
   "devDependencies": {

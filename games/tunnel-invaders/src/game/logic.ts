@@ -1,4 +1,10 @@
 import {
+  ASTEROID_DESPAWN_DEPTH,
+  ASTEROID_HIT_ARC,
+  ASTEROID_HIT_DEPTH_WINDOW,
+  ASTEROID_DEPTH_SPEED,
+  ASTEROID_RESPAWN_DEPTH_START,
+  ASTEROID_RESPAWN_DEPTH_STEP,
   BULLET_DEPTH_SPEED,
   BULLET_LIFETIME,
   ENEMY_ANGULAR_SPEED,
@@ -28,7 +34,7 @@ import {
 } from './constants';
 import { enemyHitArc, enemyHitDepthWindow, playerHitArc, playerHitDepthWindow } from './hitbox';
 import { createInitialState } from './state';
-import type { Bullet, Enemy, EnemyWaveMode, FrameInput, GameState } from './types';
+import type { Asteroid, Bullet, Enemy, EnemyWaveMode, FrameInput, GameState } from './types';
 
 function normalizeAngle(theta: number): number {
   const wrapped = theta % TAU;
@@ -84,6 +90,27 @@ function moveEnemies(
         })()
       : enemy
   );
+}
+
+function moveAsteroids(asteroids: ReadonlyArray<Asteroid>, dt: number): ReadonlyArray<Asteroid> {
+  return asteroids.map((asteroid) => {
+    const nextTheta = normalizeAngle(asteroid.theta + asteroid.angularSpeed * dt);
+    const nextDepth = asteroid.depth - ASTEROID_DEPTH_SPEED * dt;
+
+    if (nextDepth > ASTEROID_DESPAWN_DEPTH) {
+      return {
+        ...asteroid,
+        theta: nextTheta,
+        depth: nextDepth
+      };
+    }
+
+    return {
+      ...asteroid,
+      theta: normalizeAngle(nextTheta + Math.PI * (0.62 + (asteroid.id % 3) * 0.13)),
+      depth: ASTEROID_RESPAWN_DEPTH_START + (asteroid.id % 4) * ASTEROID_RESPAWN_DEPTH_STEP
+    };
+  });
 }
 
 function moveBullets(bullets: ReadonlyArray<Bullet>, dt: number): ReadonlyArray<Bullet> {
@@ -345,6 +372,44 @@ function resolveEnemyLifecycle(
   };
 }
 
+function resolveAsteroidHits(
+  asteroids: ReadonlyArray<Asteroid>,
+  lives: number,
+  playerTheta: number,
+  playerInvulnerabilityTimer: number,
+  playerJumpTimer: number
+): {
+  readonly lives: number;
+  readonly playerInvulnerabilityTimer: number;
+  readonly phase: 'playing' | 'lost';
+} {
+  let nextLives = lives;
+  let nextInvulnerability = playerInvulnerabilityTimer;
+
+  for (const asteroid of asteroids) {
+    if (Math.abs(asteroid.depth) > ASTEROID_HIT_DEPTH_WINDOW) {
+      continue;
+    }
+
+    const atPlayerSector = angleDistance(asteroid.theta, playerTheta) <= ASTEROID_HIT_ARC;
+    const canDamagePlayer =
+      atPlayerSector && nextInvulnerability === 0 && playerJumpTimer === 0 && nextLives > 0;
+
+    if (!canDamagePlayer) {
+      continue;
+    }
+
+    nextLives -= 1;
+    nextInvulnerability = nextLives > 0 ? PLAYER_INVULNERABILITY : 0;
+  }
+
+  return {
+    lives: nextLives,
+    playerInvulnerabilityTimer: nextInvulnerability,
+    phase: nextLives > 0 ? 'playing' : 'lost'
+  };
+}
+
 function allEnemiesDefeated(enemies: ReadonlyArray<Enemy>): boolean {
   return enemies.every((enemy) => !enemy.alive);
 }
@@ -425,6 +490,7 @@ export function stepGame(state: GameState, input: FrameInput, dt: number): GameS
   }
 
   const movedEnemies = moveEnemies(state.enemies, enemyDirection, state.enemyWaveMode, dt);
+  const movedAsteroids = moveAsteroids(state.asteroids, dt);
   const afterBulletHits = resolveBulletHits(movedEnemies, bullets, state.score);
   const lifecycleResult = resolveEnemyLifecycle(
     afterBulletHits.enemies,
@@ -436,8 +502,18 @@ export function stepGame(state: GameState, input: FrameInput, dt: number): GameS
     invulnerabilityTimer,
     jumpTimer
   );
+  const asteroidHits = resolveAsteroidHits(
+    movedAsteroids,
+    lifecycleResult.lives,
+    nextPlayerTheta,
+    lifecycleResult.playerInvulnerabilityTimer,
+    jumpTimer
+  );
 
   let phase: GameState['phase'] = lifecycleResult.phase;
+  if (phase === 'playing' && asteroidHits.phase === 'lost') {
+    phase = 'lost';
+  }
   if (phase === 'playing' && allEnemiesDefeated(lifecycleResult.enemies)) {
     phase = 'won';
   }
@@ -445,9 +521,9 @@ export function stepGame(state: GameState, input: FrameInput, dt: number): GameS
   return {
     phase,
     score: afterBulletHits.score,
-    lives: lifecycleResult.lives,
+    lives: asteroidHits.lives,
     playerTheta: nextPlayerTheta,
-    playerInvulnerabilityTimer: lifecycleResult.playerInvulnerabilityTimer,
+    playerInvulnerabilityTimer: asteroidHits.playerInvulnerabilityTimer,
     playerShootCooldownTimer: shootCooldown,
     playerJumpTimer: jumpTimer,
     playerJumpCooldownTimer: jumpCooldown,
@@ -456,6 +532,7 @@ export function stepGame(state: GameState, input: FrameInput, dt: number): GameS
     enemyWaveMode: state.enemyWaveMode,
     nextEnemyId: lifecycleResult.nextEnemyId,
     enemies: lifecycleResult.enemies,
+    asteroids: movedAsteroids,
     bullets: lifecycleResult.bullets
   };
 }

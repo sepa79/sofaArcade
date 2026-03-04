@@ -81,6 +81,9 @@ importers:
       '@light80/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@light80/game-sdk':
+        specifier: workspace:*
+        version: link:../../packages/game-sdk
       phaser:
         specifier: ^3.90.0
         version: 3.90.0
@@ -121,6 +124,9 @@ importers:
       '@light80/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@light80/game-sdk':
+        specifier: workspace:*
+        version: link:../../packages/game-sdk
       phaser:
         specifier: ^3.90.0
         version: 3.90.0
@@ -154,6 +160,27 @@ importers:
         version: 3.2.4(@types/node@20.19.35)(tsx@4.21.0)
 
   packages/core:
+    devDependencies:
+      '@eslint/js':
+        specifier: ^9.39.0
+        version: 9.39.3
+      '@types/node':
+        specifier: ^20.17.57
+        version: 20.19.35
+      eslint:
+        specifier: ^9.39.3
+        version: 9.39.3
+      typescript:
+        specifier: ~5.9.3
+        version: 5.9.3
+      typescript-eslint:
+        specifier: ^8.56.1
+        version: 8.56.1(eslint@9.39.3)(typescript@5.9.3)
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@20.19.35)(tsx@4.21.0)
+
+  packages/game-sdk:
     devDependencies:
       '@eslint/js':
         specifier: ^9.39.0

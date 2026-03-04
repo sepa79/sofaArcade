@@ -12,6 +12,13 @@ export interface Enemy {
   readonly shootCooldown: number;
 }
 
+export interface Asteroid {
+  readonly id: number;
+  readonly theta: number;
+  readonly depth: number;
+  readonly angularSpeed: number;
+}
+
 export type BulletOwner = 'player' | 'enemy';
 
 export interface Bullet {
@@ -46,5 +53,6 @@ export interface GameState {
   readonly enemyWaveMode: EnemyWaveMode;
   readonly nextEnemyId: number;
   readonly enemies: ReadonlyArray<Enemy>;
+  readonly asteroids: ReadonlyArray<Asteroid>;
   readonly bullets: ReadonlyArray<Bullet>;
 }
