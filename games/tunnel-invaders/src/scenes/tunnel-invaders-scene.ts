@@ -23,6 +23,7 @@ import explosionSrc2Image from '../assets/explosion_src_2.png';
 import asteroidSpriteImage from '../assets/sprite_asteroid_1.png';
 import enemyFighterImage from '../assets/sprite_enemy_1.png';
 import enemyFighterImageAlt from '../assets/sprite_enemy_2.png';
+import enemyFighterImageAlt2 from '../assets/sprite_enemy_4.png';
 import enemyLargeImage from '../assets/sprite_enemy_3.png';
 import fighterShipAltImage from '../assets/sprite_player_1a.png';
 import fighterShipImage from '../assets/sprite_player_1.png';
@@ -34,6 +35,7 @@ const PLAYER_SPRITE_KEY = 'tunnel-player-ship';
 const PLAYER_SPRITE_ALT_KEY = 'tunnel-player-ship-alt';
 const ENEMY_SPRITE_KEY = 'tunnel-enemy-ship';
 const ENEMY_SPRITE_ALT_KEY = 'tunnel-enemy-ship-alt';
+const ENEMY_SPRITE_ALT_KEY_2 = 'tunnel-enemy-ship-alt-2';
 const ENEMY_LARGE_SPRITE_KEY = 'tunnel-enemy-ship-large';
 const ASTEROID_SPRITE_KEY = 'tunnel-asteroid';
 const EXPLOSION_TEXTURE_KEY_1 = 'tunnel-explosion-1';
@@ -510,7 +512,16 @@ function enemySpriteKeyFor(enemy: Enemy): string {
     return ENEMY_LARGE_SPRITE_KEY;
   }
 
-  return enemy.formationRow % 2 === 0 ? ENEMY_SPRITE_KEY : ENEMY_SPRITE_ALT_KEY;
+  const rowVariant = ((enemy.formationRow % 3) + 3) % 3;
+  if (rowVariant === 0) {
+    return ENEMY_SPRITE_KEY;
+  }
+
+  if (rowVariant === 1) {
+    return ENEMY_SPRITE_ALT_KEY;
+  }
+
+  return ENEMY_SPRITE_ALT_KEY_2;
 }
 
 export class TunnelInvadersScene extends Phaser.Scene {
@@ -551,6 +562,7 @@ export class TunnelInvadersScene extends Phaser.Scene {
     this.load.image(PLAYER_SPRITE_ALT_KEY, fighterShipAltImage);
     this.load.image(ENEMY_SPRITE_KEY, enemyFighterImage);
     this.load.image(ENEMY_SPRITE_ALT_KEY, enemyFighterImageAlt);
+    this.load.image(ENEMY_SPRITE_ALT_KEY_2, enemyFighterImageAlt2);
     this.load.image(ENEMY_LARGE_SPRITE_KEY, enemyLargeImage);
     this.load.image(ASTEROID_SPRITE_KEY, asteroidSpriteImage);
     this.load.audio(BACKGROUND_MUSIC_KEY, backgroundMusicTrack);

@@ -4,6 +4,7 @@ import { RetroSfx, type AudioMixProfileId } from '@light80/game-sdk';
 import enemyShipImage from '../assets/sprite_enemy_1.png';
 import enemyShipImage2 from '../assets/sprite_enemy_2.png';
 import enemyShipImage3 from '../assets/sprite_enemy_3.png';
+import enemyShipImage4 from '../assets/sprite_enemy_4.png';
 import explosionSrc1Image from '../assets/explosion_src_1.png';
 import explosionSrc2Image from '../assets/explosion_src_2.png';
 import backgroundMusicTrack from '../assets/game-bgm.mp3';
@@ -33,7 +34,8 @@ const PLAYER_SPRITE_ALT_KEY = 'pixel-invaders-player-ship-alt';
 const ENEMY_SPRITE_KEYS = [
   'pixel-invaders-enemy-ship-1',
   'pixel-invaders-enemy-ship-2',
-  'pixel-invaders-enemy-ship-3'
+  'pixel-invaders-enemy-ship-3',
+  'pixel-invaders-enemy-ship-4'
 ] as const;
 const EXPLOSION_TEXTURE_KEY_1 = 'pixel-explosion-1';
 const EXPLOSION_TEXTURE_KEY_2 = 'pixel-explosion-2';
@@ -287,6 +289,7 @@ export class PixelInvadersScene extends Phaser.Scene {
     this.load.image(ENEMY_SPRITE_KEYS[0], enemyShipImage);
     this.load.image(ENEMY_SPRITE_KEYS[1], enemyShipImage2);
     this.load.image(ENEMY_SPRITE_KEYS[2], enemyShipImage3);
+    this.load.image(ENEMY_SPRITE_KEYS[3], enemyShipImage4);
     this.load.spritesheet(EXPLOSION_TEXTURE_KEY_1, explosionSrc1Image, {
       frameWidth: EXPLOSION_FRAME_WIDTH,
       frameHeight: EXPLOSION_FRAME_HEIGHT,
