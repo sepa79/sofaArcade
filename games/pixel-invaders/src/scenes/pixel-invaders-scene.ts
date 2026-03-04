@@ -7,18 +7,19 @@ import {
 } from '@light80/game-sdk';
 import { loadPersistentNonNegativeInt, savePersistentNonNegativeInt } from '@light80/core';
 
-import enemyShipImage from '../assets/sprite_enemy_1.png';
-import enemyShipImage2 from '../assets/sprite_enemy_2.png';
-import enemyShipImage3 from '../assets/sprite_enemy_3.png';
-import enemyShipImage4 from '../assets/sprite_enemy_4.png';
-import explosionSrc1Image from '../assets/explosion_src_1.png';
-import explosionSrc2Image from '../assets/explosion_src_2.png';
-import backgroundMusicTrack from '../assets/game-bgm.mp3';
-import backgroundMusicSyncRaw from '../assets/game-bgm.sync.json';
-import kosmicznaPodrozTrack from '../assets/kosmiczna_podroz_fade_out.ogg';
-import kosmicznaPodrozSyncRaw from '../assets/kosmiczna_podroz_fade_out.sync.json';
-import playerShipAltImage from '../assets/sprite_player_1a.png';
-import playerShipImage from '../assets/sprite_player_1.png';
+import enemyShipImage from '../../../shared-assets/src/sprite_enemy_1.png';
+import enemyShipImage2 from '../../../shared-assets/src/sprite_enemy_2.png';
+import enemyShipImage3 from '../../../shared-assets/src/sprite_enemy_3.png';
+import enemyShipImage4 from '../../../shared-assets/src/sprite_enemy_4.png';
+import enemyBig1Image from '../../../shared-assets/src/sprite_enemy_big_1.png';
+import explosionSrc1Image from '../../../shared-assets/src/explosion_src_1.png';
+import explosionSrc2Image from '../../../shared-assets/src/explosion_src_2.png';
+import backgroundMusicTrack from '../../../shared-assets/src/game-bgm.mp3';
+import backgroundMusicSyncRaw from '../../../shared-assets/src/game-bgm.sync.json';
+import kosmicznaPodrozTrack from '../../../shared-assets/src/kosmiczna_podroz_fade_out.ogg';
+import kosmicznaPodrozSyncRaw from '../../../shared-assets/src/kosmiczna_podroz_fade_out.sync.json';
+import playerShipAltImage from '../../../shared-assets/src/sprite_player_1a.png';
+import playerShipImage from '../../../shared-assets/src/sprite_player_1.png';
 import {
   SyncClock,
   createSyncTrackRuntime,
@@ -31,6 +32,7 @@ import {
   BULLET_HEIGHT,
   BULLET_WIDTH,
   ENEMY_COLS,
+  ENEMY_UFO_HIT_POINTS,
   FIXED_TIMESTEP,
   PLAYER_HEIGHT,
   PLAYER_SPEED,
@@ -39,6 +41,15 @@ import {
   WORLD_HEIGHT,
   WORLD_WIDTH
 } from '../game/constants';
+import {
+  createAlphaMaskFromRgba,
+  createCollisionRuntime,
+  createEmptyCollisionDebugFrame,
+  mergeAlphaMasks,
+  type AlphaMask,
+  type CollisionDebugFrame,
+  type CollisionRuntime
+} from '../game/collision';
 import { createInputContext, readFrameInput } from '../game/input';
 import { stepGame } from '../game/logic';
 import { createInitialState } from '../game/state';
@@ -54,8 +65,8 @@ const ENEMY_SPRITE_KEYS = [
   'pixel-invaders-enemy-ship-3',
   'pixel-invaders-enemy-ship-4'
 ] as const;
-const ENEMY_NORMAL_SPRITE_KEYS = [ENEMY_SPRITE_KEYS[0], ENEMY_SPRITE_KEYS[1], ENEMY_SPRITE_KEYS[3]] as const;
-const ENEMY_UFO_SPRITE_KEY = ENEMY_SPRITE_KEYS[2];
+const ENEMY_NORMAL_SPRITE_KEYS = ENEMY_SPRITE_KEYS;
+const ENEMY_UFO_SPRITE_KEY = 'pixel-invaders-enemy-big-1';
 const EXPLOSION_TEXTURE_KEY_1 = 'pixel-explosion-1';
 const EXPLOSION_TEXTURE_KEY_2 = 'pixel-explosion-2';
 const EXPLOSION_ANIM_KEY_1 = 'pixel-explosion-anim-1';
@@ -65,6 +76,7 @@ const BACKGROUND_MUSIC_VOLUME = 0.42;
 const SONG_BANNER_VISIBLE_MS = 2_600;
 const PLAYER_SPRITE_SCALE = 2.1;
 const ENEMY_SPRITE_SCALE = 1.5;
+const ENEMY_UFO_SCALE_MULTIPLIER = 1.24;
 const ENEMY_SPRITE_ROTATION = 0;
 const STAR_COUNT = 220;
 const STAR_COLORS: readonly number[] = [0x63d6ff, 0xff58d6, 0xffcf5e, 0xa78bff];
@@ -304,6 +316,22 @@ function mixColor(fromColor: number, toColor: number, t: number): number {
   );
 }
 
+function ufoDamageTint(hitPoints: number): number | null {
+  if (hitPoints === ENEMY_UFO_HIT_POINTS) {
+    return null;
+  }
+
+  if (hitPoints === ENEMY_UFO_HIT_POINTS - 1) {
+    return Phaser.Display.Color.GetColor(255, 205, 118);
+  }
+
+  if (hitPoints === ENEMY_UFO_HIT_POINTS - 2) {
+    return Phaser.Display.Color.GetColor(255, 115, 152);
+  }
+
+  throw new Error(`Invalid UFO hit points for tint mapping: ${hitPoints}.`);
+}
+
 function decayPulse(value: number, decayPerSecond: number, deltaSeconds: number): number {
   return Math.max(0, value - decayPerSecond * deltaSeconds);
 }
@@ -425,6 +453,8 @@ export class PixelInvadersScene extends Phaser.Scene {
   private explosions: ReadonlyArray<ExplosionFx> = [];
   private rowRespawnFlashes: ReadonlyArray<RowRespawnFlashFx> = [];
   private inputContext!: InputContext;
+  private collisionRuntime!: CollisionRuntime;
+  private collisionDebugFrame: CollisionDebugFrame = createEmptyCollisionDebugFrame();
   private state: GameState = createInitialState(1337);
   private stars: ReadonlyArray<PixelStar> = [];
   private readonly starRespawnRng = new Phaser.Math.RandomDataGenerator(['pixel-stars-respawn-v1']);
@@ -476,6 +506,7 @@ export class PixelInvadersScene extends Phaser.Scene {
     this.load.image(ENEMY_SPRITE_KEYS[1], enemyShipImage2);
     this.load.image(ENEMY_SPRITE_KEYS[2], enemyShipImage3);
     this.load.image(ENEMY_SPRITE_KEYS[3], enemyShipImage4);
+    this.load.image(ENEMY_UFO_SPRITE_KEY, enemyBig1Image);
     this.load.spritesheet(EXPLOSION_TEXTURE_KEY_1, explosionSrc1Image, {
       frameWidth: EXPLOSION_FRAME_WIDTH,
       frameHeight: EXPLOSION_FRAME_HEIGHT,
@@ -523,6 +554,8 @@ export class PixelInvadersScene extends Phaser.Scene {
     this.syncVignette.setAlpha(0);
     this.stars = this.createStars();
     this.skylineBuildings = this.createSkylineBuildings();
+    this.collisionRuntime = this.buildCollisionRuntime();
+    this.collisionDebugFrame = createEmptyCollisionDebugFrame();
     this.playerSprite = this.add.image(this.scale.width / 2, this.scale.height / 2, PLAYER_SPRITE_KEY);
     this.playerSprite.setOrigin(0.5, 0.5);
     this.playerSprite.setScale(PLAYER_SPRITE_SCALE * this.visualScale());
@@ -534,7 +567,7 @@ export class PixelInvadersScene extends Phaser.Scene {
         this.enemySpriteKeyFor(enemy)
       );
       sprite.setOrigin(0.5, 0.5);
-      sprite.setScale(ENEMY_SPRITE_SCALE * this.visualScale());
+      sprite.setScale(this.enemySpriteScaleFor(enemy, this.visualScale()));
       this.enemySprites.set(enemy.id, sprite);
     }
     this.setupExplosionAnimations();
@@ -633,6 +666,7 @@ export class PixelInvadersScene extends Phaser.Scene {
     let maxMoveSpeedUnit = 0;
     const destroyedEnemies: Enemy[] = [];
     const respawnedRows = new Set<number>();
+    let frameCollisionDebug: CollisionDebugFrame | null = null;
 
     while (this.accumulator >= FIXED_TIMESTEP) {
       const input = readFrameInput(this, this.inputContext, {
@@ -646,7 +680,12 @@ export class PixelInvadersScene extends Phaser.Scene {
       }
 
       const previous = this.state;
-      const next = stepGame(this.state, input, FIXED_TIMESTEP);
+      const step = stepGame(this.state, input, FIXED_TIMESTEP, {
+        collisionRuntime: this.collisionRuntime,
+        captureCollisionDebug: this.debugModeEnabled
+      });
+      const next = step.state;
+      frameCollisionDebug = step.collisionDebug;
 
       const previousPlayerBullets = previous.bullets.filter((bullet) => bullet.owner === 'player').length;
       const nextPlayerBullets = next.bullets.filter((bullet) => bullet.owner === 'player').length;
@@ -706,6 +745,7 @@ export class PixelInvadersScene extends Phaser.Scene {
       this.state = next;
       this.accumulator -= FIXED_TIMESTEP;
     }
+    this.collisionDebugFrame = frameCollisionDebug ?? createEmptyCollisionDebugFrame();
     for (const row of respawnedRows) {
       this.spawnRowRespawnFlash(row);
     }
@@ -771,9 +811,55 @@ export class PixelInvadersScene extends Phaser.Scene {
     this.drawPlayer();
     this.drawEnemies();
     this.drawBullets(graphics);
+    this.drawCollisionDebug(graphics);
     this.drawExplosions(graphics);
     this.drawHud();
     this.drawBanner();
+  }
+
+  private buildCollisionRuntime(): CollisionRuntime {
+    const playerMaskPrimary = this.readTextureAlphaMask(PLAYER_SPRITE_KEY);
+    const playerMaskAlt = this.readTextureAlphaMask(PLAYER_SPRITE_ALT_KEY);
+    return createCollisionRuntime({
+      playerMask: mergeAlphaMasks(playerMaskPrimary, playerMaskAlt),
+      enemySmallMasks: [
+        this.readTextureAlphaMask(ENEMY_SPRITE_KEYS[0]),
+        this.readTextureAlphaMask(ENEMY_SPRITE_KEYS[1]),
+        this.readTextureAlphaMask(ENEMY_SPRITE_KEYS[2]),
+        this.readTextureAlphaMask(ENEMY_SPRITE_KEYS[3])
+      ],
+      enemyBig1Mask: this.readTextureAlphaMask(ENEMY_UFO_SPRITE_KEY)
+    });
+  }
+
+  private readTextureAlphaMask(textureKey: string): AlphaMask {
+    const texture = this.textures.get(textureKey);
+    const sourceImage = texture.getSourceImage() as (CanvasImageSource & { readonly width: number; readonly height: number }) | null;
+    if (sourceImage === null) {
+      throw new Error(`Texture source image is missing for key "${textureKey}".`);
+    }
+    if (!Number.isFinite(sourceImage.width) || !Number.isFinite(sourceImage.height)) {
+      throw new Error(`Texture source dimensions are invalid for key "${textureKey}".`);
+    }
+
+    const width = Math.floor(sourceImage.width);
+    const height = Math.floor(sourceImage.height);
+    if (width <= 0 || height <= 0) {
+      throw new Error(`Texture source dimensions must be positive for key "${textureKey}", got ${width}x${height}.`);
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+    if (context === null) {
+      throw new Error(`Failed to create 2D canvas context for mask extraction of "${textureKey}".`);
+    }
+
+    context.clearRect(0, 0, width, height);
+    context.drawImage(sourceImage, 0, 0, width, height);
+    const imageData = context.getImageData(0, 0, width, height);
+    return createAlphaMaskFromRgba(width, height, imageData.data, 10);
   }
 
   private drawPlayer(): void {
@@ -807,7 +893,7 @@ export class PixelInvadersScene extends Phaser.Scene {
       if (sprite === undefined) {
         sprite = this.add.image(this.scale.width / 2, this.scale.height / 2, enemySpriteKey);
         sprite.setOrigin(0.5, 0.5);
-        sprite.setScale(ENEMY_SPRITE_SCALE * this.visualScale());
+        sprite.setScale(this.enemySpriteScaleFor(enemy, this.visualScale()));
         this.enemySprites.set(enemy.id, sprite);
       } else if (sprite.texture.key !== enemySpriteKey) {
         sprite.setTexture(enemySpriteKey);
@@ -826,6 +912,7 @@ export class PixelInvadersScene extends Phaser.Scene {
       const bumpOffsetY = Math.sin(this.time.now * 0.012 + enemy.id * 0.9) * bumpPx;
       spriteY += bumpOffsetY;
       let rotation = ENEMY_SPRITE_ROTATION;
+      const baseTint = enemy.kind === 'ufo' ? ufoDamageTint(enemy.hitPoints) : null;
 
       if (burst.spinTimerSec > 0 && burst.spinDurationSec > 0) {
         const progress = 1 - burst.spinTimerSec / burst.spinDurationSec;
@@ -845,18 +932,23 @@ export class PixelInvadersScene extends Phaser.Scene {
           Math.round(lerp(255, 230, tintMix)),
           Math.round(lerp(255, 255, tintMix))
         );
-        sprite.setTint(tintColor);
+        const finalTint = baseTint === null ? tintColor : mixColor(baseTint, tintColor, 0.5);
+        sprite.setTint(finalTint);
       } else {
-        sprite.clearTint();
+        if (baseTint === null) {
+          sprite.clearTint();
+        } else {
+          sprite.setTint(baseTint);
+        }
       }
 
       sprite.setPosition(spriteX, spriteY);
       sprite.setRotation(rotation);
-      sprite.setScale(ENEMY_SPRITE_SCALE * visualScale);
+      sprite.setScale(this.enemySpriteScaleFor(enemy, visualScale));
     }
   }
 
-  private enemySpriteKeyFor(enemy: Enemy): (typeof ENEMY_SPRITE_KEYS)[number] {
+  private enemySpriteKeyFor(enemy: Enemy): (typeof ENEMY_SPRITE_KEYS)[number] | typeof ENEMY_UFO_SPRITE_KEY {
     if (enemy.kind === 'ufo') {
       return ENEMY_UFO_SPRITE_KEY;
     }
@@ -870,6 +962,11 @@ export class PixelInvadersScene extends Phaser.Scene {
     }
 
     return spriteKey;
+  }
+
+  private enemySpriteScaleFor(enemy: Enemy, visualScale: number): number {
+    const multiplier = enemy.kind === 'ufo' ? ENEMY_UFO_SCALE_MULTIPLIER : 1;
+    return ENEMY_SPRITE_SCALE * multiplier * visualScale;
   }
 
   private drawBullets(graphics: Phaser.GameObjects.Graphics): void {
@@ -947,6 +1044,37 @@ export class PixelInvadersScene extends Phaser.Scene {
     }
   }
 
+  private drawCollisionDebug(graphics: Phaser.GameObjects.Graphics): void {
+    if (!this.debugModeEnabled) {
+      return;
+    }
+
+    const broad = this.collisionDebugFrame.broadPhaseEnvelopes;
+    if (broad.length > 0) {
+      for (const envelope of broad) {
+        const color = envelope.owner === 'player' ? 0x65f2ff : 0xffa65b;
+        graphics.lineStyle(1, color, 0.62);
+        graphics.strokeRect(
+          this.worldToScreenX(envelope.centerX - envelope.width / 2),
+          this.worldToScreenY(envelope.centerY - envelope.height / 2),
+          envelope.width * this.playfieldScaleX,
+          envelope.height * this.playfieldScaleY
+        );
+      }
+    }
+
+    const narrow = this.collisionDebugFrame.narrowPhaseMarkers;
+    for (const marker of narrow) {
+      const color = marker.owner === 'player' ? 0xc9ffff : 0xffd1b0;
+      const x = this.worldToScreenX(marker.x);
+      const y = this.worldToScreenY(marker.y);
+      graphics.fillStyle(color, 0.95);
+      graphics.fillCircle(x, y, Math.max(2, Math.round(this.visualScale() * 2.8)));
+      graphics.lineStyle(1, 0xffffff, 0.5);
+      graphics.strokeCircle(x, y, Math.max(3, Math.round(this.visualScale() * 4.8)));
+    }
+  }
+
   private drawHud(): void {
     if (this.launchData === null) {
       throw new Error('Pixel Invaders launchData is missing in drawHud().');
@@ -997,7 +1125,7 @@ export class PixelInvadersScene extends Phaser.Scene {
 
     this.debugText.setPosition(this.playfieldOffsetX + 16, this.playfieldOffsetY + this.playfieldHeight - 16);
     this.debugText.setText(
-      `DEBUG MODE [F6]\nPULSES [F7]: ${this.debugMusicLanePulsesEnabled ? 'ON' : 'OFF'}\nLANES [F8]: ${this.debugMusicLaneGuidesEnabled ? 'ON' : 'OFF'}\nBOTTOM [F9]: ${this.debugBottomVisualsEnabled ? 'ON' : 'OFF'}\nBG FLASH [F10]: ${this.debugBackgroundFlashEnabled ? 'ON' : 'OFF'}`
+      `DEBUG MODE [F6]\nPULSES [F7]: ${this.debugMusicLanePulsesEnabled ? 'ON' : 'OFF'}\nLANES [F8]: ${this.debugMusicLaneGuidesEnabled ? 'ON' : 'OFF'}\nBOTTOM [F9]: ${this.debugBottomVisualsEnabled ? 'ON' : 'OFF'}\nBG FLASH [F10]: ${this.debugBackgroundFlashEnabled ? 'ON' : 'OFF'}\nCOLLISION B/N: ${this.collisionDebugFrame.broadPhaseEnvelopes.length}/${this.collisionDebugFrame.narrowPhaseMarkers.length}`
     );
   }
 

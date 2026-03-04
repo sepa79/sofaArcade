@@ -25,7 +25,8 @@ function createEnemyGrid(): ReadonlyArray<Enemy> {
         y: ENEMY_START_Y + row * ENEMY_GAP_Y,
         alive: true,
         kind: 'normal',
-        scoreValue: SCORE_PER_ENEMY
+        scoreValue: SCORE_PER_ENEMY,
+        hitPoints: 1
       });
       id += 1;
     }

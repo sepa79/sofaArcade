@@ -20,17 +20,24 @@ export const ENEMY_START_Y = 110;
 export const ENEMY_GAP_X = 66;
 export const ENEMY_GAP_Y = 54;
 export const ENEMY_DESCEND_STEP = 20;
-export const ENEMY_SPEED_START = 74;
-export const ENEMY_SPEED_STEP = 10;
+export const ENEMY_SPEED_START = 64;
+export const ENEMY_SPEED_STEP = 6;
 export const ENEMY_DRIFT_DOWN_SPEED = 9;
 export const ENEMY_BULLET_SPEED = 290;
 export const ENEMY_FIRE_INTERVAL = 0.9;
 export const ENEMY_ROW_RESPAWN_Y = 72;
 export const ENEMY_ROW_UFO_CHANCE = 0.38;
 export const ENEMY_UFO_SCORE = 10;
+export const ENEMY_UFO_HIT_POINTS = 3;
+export const ENEMY_STANDARD_ACTIVE_WIDTH = 30;
+export const ENEMY_STANDARD_ACTIVE_HEIGHT = 22;
+export const ENEMY_UFO_ACTIVE_WIDTH = 36;
+export const ENEMY_UFO_ACTIVE_HEIGHT = 34;
 
 export const BULLET_WIDTH = 4;
 export const BULLET_HEIGHT = 14;
+export const PLAYER_ACTIVE_WIDTH = 38;
+export const PLAYER_ACTIVE_HEIGHT = 18;
 
 export const PLAYER_LIVES = 3;
 

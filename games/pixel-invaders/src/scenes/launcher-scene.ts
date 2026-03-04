@@ -2,9 +2,9 @@ import Phaser from 'phaser';
 import { TUNNEL_INVADERS_SCENE_KEY, type TunnelInvadersSceneData } from 'tunnel-invaders';
 import { AUDIO_MIX_PROFILE_IDS, RetroSfx, type AudioMixProfileId } from '@light80/game-sdk';
 
-import arcadeLogoImage from '../assets/logo_cropped.png';
-import launcherJoystickImage from '../assets/launcher_joystick.png';
-import launcherSpeakerImage from '../assets/launcher_speaker.png';
+import arcadeLogoImage from '../../../shared-assets/src/logo_cropped.png';
+import launcherJoystickImage from '../../../shared-assets/src/launcher_joystick.png';
+import launcherSpeakerImage from '../../../shared-assets/src/launcher_speaker.png';
 import {
   MENU_ROW_CONTROLLER,
   MENU_ROW_GAME,
@@ -47,9 +47,19 @@ interface MenuStar {
 }
 
 type SettingsPanelMode = 'home' | 'controllers' | 'audio';
+type LauncherLanguage = 'en' | 'pl';
 
 interface LauncherDom {
   readonly root: HTMLDivElement;
+  readonly topBar: HTMLDivElement;
+  readonly languageEnButton: HTMLButtonElement;
+  readonly languagePlButton: HTMLButtonElement;
+  readonly helpButton: HTMLButtonElement;
+  readonly helpModal: HTMLDivElement;
+  readonly helpModalCard: HTMLDivElement;
+  readonly helpTitle: HTMLDivElement;
+  readonly helpBody: HTMLDivElement;
+  readonly helpCloseButton: HTMLButtonElement;
   readonly subtitle: HTMLDivElement;
   readonly gameCard: HTMLElement;
   readonly arrowLeftButton: HTMLButtonElement;
@@ -67,6 +77,25 @@ interface LauncherDom {
   readonly audioMixButton: HTMLButtonElement;
   readonly audioLoopButton: HTMLButtonElement;
   readonly hint: HTMLDivElement;
+}
+
+interface LauncherCopy {
+  readonly subtitle: string;
+  readonly start: string;
+  readonly pressStart: string;
+  readonly settingsTitle: string;
+  readonly settingsHomeDescription: string;
+  readonly controllerTitle: string;
+  readonly audioTitle: string;
+  readonly audioDescription: string;
+  readonly mixLabel: string;
+  readonly loopLabel: string;
+  readonly loopOn: string;
+  readonly loopOff: string;
+  readonly hint: string;
+  readonly helpTitle: string;
+  readonly helpClose: string;
+  readonly helpBody: string;
 }
 
 function requireKeyboard(scene: Phaser.Scene): Phaser.Input.Keyboard.KeyboardPlugin {
@@ -147,6 +176,133 @@ function previewLabel(game: GameOption): string {
   return 'RETRO PREVIEW';
 }
 
+function gameDescription(game: GameOption, language: LauncherLanguage): string {
+  if (language === 'pl') {
+    if (game.id === 'pixel-invaders') {
+      return 'Klasyczny test loop: ruch, strzal, fala przeciwnikow.';
+    }
+    if (game.id === 'tunnel-invaders') {
+      return 'Pseudo-3D tunel: przeciwnicy nadlatuja z glebi na krawedz.';
+    }
+    throw new Error(`Missing localized game description for game "${game.id}" and language "${language}".`);
+  }
+
+  if (game.id === 'pixel-invaders') {
+    return 'Classic gameplay loop: movement, shots, and enemy waves.';
+  }
+  if (game.id === 'tunnel-invaders') {
+    return 'Pseudo-3D tunnel: enemies rush from depth to the front edge.';
+  }
+  throw new Error(`Missing localized game description for game "${game.id}" and language "${language}".`);
+}
+
+function controllerDescription(option: ControllerOption, language: LauncherLanguage): string {
+  if (language === 'pl') {
+    if (option.profileId === 'pixel-invaders-keyboard-gamepad') {
+      return 'Ruch wzgledny, idealne pod pad i klasyczne klawisze.';
+    }
+    if (option.profileId === 'pixel-invaders-mouse-paddle') {
+      return 'Ruch absolutny (0-255), jak paddle na osi ekranu.';
+    }
+    if (option.profileId === 'pixel-invaders-hybrid') {
+      return 'Laczy wzgledny ruch i tryb absolutny po przytrzymaniu myszy.';
+    }
+    if (option.profileId === 'tunnel-invaders-keyboard-gamepad') {
+      return 'Ruch wzgledny po obwodzie tunelu + strzal i skok fazowy.';
+    }
+    throw new Error(
+      `Missing localized controller description for profile "${option.profileId}" and language "${language}".`
+    );
+  }
+
+  if (option.profileId === 'pixel-invaders-keyboard-gamepad') {
+    return 'Relative movement, best for gamepad and classic keyboard input.';
+  }
+  if (option.profileId === 'pixel-invaders-mouse-paddle') {
+    return 'Absolute movement (0-255), paddle style across screen axis.';
+  }
+  if (option.profileId === 'pixel-invaders-hybrid') {
+    return 'Combines relative movement with absolute mouse-hold mode.';
+  }
+  if (option.profileId === 'tunnel-invaders-keyboard-gamepad') {
+    return 'Relative orbit movement with primary fire and phase-jump.';
+  }
+  throw new Error(
+    `Missing localized controller description for profile "${option.profileId}" and language "${language}".`
+  );
+}
+
+const LAUNCHER_COPY: Readonly<Record<LauncherLanguage, LauncherCopy>> = {
+  en: {
+    subtitle: 'Plug in. Play together.',
+    start: 'START',
+    pressStart: 'PRESS START',
+    settingsTitle: 'SETTINGS',
+    settingsHomeDescription: 'JOYSTICK: controllers | SPEAKER: audio',
+    controllerTitle: 'CONTROLLER',
+    audioTitle: 'AUDIO',
+    audioDescription: 'Mix and SFX loop test.',
+    mixLabel: 'AUDIO MIX [M / CLICK]',
+    loopLabel: 'SFX TEST LOOP [L / CLICK]',
+    loopOn: 'ON',
+    loopOff: 'OFF',
+    hint: 'UP/DOWN: panel  LEFT/RIGHT: game/option  ENTER: start  M/L: audio  F: fullscreen',
+    helpTitle: 'Controls',
+    helpClose: 'CLOSE',
+    helpBody:
+      'Launcher\n' +
+      'UP/DOWN: select panel\n' +
+      'LEFT/RIGHT: game/setting\n' +
+      'ENTER or SPACE: start game\n' +
+      'M: next audio mix\n' +
+      'L: SFX test loop\n' +
+      'F: fullscreen\n\n' +
+      'In game (global)\n' +
+      'F1: SFX on/off\n' +
+      'F2: music pause/play\n' +
+      'F3/F4: previous/next song\n' +
+      'F5: browser refresh (unbound)\n' +
+      'F6: debug mode on/off\n\n' +
+      'Debug mode\n' +
+      'Pixel Invaders: F7 F8 F9 F10\n' +
+      'Tunnel Invaders: [ ] 9 0 S W Z X D F R H M'
+  },
+  pl: {
+    subtitle: 'Bierz kontroler. Gramy.',
+    start: 'START',
+    pressStart: 'PRESS START',
+    settingsTitle: 'USTAWIENIA',
+    settingsHomeDescription: 'JOYSTICK: kontrolery | SPEAKER: audio',
+    controllerTitle: 'KONTROLER',
+    audioTitle: 'AUDIO',
+    audioDescription: 'Mix i test petli SFX.',
+    mixLabel: 'AUDIO MIX [M / CLICK]',
+    loopLabel: 'SFX TEST LOOP [L / CLICK]',
+    loopOn: 'WL',
+    loopOff: 'WYL',
+    hint: 'UP/DOWN: panel  LEFT/RIGHT: gra/opcja  ENTER: start  M/L: audio  F: fullscreen',
+    helpTitle: 'Sterowanie',
+    helpClose: 'ZAMKNIJ',
+    helpBody:
+      'Launcher\n' +
+      'UP/DOWN: wybor panelu\n' +
+      'LEFT/RIGHT: gra/opcja\n' +
+      'ENTER lub SPACE: start gry\n' +
+      'M: kolejny mix audio\n' +
+      'L: petla testowa SFX\n' +
+      'F: fullscreen\n\n' +
+      'W grze (globalnie)\n' +
+      'F1: SFX wlacz/wylacz\n' +
+      'F2: muzyka pauza/play\n' +
+      'F3/F4: poprzedni/nastepny utwor\n' +
+      'F5: odswiezanie przegladarki (brak binda)\n' +
+      'F6: debug mode wlacz/wylacz\n\n' +
+      'Debug mode\n' +
+      'Pixel Invaders: F7 F8 F9 F10\n' +
+      'Tunnel Invaders: [ ] 9 0 S W Z X D F R H M'
+  }
+};
+
 function stateEquals(a: LauncherState, b: LauncherState): boolean {
   return (
     a.cursorIndex === b.cursorIndex &&
@@ -161,6 +317,8 @@ function stateEquals(a: LauncherState, b: LauncherState): boolean {
 export class LauncherScene extends Phaser.Scene {
   private state: LauncherState = createInitialLauncherState();
   private settingsPanelMode: SettingsPanelMode = 'home';
+  private language: LauncherLanguage = 'en';
+  private helpVisible = false;
   private readonly sfx = new RetroSfx();
   private readonly onResize = (): void => {
     this.renderDom();
@@ -355,6 +513,26 @@ export class LauncherScene extends Phaser.Scene {
     const root = document.createElement('div');
     root.className = 'launcher-overlay';
 
+    const topBar = document.createElement('div');
+    topBar.className = 'launcher-top-bar';
+
+    const languageEnButton = document.createElement('button');
+    languageEnButton.className = 'launcher-top-button';
+    languageEnButton.type = 'button';
+    languageEnButton.textContent = '🇬🇧 EN';
+
+    const languagePlButton = document.createElement('button');
+    languagePlButton.className = 'launcher-top-button';
+    languagePlButton.type = 'button';
+    languagePlButton.textContent = '🇵🇱 PL';
+
+    const helpButton = document.createElement('button');
+    helpButton.className = 'launcher-top-button launcher-help-button';
+    helpButton.type = 'button';
+    helpButton.textContent = '?';
+
+    topBar.append(languageEnButton, languagePlButton, helpButton);
+
     const header = document.createElement('div');
     header.className = 'launcher-header';
 
@@ -458,12 +636,35 @@ export class LauncherScene extends Phaser.Scene {
     const hint = document.createElement('div');
     hint.className = 'launcher-hint';
 
+    const helpModal = document.createElement('div');
+    helpModal.className = 'launcher-help-modal';
+    const helpModalCard = document.createElement('div');
+    helpModalCard.className = 'launcher-help-card';
+    const helpTitle = document.createElement('div');
+    helpTitle.className = 'launcher-help-title';
+    const helpBody = document.createElement('div');
+    helpBody.className = 'launcher-help-body';
+    const helpCloseButton = document.createElement('button');
+    helpCloseButton.className = 'launcher-help-close';
+    helpCloseButton.type = 'button';
+    helpModalCard.append(helpTitle, helpBody, helpCloseButton);
+    helpModal.append(helpModalCard);
+
     shell.append(gamePanel, settingsPanel);
-    root.append(header, shell, hint);
+    root.append(topBar, header, shell, hint, helpModal);
     host.append(root);
 
     this.dom = {
       root,
+      topBar,
+      languageEnButton,
+      languagePlButton,
+      helpButton,
+      helpModal,
+      helpModalCard,
+      helpTitle,
+      helpBody,
+      helpCloseButton,
       subtitle,
       gameCard,
       arrowLeftButton,
@@ -482,6 +683,54 @@ export class LauncherScene extends Phaser.Scene {
       audioLoopButton,
       hint
     };
+
+    languageEnButton.addEventListener('click', () => {
+      this.sfx.unlock();
+      if (this.language === 'en') {
+        return;
+      }
+      this.language = 'en';
+      this.sfx.playUiMove();
+      this.renderDom();
+    });
+
+    languagePlButton.addEventListener('click', () => {
+      this.sfx.unlock();
+      if (this.language === 'pl') {
+        return;
+      }
+      this.language = 'pl';
+      this.sfx.playUiMove();
+      this.renderDom();
+    });
+
+    helpButton.addEventListener('click', () => {
+      this.sfx.unlock();
+      this.helpVisible = !this.helpVisible;
+      this.sfx.playUiMove();
+      this.renderDom();
+    });
+
+    helpCloseButton.addEventListener('click', () => {
+      this.sfx.unlock();
+      this.helpVisible = false;
+      this.sfx.playUiMove();
+      this.renderDom();
+    });
+
+    helpModal.addEventListener('click', () => {
+      if (!this.helpVisible) {
+        return;
+      }
+      this.sfx.unlock();
+      this.helpVisible = false;
+      this.sfx.playUiMove();
+      this.renderDom();
+    });
+
+    helpModalCard.addEventListener('click', (event) => {
+      event.stopPropagation();
+    });
 
     arrowLeftButton.addEventListener('click', () => {
       this.sfx.unlock();
@@ -591,38 +840,48 @@ export class LauncherScene extends Phaser.Scene {
 
     const gameOption = requireGameOption(this.state.gameIndex);
     const controllerOption = requireControllerOption(this.state);
+    const copy = LAUNCHER_COPY[this.language];
+    if (copy === undefined) {
+      throw new Error(`Missing launcher copy for language "${this.language}".`);
+    }
 
-    this.dom.subtitle.textContent = 'Plug in. Play together.';
+    this.dom.subtitle.textContent = copy.subtitle;
     this.dom.gameTitle.textContent = `${this.state.cursorIndex === MENU_ROW_GAME ? '>' : ''} ${gameOption.label}`;
-    this.dom.gameDescription.textContent = gameOption.description;
-    this.dom.startButton.textContent = this.state.cursorIndex === MENU_ROW_START ? 'PRESS START' : 'START';
+    this.dom.gameDescription.textContent = gameDescription(gameOption, this.language);
+    this.dom.startButton.textContent = this.state.cursorIndex === MENU_ROW_START ? copy.pressStart : copy.start;
     this.dom.previewLabel.textContent = previewLabel(gameOption);
+    this.dom.languageEnButton.classList.toggle('is-active', this.language === 'en');
+    this.dom.languagePlButton.classList.toggle('is-active', this.language === 'pl');
+    this.dom.helpModal.classList.toggle('is-visible', this.helpVisible);
+    this.dom.helpTitle.textContent = copy.helpTitle;
+    this.dom.helpBody.textContent = copy.helpBody;
+    this.dom.helpCloseButton.textContent = copy.helpClose;
 
     this.dom.gameCard.classList.toggle('is-focused', this.state.cursorIndex === MENU_ROW_GAME);
     this.dom.startButton.classList.toggle('is-focused', this.state.cursorIndex === MENU_ROW_START);
 
     if (this.settingsPanelMode === 'home') {
-      this.dom.settingsTitle.textContent = `${this.state.cursorIndex === MENU_ROW_CONTROLLER ? '>' : ''} SETTINGS`;
-      this.dom.settingsDescription.textContent = 'JOYSTICK: kontrolery | SPEAKER: audio';
+      this.dom.settingsTitle.textContent = `${this.state.cursorIndex === MENU_ROW_CONTROLLER ? '>' : ''} ${copy.settingsTitle}`;
+      this.dom.settingsDescription.textContent = copy.settingsHomeDescription;
       this.dom.controllerChips.style.display = 'none';
       this.dom.audioMixButton.style.display = 'none';
       this.dom.audioLoopButton.style.display = 'none';
     } else if (this.settingsPanelMode === 'controllers') {
-      this.dom.settingsTitle.textContent = `${this.state.cursorIndex === MENU_ROW_CONTROLLER ? '>' : ''} CONTROLLER`;
-      this.dom.settingsDescription.textContent = controllerOption.description;
+      this.dom.settingsTitle.textContent = `${this.state.cursorIndex === MENU_ROW_CONTROLLER ? '>' : ''} ${copy.controllerTitle}`;
+      this.dom.settingsDescription.textContent = controllerDescription(controllerOption, this.language);
       this.dom.controllerChips.style.display = 'flex';
       this.dom.audioMixButton.style.display = 'none';
       this.dom.audioLoopButton.style.display = 'none';
       this.renderControllerChips(gameOption);
     } else {
-      this.dom.settingsTitle.textContent = `${this.state.cursorIndex === MENU_ROW_CONTROLLER ? '>' : ''} AUDIO`;
-      this.dom.settingsDescription.textContent = 'Mix i test petli SFX.';
+      this.dom.settingsTitle.textContent = `${this.state.cursorIndex === MENU_ROW_CONTROLLER ? '>' : ''} ${copy.audioTitle}`;
+      this.dom.settingsDescription.textContent = copy.audioDescription;
       this.dom.controllerChips.style.display = 'none';
       this.dom.audioMixButton.style.display = 'block';
       this.dom.audioLoopButton.style.display = 'block';
       const mixProfileId = requireAudioMixProfileId(this.state.audioMixProfileIndex);
-      this.dom.audioMixButton.textContent = `AUDIO MIX [M / CLICK]: ${mixProfileId.toUpperCase()}`;
-      this.dom.audioLoopButton.textContent = `SFX TEST LOOP [L / CLICK]: ${this.state.sfxLoopEnabled ? 'ON' : 'OFF'}`;
+      this.dom.audioMixButton.textContent = `${copy.mixLabel}: ${mixProfileId.toUpperCase()}`;
+      this.dom.audioLoopButton.textContent = `${copy.loopLabel}: ${this.state.sfxLoopEnabled ? copy.loopOn : copy.loopOff}`;
       this.dom.audioLoopButton.classList.toggle('is-on', this.state.sfxLoopEnabled);
     }
 
@@ -630,8 +889,7 @@ export class LauncherScene extends Phaser.Scene {
     this.dom.speakerButton.classList.toggle('is-active', this.settingsPanelMode === 'audio');
     this.dom.settingsPanel.classList.toggle('is-focused', this.state.cursorIndex === MENU_ROW_CONTROLLER);
 
-    this.dom.hint.textContent =
-      'UP/DOWN: karta  LEFT/RIGHT: zmiana gry  ENTER: start  M/L: audio  F: fullscreen';
+    this.dom.hint.textContent = copy.hint;
   }
 
   private renderControllerChips(gameOption: GameOption): void {

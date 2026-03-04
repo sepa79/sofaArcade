@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import syncRaw from '../assets/game-bgm.sync.json';
+import syncRaw from '../../../shared-assets/src/game-bgm.sync.json';
 import { createSyncTrackRuntime } from './validate';
 
 describe('createSyncTrackRuntime', () => {

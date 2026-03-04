@@ -18,20 +18,20 @@ import {
   TUNNEL_INNER_RADIUS,
   TUNNEL_OUTER_RADIUS
 } from '../game/constants';
-import backgroundMusicTrack from '../assets/game-bgm.mp3';
+import backgroundMusicTrack from '../../../shared-assets/src/game-bgm.mp3';
 import { enemyHitArc, enemyHitDepthWindow, playerHitArc, playerHitDepthWindow } from '../game/hitbox';
 import { createInputContext, readFrameInput } from '../game/input';
 import { stepGame } from '../game/logic';
 import { createInitialState } from '../game/state';
-import explosionSrc1Image from '../assets/explosion_src_1.png';
-import explosionSrc2Image from '../assets/explosion_src_2.png';
-import asteroidSpriteImage from '../assets/sprite_asteroid_1.png';
-import enemyFighterImage from '../assets/sprite_enemy_1.png';
-import enemyFighterImageAlt from '../assets/sprite_enemy_2.png';
-import enemyFighterImageAlt2 from '../assets/sprite_enemy_4.png';
-import enemyLargeImage from '../assets/sprite_enemy_3.png';
-import fighterShipAltImage from '../assets/sprite_player_1a.png';
-import fighterShipImage from '../assets/sprite_player_1.png';
+import explosionSrc1Image from '../../../shared-assets/src/explosion_src_1.png';
+import explosionSrc2Image from '../../../shared-assets/src/explosion_src_2.png';
+import asteroidSpriteImage from '../../../shared-assets/src/sprite_asteroid_1.png';
+import enemyFighterImage from '../../../shared-assets/src/sprite_enemy_1.png';
+import enemyFighterImageAlt from '../../../shared-assets/src/sprite_enemy_2.png';
+import enemyFighterImageAlt2 from '../../../shared-assets/src/sprite_enemy_4.png';
+import enemyLargeImage from '../../../shared-assets/src/sprite_enemy_big_1.png';
+import fighterShipAltImage from '../../../shared-assets/src/sprite_player_1a.png';
+import fighterShipImage from '../../../shared-assets/src/sprite_player_1.png';
 import type { InputContext } from '../game/input';
 import type { Bullet, Enemy, GameState, TunnelPhase } from '../game/types';
 

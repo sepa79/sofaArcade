@@ -5,9 +5,9 @@ import {
   ENEMY_DESCEND_STEP,
   ENEMY_DRIFT_DOWN_SPEED,
   ENEMY_FIRE_INTERVAL,
-  ENEMY_HEIGHT,
   ENEMY_ROW_RESPAWN_Y,
   ENEMY_ROW_UFO_CHANCE,
+  ENEMY_UFO_HIT_POINTS,
   ENEMY_ROWS,
   ENEMY_SPEED_STEP,
   ENEMY_START_X,
@@ -25,6 +25,18 @@ import {
   WORLD_HEIGHT,
   WORLD_WIDTH
 } from './constants';
+import {
+  collideEnemyBulletWithPlayer,
+  collidePlayerBulletWithEnemy,
+  createEmptyCollisionDebugFrame,
+  createMutableCollisionDebugFrame,
+  enemyActiveHeight,
+  freezeCollisionDebugFrame,
+  playerActiveHeight,
+  type CollisionDebugFrame,
+  type CollisionRuntime,
+  type MutableCollisionDebugFrame
+} from './collision';
 import { createInitialState } from './state';
 import type { Bullet, Enemy, FrameInput, GameState } from './types';
 
@@ -39,24 +51,6 @@ function nextRandom(seed: number): RandomValue {
     seed: nextSeed,
     value: nextSeed / 4294967296
   };
-}
-
-function intersectsRectPoint(
-  pointX: number,
-  pointY: number,
-  rectX: number,
-  rectY: number,
-  rectWidth: number,
-  rectHeight: number
-): boolean {
-  const halfWidth = rectWidth / 2;
-  const halfHeight = rectHeight / 2;
-  return (
-    pointX >= rectX - halfWidth &&
-    pointX <= rectX + halfWidth &&
-    pointY >= rectY - halfHeight &&
-    pointY <= rectY + halfHeight
-  );
 }
 
 function clampPlayerX(x: number): number {
@@ -130,7 +124,7 @@ function spawnEnemyBullet(
     bullets: bullets.concat({
       owner: 'enemy',
       x: shooter.x,
-      y: shooter.y + ENEMY_HEIGHT / 2,
+      y: shooter.y + enemyActiveHeight(shooter.kind) / 2,
       vy: ENEMY_BULLET_SPEED
     })
   };
@@ -204,7 +198,8 @@ function respawnRows(
       x: ENEMY_START_X + col * ENEMY_GAP_X,
       y: ENEMY_ROW_RESPAWN_Y,
       kind,
-      scoreValue: kind === 'ufo' ? ENEMY_UFO_SCORE : SCORE_PER_ENEMY
+      scoreValue: kind === 'ufo' ? ENEMY_UFO_SCORE : SCORE_PER_ENEMY,
+      hitPoints: kind === 'ufo' ? ENEMY_UFO_HIT_POINTS : 1
     };
   });
 
@@ -255,7 +250,10 @@ function resolvePlayerShots(
   bullets: ReadonlyArray<Bullet>,
   score: number,
   hitStreak: number,
-  scoreMultiplier: number
+  scoreMultiplier: number,
+  dt: number,
+  collisionRuntime: CollisionRuntime,
+  collisionDebug: MutableCollisionDebugFrame | null
 ): {
   readonly enemies: ReadonlyArray<Enemy>;
   readonly bullets: ReadonlyArray<Bullet>;
@@ -264,9 +262,11 @@ function resolvePlayerShots(
   readonly scoreMultiplier: number;
 } {
   const aliveById = new Set<number>();
+  const hitPointsById = new Map<number, number>();
   enemies.forEach((enemy) => {
     if (enemy.alive) {
       aliveById.add(enemy.id);
+      hitPointsById.set(enemy.id, enemy.hitPoints);
     }
   });
 
@@ -281,25 +281,77 @@ function resolvePlayerShots(
       continue;
     }
 
-    const target = enemies.find(
-      (enemy) => enemy.alive && aliveById.has(enemy.id) && intersectsRectPoint(bullet.x, bullet.y, enemy.x, enemy.y, ENEMY_WIDTH, ENEMY_HEIGHT)
-    );
+    const segmentStartX = bullet.x;
+    const segmentStartY = bullet.y - bullet.vy * dt;
+    const segmentEndX = bullet.x;
+    const segmentEndY = bullet.y;
 
-    if (target === undefined) {
+    let target: Enemy | null = null;
+    let bestT = Number.POSITIVE_INFINITY;
+    for (const enemy of enemies) {
+      if (!enemy.alive || !aliveById.has(enemy.id)) {
+        continue;
+      }
+
+      const hit = collidePlayerBulletWithEnemy(
+        collisionRuntime,
+        enemy,
+        segmentStartX,
+        segmentStartY,
+        segmentEndX,
+        segmentEndY,
+        collisionDebug
+      );
+      if (!hit.hit || hit.t >= bestT) {
+        continue;
+      }
+
+      bestT = hit.t;
+      target = enemy;
+    }
+
+    if (target === null) {
       nextBullets.push(bullet);
       continue;
     }
 
-    aliveById.delete(target.id);
-    nextScore += target.scoreValue * nextScoreMultiplier;
-    nextHitStreak += 1;
-    nextScoreMultiplier = Math.min(32, nextHitStreak + 1);
+    const targetHitPoints = hitPointsById.get(target.id);
+    if (targetHitPoints === undefined) {
+      throw new Error(`Hit points are missing for alive enemy ${target.id}.`);
+    }
+    const remainingHitPoints = targetHitPoints - 1;
+    if (remainingHitPoints <= 0) {
+      aliveById.delete(target.id);
+      hitPointsById.set(target.id, 0);
+      nextScore += target.scoreValue * nextScoreMultiplier;
+      nextHitStreak += 1;
+      nextScoreMultiplier = Math.min(32, nextHitStreak + 1);
+      continue;
+    }
+
+    hitPointsById.set(target.id, remainingHitPoints);
   }
 
-  const nextEnemies = enemies.map((enemy) => ({
-    ...enemy,
-    alive: aliveById.has(enemy.id)
-  }));
+  const nextEnemies = enemies.map((enemy) => {
+    const alive = aliveById.has(enemy.id);
+    const hitPoints = hitPointsById.get(enemy.id);
+    if (alive) {
+      if (hitPoints === undefined) {
+        throw new Error(`Hit points are missing for surviving enemy ${enemy.id}.`);
+      }
+      return {
+        ...enemy,
+        alive: true,
+        hitPoints
+      };
+    }
+
+    return {
+      ...enemy,
+      alive: false,
+      hitPoints: hitPoints === undefined ? enemy.hitPoints : hitPoints
+    };
+  });
 
   return {
     enemies: nextEnemies,
@@ -314,7 +366,10 @@ function resolveEnemyShots(
   lives: number,
   playerX: number,
   playerRespawnTimer: number,
-  bullets: ReadonlyArray<Bullet>
+  bullets: ReadonlyArray<Bullet>,
+  dt: number,
+  collisionRuntime: CollisionRuntime,
+  collisionDebug: MutableCollisionDebugFrame | null
 ): {
   readonly lives: number;
   readonly playerRespawnTimer: number;
@@ -336,8 +391,21 @@ function resolveEnemyShots(
       return true;
     }
 
-    const hit = intersectsRectPoint(bullet.x, bullet.y, playerX, PLAYER_Y, PLAYER_WIDTH, PLAYER_HEIGHT);
-    if (hit) {
+    const segmentStartX = bullet.x;
+    const segmentStartY = bullet.y - bullet.vy * dt;
+    const segmentEndX = bullet.x;
+    const segmentEndY = bullet.y;
+    const hit = collideEnemyBulletWithPlayer(
+      collisionRuntime,
+      playerX,
+      PLAYER_Y,
+      segmentStartX,
+      segmentStartY,
+      segmentEndX,
+      segmentEndY,
+      collisionDebug
+    );
+    if (hit.hit) {
       playerHit = true;
       return false;
     }
@@ -364,31 +432,55 @@ function resolveEnemyShots(
 }
 
 function enemiesReachedPlayer(enemies: ReadonlyArray<Enemy>): boolean {
-  return enemies.some((enemy) => enemy.alive && enemy.y + ENEMY_HEIGHT / 2 >= PLAYER_Y - PLAYER_HEIGHT);
+  return enemies.some((enemy) => enemy.alive && enemy.y + enemyActiveHeight(enemy.kind) / 2 >= PLAYER_Y - playerActiveHeight());
 }
 
-export function stepGame(state: GameState, input: FrameInput, dt: number): GameState {
+export interface StepGameOptions {
+  readonly collisionRuntime: CollisionRuntime;
+  readonly captureCollisionDebug: boolean;
+}
+
+export interface StepGameResult {
+  readonly state: GameState;
+  readonly collisionDebug: CollisionDebugFrame;
+}
+
+export function stepGame(state: GameState, input: FrameInput, dt: number, options: StepGameOptions): StepGameResult {
   if (!Number.isFinite(input.moveAxisSigned) || input.moveAxisSigned < -1 || input.moveAxisSigned > 1) {
     throw new Error(`moveAxisSigned must be in [-1, 1], got ${input.moveAxisSigned}.`);
   }
 
+  const collisionDebug = createMutableCollisionDebugFrame(options.captureCollisionDebug);
+
   if (state.phase === 'ready') {
     if (input.restartPressed) {
-      return createInitialState(state.rngSeed + 1);
+      return {
+        state: createInitialState(state.rngSeed + 1),
+        collisionDebug: createEmptyCollisionDebugFrame()
+      };
     }
 
     if (input.firePressed) {
       return {
-        ...state,
-        phase: 'playing'
+        state: {
+          ...state,
+          phase: 'playing'
+        },
+        collisionDebug: createEmptyCollisionDebugFrame()
       };
     }
 
-    return state;
+    return {
+      state,
+      collisionDebug: createEmptyCollisionDebugFrame()
+    };
   }
 
   if (state.phase !== 'playing') {
-    return input.restartPressed ? createInitialState(state.rngSeed + 1) : state;
+    return {
+      state: input.restartPressed ? createInitialState(state.rngSeed + 1) : state,
+      collisionDebug: createEmptyCollisionDebugFrame()
+    };
   }
 
   const playerRespawnTimer = Math.max(0, state.playerRespawnTimer - dt);
@@ -428,13 +520,19 @@ export function stepGame(state: GameState, input: FrameInput, dt: number): GameS
     bullets,
     state.score,
     state.hitStreak,
-    state.scoreMultiplier
+    state.scoreMultiplier,
+    dt,
+    options.collisionRuntime,
+    collisionDebug
   );
   const resolvedEnemyShots = resolveEnemyShots(
     state.lives,
     playerX,
     playerRespawnTimer,
-    resolvedPlayerShots.bullets
+    resolvedPlayerShots.bullets,
+    dt,
+    options.collisionRuntime,
+    collisionDebug
   );
   const filteredBullets = filterBulletsAndCountPlayerMisses(resolvedEnemyShots.bullets);
   const playerWasHit = resolvedEnemyShots.lives < state.lives;
@@ -453,19 +551,22 @@ export function stepGame(state: GameState, input: FrameInput, dt: number): GameS
   const phase = reachedPlayer ? 'lost' : resolvedEnemyShots.phase;
 
   return {
-    phase,
-    score: resolvedPlayerShots.score,
-    hitStreak: nextHitStreak,
-    scoreMultiplier: nextScoreMultiplier,
-    lives: resolvedEnemyShots.lives,
-    playerX,
-    playerRespawnTimer: resolvedEnemyShots.playerRespawnTimer,
-    playerShootTimer,
-    enemyDirection: movedEnemies.direction,
-    enemySpeed: movedEnemies.speed,
-    enemyFireTimer,
-    rngSeed,
-    enemies: respawnResult.enemies,
-    bullets: filteredBullets.bullets
+    state: {
+      phase,
+      score: resolvedPlayerShots.score,
+      hitStreak: nextHitStreak,
+      scoreMultiplier: nextScoreMultiplier,
+      lives: resolvedEnemyShots.lives,
+      playerX,
+      playerRespawnTimer: resolvedEnemyShots.playerRespawnTimer,
+      playerShootTimer,
+      enemyDirection: movedEnemies.direction,
+      enemySpeed: movedEnemies.speed,
+      enemyFireTimer,
+      rngSeed,
+      enemies: respawnResult.enemies,
+      bullets: filteredBullets.bullets
+    },
+    collisionDebug: freezeCollisionDebugFrame(collisionDebug)
   };
 }

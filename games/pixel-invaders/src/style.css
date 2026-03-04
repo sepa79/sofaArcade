@@ -44,6 +44,103 @@ body {
   pointer-events: auto;
 }
 
+.launcher-top-bar {
+  position: absolute;
+  top: clamp(8px, 1.2vh, 16px);
+  right: clamp(10px, 1.4vw, 24px);
+  z-index: 2;
+  display: flex;
+  gap: 8px;
+  pointer-events: auto;
+}
+
+.launcher-top-button {
+  min-width: 64px;
+  height: clamp(30px, 4.6vh, 44px);
+  border: 2px solid #75d6ff;
+  border-radius: 10px;
+  background: rgba(12, 28, 72, 0.9);
+  color: #d9f6ff;
+  font-size: clamp(13px, 2.1vh, 20px);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.launcher-top-button:hover,
+.launcher-top-button.is-active {
+  border-color: #ffe8ad;
+  background: rgba(66, 42, 118, 0.92);
+  color: #fff6d6;
+}
+
+.launcher-help-button {
+  min-width: 44px;
+  width: 44px;
+  font-size: clamp(16px, 2.5vh, 24px);
+}
+
+.launcher-help-modal {
+  position: absolute;
+  inset: 0;
+  z-index: 24;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 8, 24, 0.8);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease-out;
+}
+
+.launcher-help-modal.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.launcher-help-card {
+  width: min(760px, 86vw);
+  max-height: min(82vh, 900px);
+  overflow: auto;
+  border: 2px solid #76d8ff;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(22, 18, 52, 0.96), rgba(8, 12, 40, 0.96));
+  box-shadow: 0 0 30px rgba(112, 84, 255, 0.42);
+  padding: 18px 18px 14px;
+}
+
+.launcher-help-title {
+  color: #bff6ff;
+  font-size: clamp(26px, 4.5vh, 46px);
+  font-weight: 700;
+  text-align: center;
+  line-height: 1;
+}
+
+.launcher-help-body {
+  margin-top: 12px;
+  color: #d5e8ff;
+  font-size: clamp(13px, 2.15vh, 24px);
+  line-height: 1.25;
+  white-space: pre-line;
+}
+
+.launcher-help-close {
+  margin-top: 14px;
+  width: 100%;
+  height: clamp(36px, 5.5vh, 52px);
+  border: 2px solid #ffdca4;
+  border-radius: 10px;
+  background: #dd7621;
+  color: #fff3d3;
+  font-size: clamp(16px, 2.6vh, 28px);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.launcher-help-close:hover {
+  background: #f08d31;
+}
+
 .launcher-header {
   display: flex;
   flex-direction: column;

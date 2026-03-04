@@ -5,6 +5,7 @@ export interface Enemy {
   readonly alive: boolean;
   readonly kind: 'normal' | 'ufo';
   readonly scoreValue: number;
+  readonly hitPoints: number;
 }
 
 export interface Bullet {
