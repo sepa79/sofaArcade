@@ -77,6 +77,9 @@ importers:
       phaser:
         specifier: ^3.90.0
         version: 3.90.0
+      qrcode:
+        specifier: ^1.5.4
+        version: 1.5.4
       tunnel-invaders:
         specifier: workspace:*
         version: link:../tunnel-invaders
@@ -87,6 +90,9 @@ importers:
       '@types/node':
         specifier: ^20.17.57
         version: 20.19.35
+      '@types/qrcode':
+        specifier: ^1.5.5
+        version: 1.5.6
       '@typescript-eslint/eslint-plugin':
         specifier: ^8.46.0
         version: 8.56.1(@typescript-eslint/parser@8.56.1(eslint@9.39.3)(typescript@5.9.3))(eslint@9.39.3)(typescript@5.9.3)

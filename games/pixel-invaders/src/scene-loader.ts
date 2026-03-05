@@ -7,6 +7,7 @@ export interface GameLaunchData {
   readonly controllerProfileId: string;
   readonly controllerLabel: string;
   readonly audioMixProfileId: AudioMixProfileId;
+  readonly phoneLinkEnabled: boolean;
 }
 
 export interface LazySceneLoader {

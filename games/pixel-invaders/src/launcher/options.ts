@@ -33,6 +33,11 @@ export const GAME_OPTIONS: ReadonlyArray<GameOption> = [
         profileId: 'pixel-invaders-hybrid',
         label: 'Hybrid',
         description: 'Laczy wzgledny ruch i tryb absolutny po przytrzymaniu myszy.'
+      },
+      {
+        profileId: 'pixel-invaders-phone-link',
+        label: 'Phone Link',
+        description: 'Sterowanie telefonem przez WebRTC (P2P).'
       }
     ]
   },

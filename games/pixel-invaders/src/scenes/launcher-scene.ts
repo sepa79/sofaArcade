@@ -1,9 +1,11 @@
 import Phaser from 'phaser';
+import QRCode from 'qrcode';
 import { AUDIO_MIX_PROFILE_IDS, RetroSfx, type AudioMixProfileId } from '@light80/game-sdk';
 
 import arcadeLogoImage from '../../../shared-assets/src/logo_cropped.png';
 import launcherJoystickImage from '../../../shared-assets/src/launcher_joystick.png';
 import launcherSpeakerImage from '../../../shared-assets/src/launcher_speaker.png';
+import { currentPhoneHostSnapshot, startPhoneHostSession } from '../phone/host-link';
 import {
   requireLazySceneLoader,
   type GameLaunchData,
@@ -77,6 +79,16 @@ interface LauncherDom {
   readonly settingsTitle: HTMLDivElement;
   readonly settingsDescription: HTMLDivElement;
   readonly controllerChips: HTMLDivElement;
+  readonly phoneConnectButton: HTMLButtonElement;
+  readonly phoneConnectStatus: HTMLDivElement;
+  readonly phoneSetupModal: HTMLDivElement;
+  readonly phoneSetupCard: HTMLDivElement;
+  readonly phoneSetupTitle: HTMLDivElement;
+  readonly phoneSetupStatus: HTMLDivElement;
+  readonly phoneSetupOpenLink: HTMLAnchorElement;
+  readonly phoneSetupQrCanvas: HTMLCanvasElement;
+  readonly phoneSetupConnectButton: HTMLButtonElement;
+  readonly phoneSetupCloseButton: HTMLButtonElement;
   readonly audioMixButton: HTMLButtonElement;
   readonly audioLoopButton: HTMLButtonElement;
   readonly hint: HTMLDivElement;
@@ -89,6 +101,11 @@ interface LauncherCopy {
   readonly settingsTitle: string;
   readonly settingsHomeDescription: string;
   readonly controllerTitle: string;
+  readonly phoneConnectLabel: string;
+  readonly phoneConnectStart: string;
+  readonly phoneSetupTitle: string;
+  readonly phoneSetupOpenLink: string;
+  readonly phoneSetupClose: string;
   readonly audioTitle: string;
   readonly audioDescription: string;
   readonly mixLabel: string;
@@ -218,6 +235,9 @@ function controllerDescription(option: ControllerOption, language: LauncherLangu
     if (option.profileId === 'pixel-invaders-hybrid') {
       return 'Laczy wzgledny ruch i tryb absolutny po przytrzymaniu myszy.';
     }
+    if (option.profileId === 'pixel-invaders-phone-link') {
+      return 'Telefon jako kontroler. Najpierw podlacz sesje przez przycisk ponizej.';
+    }
     if (option.profileId === 'tunnel-invaders-keyboard-gamepad') {
       return 'Ruch wzgledny po obwodzie tunelu + strzal i skok fazowy.';
     }
@@ -235,6 +255,9 @@ function controllerDescription(option: ControllerOption, language: LauncherLangu
   if (option.profileId === 'pixel-invaders-hybrid') {
     return 'Combines relative movement with absolute mouse-hold mode.';
   }
+  if (option.profileId === 'pixel-invaders-phone-link') {
+    return 'Phone as controller. Pair it first with the connect button below.';
+  }
   if (option.profileId === 'tunnel-invaders-keyboard-gamepad') {
     return 'Relative orbit movement with primary fire and phase-jump.';
   }
@@ -251,6 +274,11 @@ const LAUNCHER_COPY: Readonly<Record<LauncherLanguage, LauncherCopy>> = {
     settingsTitle: 'SETTINGS',
     settingsHomeDescription: 'JOYSTICK: controllers | SPEAKER: audio',
     controllerTitle: 'CONTROLLER',
+    phoneConnectLabel: 'PHONE LINK',
+    phoneConnectStart: 'PHONE SETUP',
+    phoneSetupTitle: 'PHONE LINK SETUP',
+    phoneSetupOpenLink: 'OPEN CONTROLLER URL',
+    phoneSetupClose: 'CLOSE',
     audioTitle: 'AUDIO',
     audioDescription: 'Mix and SFX loop test.',
     mixLabel: 'AUDIO MIX [M / CLICK]',
@@ -285,6 +313,11 @@ const LAUNCHER_COPY: Readonly<Record<LauncherLanguage, LauncherCopy>> = {
     settingsTitle: 'USTAWIENIA',
     settingsHomeDescription: 'JOYSTICK: kontrolery | SPEAKER: audio',
     controllerTitle: 'KONTROLER',
+    phoneConnectLabel: 'LINK TELEFONU',
+    phoneConnectStart: 'USTAW TELEFON',
+    phoneSetupTitle: 'KONFIGURACJA TELEFONU',
+    phoneSetupOpenLink: 'OTWORZ URL KONTROLERA',
+    phoneSetupClose: 'ZAMKNIJ',
     audioTitle: 'AUDIO',
     audioDescription: 'Mix i test petli SFX.',
     mixLabel: 'AUDIO MIX [M / CLICK]',
@@ -330,6 +363,7 @@ export class LauncherScene extends Phaser.Scene {
   private settingsPanelMode: SettingsPanelMode = 'home';
   private language: LauncherLanguage = 'en';
   private helpVisible = false;
+  private phoneSetupVisible = false;
   private readonly sfx = new RetroSfx();
   private readonly onResize = (): void => {
     this.renderDom();
@@ -343,6 +377,9 @@ export class LauncherScene extends Phaser.Scene {
   private sfxLoopStep = 0;
   private dom: LauncherDom | null = null;
   private startInFlight = false;
+  private phoneConnectInFlight = false;
+  private phoneSnapshotSignature = '';
+  private phoneQrValue = '';
 
   constructor() {
     super(LAUNCHER_SCENE_KEY);
@@ -371,6 +408,13 @@ export class LauncherScene extends Phaser.Scene {
 
     this.mountDom();
     this.renderDom();
+    const initialSnapshot = currentPhoneHostSnapshot();
+    this.phoneSnapshotSignature = [
+      initialSnapshot.status,
+      initialSnapshot.message,
+      initialSnapshot.sessionId ?? '',
+      initialSnapshot.controllerUrl ?? ''
+    ].join('|');
 
     this.scale.on(Phaser.Scale.Events.RESIZE, this.onResize);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -509,6 +553,18 @@ export class LauncherScene extends Phaser.Scene {
       this.renderDom();
     }
 
+    const phoneSnapshot = currentPhoneHostSnapshot();
+    const snapshotSignature = [
+      phoneSnapshot.status,
+      phoneSnapshot.message,
+      phoneSnapshot.sessionId ?? '',
+      phoneSnapshot.controllerUrl ?? ''
+    ].join('|');
+    if (snapshotSignature !== this.phoneSnapshotSignature) {
+      this.phoneSnapshotSignature = snapshotSignature;
+      this.renderDom();
+    }
+
     this.updateStars(delta);
     this.updateSfxLoop(delta);
     this.drawBackdrop(this.time.now);
@@ -634,6 +690,13 @@ export class LauncherScene extends Phaser.Scene {
     const controllerChips = document.createElement('div');
     controllerChips.className = 'launcher-controller-chips';
 
+    const phoneConnectButton = document.createElement('button');
+    phoneConnectButton.className = 'launcher-phone-connect';
+    phoneConnectButton.type = 'button';
+
+    const phoneConnectStatus = document.createElement('div');
+    phoneConnectStatus.className = 'launcher-phone-status';
+
     const audioMixButton = document.createElement('button');
     audioMixButton.className = 'launcher-audio-row';
     audioMixButton.type = 'button';
@@ -642,7 +705,15 @@ export class LauncherScene extends Phaser.Scene {
     audioLoopButton.className = 'launcher-audio-row';
     audioLoopButton.type = 'button';
 
-    settingsContent.append(settingsTitle, settingsDescription, controllerChips, audioMixButton, audioLoopButton);
+    settingsContent.append(
+      settingsTitle,
+      settingsDescription,
+      controllerChips,
+      phoneConnectButton,
+      phoneConnectStatus,
+      audioMixButton,
+      audioLoopButton
+    );
     settingsPanel.append(joystickButton, settingsContent, speakerButton);
 
     const hint = document.createElement('div');
@@ -662,8 +733,40 @@ export class LauncherScene extends Phaser.Scene {
     helpModalCard.append(helpTitle, helpBody, helpCloseButton);
     helpModal.append(helpModalCard);
 
+    const phoneSetupModal = document.createElement('div');
+    phoneSetupModal.className = 'launcher-help-modal';
+    const phoneSetupCard = document.createElement('div');
+    phoneSetupCard.className = 'launcher-help-card launcher-phone-setup-card';
+    const phoneSetupTitle = document.createElement('div');
+    phoneSetupTitle.className = 'launcher-help-title';
+    const phoneSetupStatus = document.createElement('div');
+    phoneSetupStatus.className = 'launcher-phone-status launcher-phone-status-modal';
+    const phoneSetupQrCanvas = document.createElement('canvas');
+    phoneSetupQrCanvas.className = 'launcher-phone-qr launcher-phone-qr-modal';
+    phoneSetupQrCanvas.width = 260;
+    phoneSetupQrCanvas.height = 260;
+    const phoneSetupOpenLink = document.createElement('a');
+    phoneSetupOpenLink.className = 'launcher-phone-open-link';
+    phoneSetupOpenLink.target = '_blank';
+    phoneSetupOpenLink.rel = 'noopener noreferrer';
+    const phoneSetupConnectButton = document.createElement('button');
+    phoneSetupConnectButton.className = 'launcher-phone-connect';
+    phoneSetupConnectButton.type = 'button';
+    const phoneSetupCloseButton = document.createElement('button');
+    phoneSetupCloseButton.className = 'launcher-help-close';
+    phoneSetupCloseButton.type = 'button';
+    phoneSetupCard.append(
+      phoneSetupTitle,
+      phoneSetupStatus,
+      phoneSetupQrCanvas,
+      phoneSetupOpenLink,
+      phoneSetupConnectButton,
+      phoneSetupCloseButton
+    );
+    phoneSetupModal.append(phoneSetupCard);
+
     shell.append(gamePanel, settingsPanel);
-    root.append(topBar, header, shell, hint, helpModal);
+    root.append(topBar, header, shell, hint, helpModal, phoneSetupModal);
     host.append(root);
 
     this.dom = {
@@ -691,6 +794,16 @@ export class LauncherScene extends Phaser.Scene {
       settingsTitle,
       settingsDescription,
       controllerChips,
+      phoneConnectButton,
+      phoneConnectStatus,
+      phoneSetupModal,
+      phoneSetupCard,
+      phoneSetupTitle,
+      phoneSetupStatus,
+      phoneSetupOpenLink,
+      phoneSetupQrCanvas,
+      phoneSetupConnectButton,
+      phoneSetupCloseButton,
       audioMixButton,
       audioLoopButton,
       hint
@@ -797,6 +910,40 @@ export class LauncherScene extends Phaser.Scene {
       this.applyUiState({ ...this.state, cursorIndex: MENU_ROW_CONTROLLER }, false);
     });
 
+    phoneConnectButton.addEventListener('click', () => {
+      this.sfx.unlock();
+      this.sfx.playUiMove();
+      this.phoneSetupVisible = true;
+      this.renderDom();
+    });
+
+    phoneSetupConnectButton.addEventListener('click', () => {
+      this.sfx.unlock();
+      this.sfx.playUiMove();
+      void this.connectPhoneController();
+    });
+
+    phoneSetupCloseButton.addEventListener('click', () => {
+      this.sfx.unlock();
+      this.sfx.playUiMove();
+      this.phoneSetupVisible = false;
+      this.renderDom();
+    });
+
+    phoneSetupModal.addEventListener('click', () => {
+      if (!this.phoneSetupVisible) {
+        return;
+      }
+      this.sfx.unlock();
+      this.sfx.playUiMove();
+      this.phoneSetupVisible = false;
+      this.renderDom();
+    });
+
+    phoneSetupCard.addEventListener('click', (event) => {
+      event.stopPropagation();
+    });
+
     audioMixButton.addEventListener('click', () => {
       this.sfx.unlock();
       this.settingsPanelMode = 'audio';
@@ -831,6 +978,66 @@ export class LauncherScene extends Phaser.Scene {
 
     this.dom.root.remove();
     this.dom = null;
+    this.phoneQrValue = '';
+  }
+
+  private phoneStatusText(): string {
+    const snapshot = currentPhoneHostSnapshot();
+    if (snapshot.controllerUrl === null || snapshot.sessionId === null) {
+      return snapshot.message;
+    }
+
+    return `CODE ${snapshot.sessionId} | ${snapshot.message}\n${snapshot.controllerUrl}`;
+  }
+
+  private renderPhoneQr(controllerUrl: string | null): void {
+    if (this.dom === null) {
+      return;
+    }
+
+    const canvas = this.dom.phoneSetupQrCanvas;
+    if (controllerUrl === null) {
+      canvas.style.display = 'none';
+      const context = canvas.getContext('2d');
+      if (context === null) {
+        throw new Error('2D canvas context is required for launcher phone QR.');
+      }
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      this.phoneQrValue = '';
+      return;
+    }
+
+    canvas.style.display = 'block';
+    if (this.phoneQrValue === controllerUrl) {
+      return;
+    }
+
+    this.phoneQrValue = controllerUrl;
+    void QRCode.toCanvas(canvas, controllerUrl, {
+      width: 260,
+      margin: 1,
+      color: {
+        dark: '#E9F4FF',
+        light: '#0C132B'
+      }
+    }).catch((error: unknown) => {
+      throw error;
+    });
+  }
+
+  private async connectPhoneController(): Promise<void> {
+    if (this.phoneConnectInFlight) {
+      return;
+    }
+
+    this.phoneConnectInFlight = true;
+    this.renderDom();
+    try {
+      await startPhoneHostSession();
+    } finally {
+      this.phoneConnectInFlight = false;
+      this.renderDom();
+    }
   }
 
   private applyUiState(nextState: LauncherState, playMove: boolean): void {
@@ -868,20 +1075,35 @@ export class LauncherScene extends Phaser.Scene {
     this.dom.helpTitle.textContent = copy.helpTitle;
     this.dom.helpBody.textContent = copy.helpBody;
     this.dom.helpCloseButton.textContent = copy.helpClose;
+    this.dom.phoneSetupTitle.textContent = copy.phoneSetupTitle;
+    this.dom.phoneSetupCloseButton.textContent = copy.phoneSetupClose;
+    this.dom.phoneSetupOpenLink.textContent = copy.phoneSetupOpenLink;
 
     this.dom.gameCard.classList.toggle('is-focused', this.state.cursorIndex === MENU_ROW_GAME);
     this.dom.startButton.classList.toggle('is-focused', this.state.cursorIndex === MENU_ROW_START);
+    const phoneProfileActive = controllerOption.profileId === 'pixel-invaders-phone-link';
+
+    if (!phoneProfileActive) {
+      this.phoneSetupVisible = false;
+    }
 
     if (this.settingsPanelMode === 'home') {
       this.dom.settingsTitle.textContent = `${this.state.cursorIndex === MENU_ROW_CONTROLLER ? '>' : ''} ${copy.settingsTitle}`;
       this.dom.settingsDescription.textContent = copy.settingsHomeDescription;
       this.dom.controllerChips.style.display = 'none';
+      this.dom.phoneConnectButton.style.display = 'none';
+      this.dom.phoneConnectStatus.style.display = 'none';
       this.dom.audioMixButton.style.display = 'none';
       this.dom.audioLoopButton.style.display = 'none';
     } else if (this.settingsPanelMode === 'controllers') {
       this.dom.settingsTitle.textContent = `${this.state.cursorIndex === MENU_ROW_CONTROLLER ? '>' : ''} ${copy.controllerTitle}`;
       this.dom.settingsDescription.textContent = controllerDescription(controllerOption, this.language);
       this.dom.controllerChips.style.display = 'flex';
+      this.dom.phoneConnectButton.style.display = phoneProfileActive ? 'block' : 'none';
+      this.dom.phoneConnectStatus.style.display = phoneProfileActive ? 'block' : 'none';
+      this.dom.phoneConnectButton.textContent = copy.phoneConnectStart;
+      this.dom.phoneConnectButton.disabled = this.phoneConnectInFlight;
+      this.dom.phoneConnectStatus.textContent = this.phoneStatusText();
       this.dom.audioMixButton.style.display = 'none';
       this.dom.audioLoopButton.style.display = 'none';
       this.renderControllerChips(gameOption);
@@ -889,6 +1111,8 @@ export class LauncherScene extends Phaser.Scene {
       this.dom.settingsTitle.textContent = `${this.state.cursorIndex === MENU_ROW_CONTROLLER ? '>' : ''} ${copy.audioTitle}`;
       this.dom.settingsDescription.textContent = copy.audioDescription;
       this.dom.controllerChips.style.display = 'none';
+      this.dom.phoneConnectButton.style.display = 'none';
+      this.dom.phoneConnectStatus.style.display = 'none';
       this.dom.audioMixButton.style.display = 'block';
       this.dom.audioLoopButton.style.display = 'block';
       const mixProfileId = requireAudioMixProfileId(this.state.audioMixProfileIndex);
@@ -900,6 +1124,22 @@ export class LauncherScene extends Phaser.Scene {
     this.dom.joystickButton.classList.toggle('is-active', this.settingsPanelMode === 'controllers');
     this.dom.speakerButton.classList.toggle('is-active', this.settingsPanelMode === 'audio');
     this.dom.settingsPanel.classList.toggle('is-focused', this.state.cursorIndex === MENU_ROW_CONTROLLER);
+
+    const phoneSnapshot = currentPhoneHostSnapshot();
+    this.dom.phoneSetupModal.classList.toggle('is-visible', this.phoneSetupVisible && phoneProfileActive);
+    this.dom.phoneSetupStatus.textContent = this.phoneStatusText();
+    this.dom.phoneSetupConnectButton.textContent = this.phoneConnectInFlight
+      ? `${copy.phoneConnectLabel}: ...`
+      : copy.phoneConnectStart;
+    this.dom.phoneSetupConnectButton.disabled = this.phoneConnectInFlight;
+    if (phoneSnapshot.controllerUrl === null) {
+      this.dom.phoneSetupOpenLink.style.display = 'none';
+      this.dom.phoneSetupOpenLink.removeAttribute('href');
+    } else {
+      this.dom.phoneSetupOpenLink.style.display = 'inline-block';
+      this.dom.phoneSetupOpenLink.href = phoneSnapshot.controllerUrl;
+    }
+    this.renderPhoneQr(phoneProfileActive && this.phoneSetupVisible ? phoneSnapshot.controllerUrl : null);
 
     this.dom.hint.textContent = copy.hint;
   }
@@ -1122,10 +1362,12 @@ export class LauncherScene extends Phaser.Scene {
     const controllerOption = requireControllerOption(this.state);
     const audioMixProfileId = requireAudioMixProfileId(this.state.audioMixProfileIndex);
     const sceneKey = requirePlayableSceneKey(gameOption.sceneKey);
+    const phoneLinkEnabled = controllerOption.profileId === 'pixel-invaders-phone-link';
     const data: GameLaunchData = {
-        controllerProfileId: controllerOption.profileId,
-        controllerLabel: controllerOption.label,
-        audioMixProfileId
+      controllerProfileId: controllerOption.profileId,
+      controllerLabel: controllerOption.label,
+      audioMixProfileId,
+      phoneLinkEnabled
     };
 
     try {

@@ -53,8 +53,9 @@ import {
 import { createInputContext, readFrameInput } from '../game/input';
 import { stepGame } from '../game/logic';
 import { createInitialState } from '../game/state';
+import { nextPhoneControllerFrame } from '../phone/host-link';
 import type { InputContext } from '../game/input';
-import type { Bullet, Enemy, GameState } from '../game/types';
+import type { Bullet, Enemy, FrameInput, GameState } from '../game/types';
 
 export const PIXEL_INVADERS_SCENE_KEY = 'pixel-invaders';
 const PLAYER_SPRITE_KEY = 'pixel-invaders-player-ship';
@@ -266,6 +267,7 @@ export interface PixelInvadersSceneData {
   readonly controllerProfileId: string;
   readonly controllerLabel: string;
   readonly audioMixProfileId: AudioMixProfileId;
+  readonly phoneLinkEnabled: boolean;
 }
 
 function parseSceneData(rawData: unknown): PixelInvadersSceneData {
@@ -290,10 +292,15 @@ function parseSceneData(rawData: unknown): PixelInvadersSceneData {
     throw new Error('Pixel Invaders scene requires a valid audioMixProfileId.');
   }
 
+  if (typeof data.phoneLinkEnabled !== 'boolean') {
+    throw new Error('Pixel Invaders scene requires boolean phoneLinkEnabled.');
+  }
+
   return {
     controllerProfileId: data.controllerProfileId,
     controllerLabel: data.controllerLabel,
-    audioMixProfileId: data.audioMixProfileId
+    audioMixProfileId: data.audioMixProfileId,
+    phoneLinkEnabled: data.phoneLinkEnabled
   };
 }
 
@@ -452,7 +459,7 @@ export class PixelInvadersScene extends Phaser.Scene {
   private sfxEnabled = true;
   private explosions: ReadonlyArray<ExplosionFx> = [];
   private rowRespawnFlashes: ReadonlyArray<RowRespawnFlashFx> = [];
-  private inputContext!: InputContext;
+  private inputContext: InputContext | null = null;
   private collisionRuntime!: CollisionRuntime;
   private collisionDebugFrame: CollisionDebugFrame = createEmptyCollisionDebugFrame();
   private state: GameState = createInitialState(1337);
@@ -633,7 +640,9 @@ export class PixelInvadersScene extends Phaser.Scene {
 
     this.updateLayout();
 
-    this.inputContext = createInputContext(this, this.launchData.controllerProfileId);
+    if (!this.launchData.phoneLinkEnabled) {
+      this.inputContext = createInputContext(this, this.launchData.controllerProfileId);
+    }
     this.cameras.main.setBackgroundColor('#060913');
     this.musicTracks = this.readMusicTrackRuntimes();
     this.musicBannerElement = this.createMusicBannerElement();
@@ -669,10 +678,7 @@ export class PixelInvadersScene extends Phaser.Scene {
     let frameCollisionDebug: CollisionDebugFrame | null = null;
 
     while (this.accumulator >= FIXED_TIMESTEP) {
-      const input = readFrameInput(this, this.inputContext, {
-        minX: this.playfieldOffsetX,
-        maxX: this.playfieldOffsetX + this.playfieldWidth
-      });
+      const input = this.readControlInput();
       if (input.firePressed || input.restartPressed || input.moveAxisSigned !== 0 || input.moveAbsoluteUnit !== null) {
         this.ensureFullscreenOnInteraction();
         this.startBackgroundMusic();
@@ -799,6 +805,31 @@ export class PixelInvadersScene extends Phaser.Scene {
     this.updateExplosions();
 
     this.renderState();
+  }
+
+  private readControlInput(): FrameInput {
+    if (this.launchData === null) {
+      throw new Error('Pixel Invaders launchData is missing in readControlInput().');
+    }
+
+    if (this.launchData.phoneLinkEnabled) {
+      const frame = nextPhoneControllerFrame();
+      return {
+        moveAxisSigned: frame.connected ? frame.moveX : 0,
+        moveAbsoluteUnit: null,
+        firePressed: frame.fire,
+        restartPressed: frame.start
+      };
+    }
+
+    if (this.inputContext === null) {
+      throw new Error('Input context is missing for non-phone controller mode.');
+    }
+
+    return readFrameInput(this, this.inputContext, {
+      minX: this.playfieldOffsetX,
+      maxX: this.playfieldOffsetX + this.playfieldWidth
+    });
   }
 
   private renderState(): void {

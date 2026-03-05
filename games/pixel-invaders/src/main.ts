@@ -1,22 +1,40 @@
-import Phaser from 'phaser';
-
-import { WORLD_HEIGHT, WORLD_WIDTH } from './game/constants';
-import { createLazySceneLoader, LAZY_SCENE_LOADER_REGISTRY_KEY } from './scene-loader';
-import { LauncherScene } from './scenes/launcher-scene';
 import './style.css';
+import { isControllerMode, mountControllerMode } from './phone/controller-app';
 
-const gameConfig: Phaser.Types.Core.GameConfig = {
-  type: Phaser.AUTO,
-  parent: 'app',
-  pixelArt: true,
-  scene: [LauncherScene],
-  scale: {
-    mode: Phaser.Scale.RESIZE,
-    fullscreenTarget: 'app',
-    width: window.innerWidth || WORLD_WIDTH,
-    height: window.innerHeight || WORLD_HEIGHT
-  }
-};
+const app = document.querySelector<HTMLElement>('#app');
+if (app === null) {
+  throw new Error('#app container is missing.');
+}
 
-const game = new Phaser.Game(gameConfig);
-game.registry.set(LAZY_SCENE_LOADER_REGISTRY_KEY, createLazySceneLoader(game));
+if (isControllerMode()) {
+  mountControllerMode(app);
+} else {
+  void (async () => {
+    const [{ default: Phaser }, { WORLD_HEIGHT, WORLD_WIDTH }, sceneLoaderModule, launcherSceneModule] =
+      await Promise.all([
+        import('phaser'),
+        import('./game/constants'),
+        import('./scene-loader'),
+        import('./scenes/launcher-scene')
+      ]);
+
+    const gameConfig: Phaser.Types.Core.GameConfig = {
+      type: Phaser.AUTO,
+      parent: 'app',
+      pixelArt: true,
+      scene: [launcherSceneModule.LauncherScene],
+      scale: {
+        mode: Phaser.Scale.RESIZE,
+        fullscreenTarget: 'app',
+        width: window.innerWidth || WORLD_WIDTH,
+        height: window.innerHeight || WORLD_HEIGHT
+      }
+    };
+
+    const game = new Phaser.Game(gameConfig);
+    game.registry.set(
+      sceneLoaderModule.LAZY_SCENE_LOADER_REGISTRY_KEY,
+      sceneLoaderModule.createLazySceneLoader(game)
+    );
+  })();
+}

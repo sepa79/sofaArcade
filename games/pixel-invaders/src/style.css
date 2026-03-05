@@ -408,6 +408,82 @@ body {
   color: #fff3cd;
 }
 
+.launcher-phone-connect {
+  width: 100%;
+  border: 2px solid #74d9ff;
+  border-radius: 12px;
+  background: #1a3e6d;
+  color: #e9f8ff;
+  padding: 8px 10px;
+  font-size: clamp(13px, 2.2vh, 26px);
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.1;
+  cursor: pointer;
+}
+
+.launcher-phone-connect:hover {
+  background: #29568f;
+}
+
+.launcher-phone-connect:disabled {
+  opacity: 0.75;
+  cursor: wait;
+}
+
+.launcher-phone-status {
+  width: 100%;
+  color: #9fd6ff;
+  font-size: clamp(11px, 1.8vh, 20px);
+  line-height: 1.2;
+  text-align: center;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.launcher-phone-qr {
+  width: min(176px, 52%);
+  height: auto;
+  align-self: center;
+  border: 2px solid #74d9ff;
+  border-radius: 10px;
+  background: #0c132b;
+  padding: 6px;
+}
+
+.launcher-phone-qr-modal {
+  width: min(260px, 52vw);
+}
+
+.launcher-phone-setup-card {
+  width: min(680px, 92vw);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.launcher-phone-status-modal {
+  font-size: clamp(12px, 2.1vh, 22px);
+}
+
+.launcher-phone-open-link {
+  border: 2px solid #76d8ff;
+  border-radius: 10px;
+  background: rgba(12, 28, 72, 0.9);
+  color: #d9f6ff;
+  padding: 8px 12px;
+  font-size: clamp(12px, 2vh, 22px);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.launcher-phone-open-link:hover {
+  border-color: #ffe8ad;
+  background: rgba(66, 42, 118, 0.92);
+  color: #fff6d6;
+}
+
 .launcher-audio-row {
   width: 100%;
   border: 2px solid #4f73d8;
@@ -444,5 +520,76 @@ body {
   .launcher-icon-button {
     flex-basis: clamp(110px, 17vw, 200px);
     height: clamp(86px, 18vh, 170px);
+  }
+}
+
+#controller-root {
+  max-width: 620px;
+  margin: 0 auto;
+  padding: 24px 14px 42px;
+}
+
+.panel {
+  background: rgba(11, 17, 36, 0.75);
+  border: 1px solid rgba(135, 231, 255, 0.22);
+  border-radius: 16px;
+  padding: 16px;
+  margin-bottom: 18px;
+}
+
+.label {
+  color: #93a2c8;
+  font-size: 14px;
+}
+
+.value {
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.controller-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.controller-row.two {
+  grid-template-columns: 1fr 1fr;
+}
+
+.controller-btn {
+  min-height: 78px;
+  font-size: 22px;
+}
+
+input[type='range'] {
+  width: 100%;
+}
+
+.status-ok {
+  color: #9cf2b0;
+}
+
+.status-warn {
+  color: #f7c25a;
+}
+
+@media (orientation: landscape) and (max-height: 640px) {
+  #controller-root {
+    max-width: min(1100px, 98vw);
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    padding: 10px;
+  }
+
+  #controller-root .panel {
+    margin-bottom: 0;
+  }
+
+  .controller-btn {
+    min-height: 56px;
+    font-size: 18px;
   }
 }
