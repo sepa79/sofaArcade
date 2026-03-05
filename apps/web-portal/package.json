@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "VITE_RELAY_HTTP_URL=http://localhost:8787 vite --host 0.0.0.0",
+    "dev": "VITE_SIGNAL_HTTP_URL=http://localhost:8788 vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "lint": "eslint src vite.config.ts --max-warnings=0",

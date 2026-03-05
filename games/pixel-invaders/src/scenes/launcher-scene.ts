@@ -1,10 +1,14 @@
 import Phaser from 'phaser';
-import { TUNNEL_INVADERS_SCENE_KEY, type TunnelInvadersSceneData } from 'tunnel-invaders';
 import { AUDIO_MIX_PROFILE_IDS, RetroSfx, type AudioMixProfileId } from '@light80/game-sdk';
 
 import arcadeLogoImage from '../../../shared-assets/src/logo_cropped.png';
 import launcherJoystickImage from '../../../shared-assets/src/launcher_joystick.png';
 import launcherSpeakerImage from '../../../shared-assets/src/launcher_speaker.png';
+import {
+  requireLazySceneLoader,
+  type GameLaunchData,
+  type PlayableSceneKey
+} from '../scene-loader';
 import {
   MENU_ROW_CONTROLLER,
   MENU_ROW_GAME,
@@ -13,7 +17,6 @@ import {
   type LauncherState
 } from '../launcher/model';
 import { GAME_OPTIONS, type ControllerOption, type GameOption } from '../launcher/options';
-import { PIXEL_INVADERS_SCENE_KEY, type PixelInvadersSceneData } from './pixel-invaders-scene';
 
 export const LAUNCHER_SCENE_KEY = 'launcher';
 
@@ -158,6 +161,14 @@ function requireAudioMixProfileId(index: number): AudioMixProfileId {
   }
 
   return mixProfileId;
+}
+
+function requirePlayableSceneKey(sceneKey: string): PlayableSceneKey {
+  if (sceneKey === 'pixel-invaders' || sceneKey === 'tunnel-invaders') {
+    return sceneKey;
+  }
+
+  throw new Error(`Unsupported playable scene key: "${sceneKey}".`);
 }
 
 function lerp(a: number, b: number, t: number): number {
@@ -331,6 +342,7 @@ export class LauncherScene extends Phaser.Scene {
   private sfxLoopTimer = 0;
   private sfxLoopStep = 0;
   private dom: LauncherDom | null = null;
+  private startInFlight = false;
 
   constructor() {
     super(LAUNCHER_SCENE_KEY);
@@ -1094,6 +1106,14 @@ export class LauncherScene extends Phaser.Scene {
   }
 
   private startSelectedGame(): void {
+    if (this.startInFlight) {
+      return;
+    }
+    this.startInFlight = true;
+    void this.startSelectedGameAsync();
+  }
+
+  private async startSelectedGameAsync(): Promise<void> {
     if (!this.scale.isFullscreen) {
       this.scale.startFullscreen();
     }
@@ -1101,29 +1121,20 @@ export class LauncherScene extends Phaser.Scene {
     const gameOption = requireGameOption(this.state.gameIndex);
     const controllerOption = requireControllerOption(this.state);
     const audioMixProfileId = requireAudioMixProfileId(this.state.audioMixProfileIndex);
-
-    if (gameOption.sceneKey === PIXEL_INVADERS_SCENE_KEY) {
-      const data: PixelInvadersSceneData = {
+    const sceneKey = requirePlayableSceneKey(gameOption.sceneKey);
+    const data: GameLaunchData = {
         controllerProfileId: controllerOption.profileId,
         controllerLabel: controllerOption.label,
         audioMixProfileId
-      };
+    };
 
-      this.scene.start(PIXEL_INVADERS_SCENE_KEY, data);
-      return;
+    try {
+      const sceneLoader = requireLazySceneLoader(this);
+      await sceneLoader.ensureLoaded(sceneKey);
+      this.scene.start(sceneKey, data);
+    } catch (error) {
+      this.startInFlight = false;
+      throw error;
     }
-
-    if (gameOption.sceneKey === TUNNEL_INVADERS_SCENE_KEY) {
-      const data: TunnelInvadersSceneData = {
-        controllerProfileId: controllerOption.profileId,
-        controllerLabel: controllerOption.label,
-        audioMixProfileId
-      };
-
-      this.scene.start(TUNNEL_INVADERS_SCENE_KEY, data);
-      return;
-    }
-
-    throw new Error(`Unsupported scene key: "${gameOption.sceneKey}".`);
   }
 }

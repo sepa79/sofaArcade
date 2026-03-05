@@ -16,17 +16,17 @@
 - Keep side effects at module boundaries.
 
 ## SSOT Map
-- Relay runtime config schema: `apps/relay-server/src/config.ts`
+- Signaling runtime config schema: `apps/signal-server/src/config.ts`
 - Web portal runtime config schema: `apps/web-portal/src/config.ts`
 - Action catalog: `packages/core/src/input/actions.ts`
 - Input binding schema and profile format: `packages/core/src/input/profile.ts`
 - Game input profile data: `games/*/src/profiles/*.input-profile.json`
-- Relay protocol contract: `packages/core/src/phone/protocol.ts`
-- Relay transport behavior: `apps/relay-server/src/server.ts`
+- Phone input message contract: `packages/core/src/phone/protocol.ts`
+- WebRTC signaling transport behavior: `apps/signal-server/src/server.ts`
 
 ## Module Boundaries
 - `packages/core/src/input/*`: actions, polling/runtime, mapping, profiles
-- `packages/core/src/phone/*`: relay protocol + phone provider logic
+- `packages/core/src/phone/*`: phone input protocol + provider logic
 - `packages/core/src/storage/*`: browser persistence only
 - `packages/game-sdk/src/audio/*`: shared audio engine only
 - `packages/game-sdk/src/runtime/*`: shared runtime toggles/caches only

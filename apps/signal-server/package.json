@@ -1,22 +1,18 @@
 {
-  "name": "relay-server",
+  "name": "signal-server",
   "private": true,
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "RELAY_PORT=8787 RELAY_PUBLIC_WS_URL=ws://localhost:8787/ws RELAY_SESSION_TTL_MS=600000 tsx src/server.ts",
+    "dev": "SIGNAL_PORT=8788 SIGNAL_SESSION_TTL_MS=600000 tsx src/server.ts",
     "build": "tsc --noEmit",
     "lint": "eslint src --max-warnings=0",
     "test": "vitest run"
   },
-  "dependencies": {
-    "@light80/core": "workspace:*",
-    "ws": "^8.18.3"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@eslint/js": "^9.39.0",
     "@types/node": "^20.17.57",
-    "@types/ws": "^8.18.1",
     "eslint": "^9.39.3",
     "tsx": "^4.20.6",
     "typescript": "~5.9.3",

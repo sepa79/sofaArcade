@@ -12,5 +12,5 @@ if (window.location.pathname === '/controller') {
   mountControllerApp(app);
 } else {
   const config = loadPortalConfig();
-  mountHostApp(app, config.relayHttpUrl);
+  mountHostApp(app, config.signalHttpUrl);
 }

@@ -1,4 +1,5 @@
 import {
+  BULLET_WIDTH,
   BULLET_HEIGHT,
   ENEMY_COLS,
   ENEMY_BULLET_SPEED,
@@ -300,6 +301,8 @@ function resolvePlayerShots(
         segmentStartY,
         segmentEndX,
         segmentEndY,
+        BULLET_WIDTH,
+        BULLET_HEIGHT,
         collisionDebug
       );
       if (!hit.hit || hit.t >= bestT) {
@@ -403,6 +406,8 @@ function resolveEnemyShots(
       segmentStartY,
       segmentEndX,
       segmentEndY,
+      BULLET_WIDTH,
+      BULLET_HEIGHT,
       collisionDebug
     );
     if (hit.hit) {

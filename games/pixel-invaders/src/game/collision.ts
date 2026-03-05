@@ -65,6 +65,12 @@ interface Rect {
   readonly height: number;
 }
 
+interface RectMaskHit {
+  readonly hit: boolean;
+  readonly x: number;
+  readonly y: number;
+}
+
 function rectLeft(rect: Rect): number {
   return rect.centerX - rect.width * 0.5;
 }
@@ -121,16 +127,34 @@ function enemyProfile(enemy: Enemy, runtime: CollisionRuntime): EnemyProfile {
   throw new Error('Unsupported enemy kind.');
 }
 
-function segmentBounds(startX: number, startY: number, endX: number, endY: number): Rect {
+function assertPositiveFinite(value: number, context: string): number {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`${context} must be a positive finite number, got ${String(value)}.`);
+  }
+
+  return value;
+}
+
+function sweptRectBounds(
+  startX: number,
+  startY: number,
+  endX: number,
+  endY: number,
+  sweptWidth: number,
+  sweptHeight: number
+): Rect {
+  const width = assertPositiveFinite(sweptWidth, 'sweptWidth');
+  const height = assertPositiveFinite(sweptHeight, 'sweptHeight');
   const minX = Math.min(startX, endX);
   const maxX = Math.max(startX, endX);
   const minY = Math.min(startY, endY);
   const maxY = Math.max(startY, endY);
+
   return {
     centerX: (minX + maxX) * 0.5,
     centerY: (minY + maxY) * 0.5,
-    width: Math.max(1e-6, maxX - minX),
-    height: Math.max(1e-6, maxY - minY)
+    width: maxX - minX + width,
+    height: maxY - minY + height
   };
 }
 
@@ -148,22 +172,61 @@ function rectsOverlap(a: Rect, b: Rect): boolean {
   return aLeft <= bRight && aRight >= bLeft && aTop <= bBottom && aBottom >= bTop;
 }
 
-function hitMaskAtPoint(mask: AlphaMask, rect: Rect, x: number, y: number): boolean {
+function firstMaskHitInWorldRect(
+  mask: AlphaMask,
+  rect: Rect,
+  worldLeft: number,
+  worldTop: number,
+  worldRight: number,
+  worldBottom: number
+): RectMaskHit {
   const left = rectLeft(rect);
   const top = rectTop(rect);
-  if (x < left || x >= left + rect.width || y < top || y >= top + rect.height) {
-    return false;
+  const right = left + rect.width;
+  const bottom = top + rect.height;
+  const overlapLeft = Math.max(worldLeft, left);
+  const overlapRight = Math.min(worldRight, right);
+  const overlapTop = Math.max(worldTop, top);
+  const overlapBottom = Math.min(worldBottom, bottom);
+  if (overlapLeft >= overlapRight || overlapTop >= overlapBottom) {
+    return {
+      hit: false,
+      x: worldLeft,
+      y: worldTop
+    };
   }
 
-  const u = (x - left) / rect.width;
-  const v = (y - top) / rect.height;
-  const px = Math.floor(u * mask.width);
-  const py = Math.floor(v * mask.height);
-  if (px < 0 || px >= mask.width || py < 0 || py >= mask.height) {
-    return false;
+  const pixelMinX = Math.max(0, Math.floor(((overlapLeft - left) / rect.width) * mask.width));
+  const pixelMaxX = Math.min(mask.width - 1, Math.ceil(((overlapRight - left) / rect.width) * mask.width) - 1);
+  const pixelMinY = Math.max(0, Math.floor(((overlapTop - top) / rect.height) * mask.height));
+  const pixelMaxY = Math.min(mask.height - 1, Math.ceil(((overlapBottom - top) / rect.height) * mask.height) - 1);
+  if (pixelMinX > pixelMaxX || pixelMinY > pixelMaxY) {
+    return {
+      hit: false,
+      x: worldLeft,
+      y: worldTop
+    };
   }
 
-  return mask.alpha[py * mask.width + px] === 1;
+  for (let py = pixelMinY; py <= pixelMaxY; py += 1) {
+    for (let px = pixelMinX; px <= pixelMaxX; px += 1) {
+      if (mask.alpha[py * mask.width + px] !== 1) {
+        continue;
+      }
+
+      return {
+        hit: true,
+        x: left + ((px + 0.5) / mask.width) * rect.width,
+        y: top + ((py + 0.5) / mask.height) * rect.height
+      };
+    }
+  }
+
+  return {
+    hit: false,
+    x: overlapLeft,
+    y: overlapTop
+  };
 }
 
 function collideSegmentWithMask(
@@ -172,26 +235,40 @@ function collideSegmentWithMask(
   endX: number,
   endY: number,
   rect: Rect,
-  mask: AlphaMask
+  mask: AlphaMask,
+  sweptWidth: number,
+  sweptHeight: number
 ): SegmentMaskHit {
+  const width = assertPositiveFinite(sweptWidth, 'sweptWidth');
+  const height = assertPositiveFinite(sweptHeight, 'sweptHeight');
   const dx = endX - startX;
   const dy = endY - startY;
-  const length = Math.hypot(dx, dy);
+  const length = Math.hypot(dx, dy) + Math.hypot(width * 0.5, height * 0.5);
   const steps = Math.max(1, Math.ceil(length * 1.6));
+  const halfWidth = width * 0.5;
+  const halfHeight = height * 0.5;
 
   for (let i = 0; i <= steps; i += 1) {
     const t = i / steps;
     const x = startX + dx * t;
     const y = startY + dy * t;
-    if (!hitMaskAtPoint(mask, rect, x, y)) {
+    const rectHit = firstMaskHitInWorldRect(
+      mask,
+      rect,
+      x - halfWidth,
+      y - halfHeight,
+      x + halfWidth,
+      y + halfHeight
+    );
+    if (!rectHit.hit) {
       continue;
     }
 
     return {
       hit: true,
       t,
-      x,
-      y
+      x: rectHit.x,
+      y: rectHit.y
     };
   }
 
@@ -367,16 +444,18 @@ export function collidePlayerBulletWithEnemy(
   startY: number,
   endX: number,
   endY: number,
+  bulletWidth: number,
+  bulletHeight: number,
   debugFrame: MutableCollisionDebugFrame | null
 ): SegmentMaskHit {
   const profile = enemyProfile(enemy, runtime);
   const targetRect: Rect = {
     centerX: enemy.x,
     centerY: enemy.y,
-    width: profile.width,
-    height: profile.height
+      width: profile.width,
+      height: profile.height
   };
-  const segmentRect = segmentBounds(startX, startY, endX, endY);
+  const segmentRect = sweptRectBounds(startX, startY, endX, endY, bulletWidth, bulletHeight);
   if (!rectsOverlap(targetRect, segmentRect)) {
     return {
       hit: false,
@@ -387,7 +466,7 @@ export function collidePlayerBulletWithEnemy(
   }
 
   pushBroadEnvelope(debugFrame, 'player', targetRect);
-  const hit = collideSegmentWithMask(startX, startY, endX, endY, targetRect, profile.mask);
+  const hit = collideSegmentWithMask(startX, startY, endX, endY, targetRect, profile.mask, bulletWidth, bulletHeight);
   if (hit.hit) {
     pushNarrowMarker(debugFrame, 'player', hit.x, hit.y);
   }
@@ -402,15 +481,17 @@ export function collideEnemyBulletWithPlayer(
   startY: number,
   endX: number,
   endY: number,
+  bulletWidth: number,
+  bulletHeight: number,
   debugFrame: MutableCollisionDebugFrame | null
 ): SegmentMaskHit {
   const targetRect: Rect = {
     centerX: playerX,
     centerY: playerY,
-    width: PLAYER_ACTIVE_WIDTH,
-    height: PLAYER_ACTIVE_HEIGHT
+      width: PLAYER_ACTIVE_WIDTH,
+      height: PLAYER_ACTIVE_HEIGHT
   };
-  const segmentRect = segmentBounds(startX, startY, endX, endY);
+  const segmentRect = sweptRectBounds(startX, startY, endX, endY, bulletWidth, bulletHeight);
   if (!rectsOverlap(targetRect, segmentRect)) {
     return {
       hit: false,
@@ -421,7 +502,7 @@ export function collideEnemyBulletWithPlayer(
   }
 
   pushBroadEnvelope(debugFrame, 'enemy', targetRect);
-  const hit = collideSegmentWithMask(startX, startY, endX, endY, targetRect, runtime.playerMask);
+  const hit = collideSegmentWithMask(startX, startY, endX, endY, targetRect, runtime.playerMask, bulletWidth, bulletHeight);
   if (hit.hit) {
     pushNarrowMarker(debugFrame, 'enemy', hit.x, hit.y);
   }

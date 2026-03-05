@@ -1,5 +1,6 @@
-import { createPhoneRelayInputMessage, parsePhoneRelayServerMessage } from '@light80/core';
+import { createPhoneRelayInputMessage } from '@light80/core';
 
+import { createSignalClient, type SignalIceCandidate } from '../signal/client';
 import {
   DEFAULT_SHAKE_CONFIG,
   DEFAULT_TILT_CONFIG,
@@ -53,10 +54,46 @@ async function requestMotionPermission(): Promise<void> {
   }
 }
 
+function normalizeCandidate(candidate: RTCIceCandidate): SignalIceCandidate {
+  const init = candidate.toJSON();
+  if (typeof init.candidate !== 'string' || init.candidate.length === 0) {
+    throw new Error('ICE candidate string is missing.');
+  }
+
+  return {
+    candidate: init.candidate,
+    sdpMid: init.sdpMid ?? null,
+    sdpMLineIndex: init.sdpMLineIndex ?? null,
+    usernameFragment: init.usernameFragment ?? null
+  };
+}
+
+function asSignalDescription(description: RTCSessionDescriptionInit): { type: 'offer' | 'answer'; sdp: string } {
+  if (description.type !== 'offer' && description.type !== 'answer') {
+    throw new Error(`Unsupported local description type: ${description.type}.`);
+  }
+
+  if (typeof description.sdp !== 'string' || description.sdp.length === 0) {
+    throw new Error('Local description SDP is missing.');
+  }
+
+  return {
+    type: description.type,
+    sdp: description.sdp
+  };
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
 export function mountControllerApp(root: HTMLElement): void {
   const params = new URLSearchParams(window.location.search);
   const sessionId = requireParam(params, 'sessionId');
-  const relayUrl = requireParam(params, 'relay');
+  const signalUrl = requireParam(params, 'signal');
+  const signalClient = createSignalClient(signalUrl);
 
   root.id = 'controller-root';
   root.innerHTML = `
@@ -108,7 +145,6 @@ export function mountControllerApp(root: HTMLElement): void {
   const startBtn = requireElement(root.querySelector<HTMLButtonElement>('#start-btn'), '#start-btn');
   const recenterBtn = requireElement(root.querySelector<HTMLButtonElement>('#recenter-btn'), '#recenter-btn');
 
-  let socket: WebSocket | null = new WebSocket(relayUrl);
   let mode: 'tilt' | 'slider' = 'tilt';
   let motionEnabled = false;
   let seq = 0;
@@ -122,9 +158,22 @@ export function mountControllerApp(root: HTMLElement): void {
   let tiltState = createInitialTiltState();
   let shakeState = createInitialShakeState();
 
+  let peerToken = 0;
+  let peerConnection: RTCPeerConnection | null = null;
+  let inputChannel: RTCDataChannel | null = null;
+  let pendingRemoteCandidates: RTCIceCandidateInit[] = [];
+
   function setStatus(text: string, ok: boolean): void {
     statusEl.textContent = text;
     statusEl.className = ok ? 'label status-ok' : 'label status-warn';
+  }
+
+  function errorMessage(error: unknown): string {
+    if (error instanceof Error) {
+      return error.message;
+    }
+
+    return 'unknown controller error';
   }
 
   async function acquireWakeLock(): Promise<void> {
@@ -156,7 +205,7 @@ export function mountControllerApp(root: HTMLElement): void {
   }
 
   function sendInputFrame(): void {
-    if (socket === null || socket.readyState !== WebSocket.OPEN) {
+    if (inputChannel === null || inputChannel.readyState !== 'open') {
       return;
     }
 
@@ -168,7 +217,7 @@ export function mountControllerApp(root: HTMLElement): void {
       special: specialPulsePending ? 1 : 0
     });
 
-    socket.send(JSON.stringify(message));
+    inputChannel.send(JSON.stringify(message));
     seq += 1;
 
     firePulsePending = false;
@@ -211,30 +260,6 @@ export function mountControllerApp(root: HTMLElement): void {
     }
   }
 
-  enableMotionBtn.addEventListener('click', () => {
-    void (async () => {
-      await requestMotionPermission();
-      await acquireWakeLock();
-
-      motionEnabled = true;
-      window.addEventListener('deviceorientation', onOrientation);
-      window.addEventListener('devicemotion', onMotion);
-      sensorDebug.textContent = 'motion enabled';
-    })();
-  });
-
-  modeTiltBtn.addEventListener('click', () => {
-    setMode('tilt');
-  });
-
-  modeSliderBtn.addEventListener('click', () => {
-    setMode('slider');
-  });
-
-  slider.addEventListener('input', () => {
-    sliderMoveX = Number.parseFloat(slider.value);
-  });
-
   function bindHoldButton(button: HTMLButtonElement, onChange: (pressed: boolean) => void): void {
     button.addEventListener('pointerdown', (event) => {
       event.preventDefault();
@@ -257,6 +282,186 @@ export function mountControllerApp(root: HTMLElement): void {
     });
   }
 
+  function resetPeer(): void {
+    peerToken += 1;
+    pendingRemoteCandidates = [];
+
+    if (inputChannel !== null) {
+      inputChannel.close();
+      inputChannel = null;
+    }
+
+    if (peerConnection !== null) {
+      peerConnection.close();
+      peerConnection = null;
+    }
+  }
+
+  async function flushPendingCandidates(peer: RTCPeerConnection): Promise<void> {
+    if (peer.remoteDescription === null) {
+      return;
+    }
+
+    for (const candidate of pendingRemoteCandidates) {
+      await peer.addIceCandidate(candidate);
+    }
+
+    pendingRemoteCandidates = [];
+  }
+
+  async function pollOfferAndAnswer(token: number, peer: RTCPeerConnection): Promise<void> {
+    setStatus('waiting for host offer...', false);
+
+    while (token === peerToken && peer.remoteDescription === null) {
+      const offer = await signalClient.getOffer(sessionId);
+      if (offer !== null) {
+        await peer.setRemoteDescription(offer);
+        await flushPendingCandidates(peer);
+
+        const answer = await peer.createAnswer();
+        await peer.setLocalDescription(answer);
+        if (peer.localDescription === null) {
+          throw new Error('Local answer missing after setLocalDescription.');
+        }
+
+        await signalClient.setAnswer(sessionId, asSignalDescription(peer.localDescription));
+        setStatus('answer sent, waiting for direct link...', false);
+        return;
+      }
+
+      await delay(240);
+    }
+  }
+
+  async function pollHostCandidates(token: number, peer: RTCPeerConnection): Promise<void> {
+    let after = 0;
+
+    while (token === peerToken) {
+      const batch = await signalClient.listCandidates(sessionId, 'phone', after);
+      for (const candidate of batch.candidates) {
+        const candidateInit: RTCIceCandidateInit = {
+          candidate: candidate.candidate,
+          sdpMid: candidate.sdpMid,
+          sdpMLineIndex: candidate.sdpMLineIndex,
+          usernameFragment: candidate.usernameFragment
+        };
+
+        if (peer.remoteDescription === null) {
+          pendingRemoteCandidates.push(candidateInit);
+        } else {
+          await peer.addIceCandidate(candidateInit);
+        }
+      }
+
+      after = batch.nextAfter;
+      await delay(120);
+    }
+  }
+
+  async function startPeer(): Promise<void> {
+    resetPeer();
+
+    peerToken += 1;
+    const token = peerToken;
+    const peer = new RTCPeerConnection({ iceServers: [] });
+    peerConnection = peer;
+
+    peer.addEventListener('datachannel', (event) => {
+      if (token !== peerToken) {
+        return;
+      }
+
+      inputChannel = event.channel;
+
+      event.channel.addEventListener('open', () => {
+        if (token !== peerToken) {
+          return;
+        }
+
+        setStatus('host connected (p2p)', true);
+      });
+
+      event.channel.addEventListener('close', () => {
+        if (token !== peerToken) {
+          return;
+        }
+
+        setStatus('host disconnected', false);
+      });
+    });
+
+    peer.addEventListener('icecandidate', (event) => {
+      if (event.candidate === null || token !== peerToken) {
+        return;
+      }
+
+      void signalClient
+        .pushCandidate(sessionId, 'phone', normalizeCandidate(event.candidate))
+        .catch((error: unknown) => {
+          if (token !== peerToken) {
+            return;
+          }
+
+          const message = errorMessage(error);
+          setStatus(`signal error: ${message}`, false);
+        });
+    });
+
+    peer.addEventListener('connectionstatechange', () => {
+      if (token !== peerToken) {
+        return;
+      }
+
+      if (peer.connectionState === 'failed') {
+        setStatus('p2p connection failed', false);
+      }
+
+      if (peer.connectionState === 'disconnected') {
+        setStatus('p2p disconnected', false);
+      }
+    });
+
+    await pollOfferAndAnswer(token, peer);
+    void pollHostCandidates(token, peer).catch((error: unknown) => {
+      if (token !== peerToken) {
+        return;
+      }
+
+      const message = errorMessage(error);
+      setStatus(`signal error: ${message}`, false);
+    });
+  }
+
+  enableMotionBtn.addEventListener('click', () => {
+    void (async () => {
+      try {
+        await requestMotionPermission();
+        await acquireWakeLock();
+
+        motionEnabled = true;
+        window.addEventListener('deviceorientation', onOrientation);
+        window.addEventListener('devicemotion', onMotion);
+        sensorDebug.textContent = 'motion enabled';
+      } catch (error) {
+        const message = errorMessage(error);
+        setStatus(`motion error: ${message}`, false);
+        sensorDebug.textContent = `motion error: ${message}`;
+      }
+    })();
+  });
+
+  modeTiltBtn.addEventListener('click', () => {
+    setMode('tilt');
+  });
+
+  modeSliderBtn.addEventListener('click', () => {
+    setMode('slider');
+  });
+
+  slider.addEventListener('input', () => {
+    sliderMoveX = Number.parseFloat(slider.value);
+  });
+
   bindHoldButton(fireBtn, (pressed) => {
     fireHeld = pressed;
     if (pressed) {
@@ -270,58 +475,30 @@ export function mountControllerApp(root: HTMLElement): void {
 
   recenterBtn.addEventListener('click', () => {
     void (async () => {
-      if (!motionEnabled) {
-        throw new Error('Cannot recenter tilt before motion is enabled.');
-      }
+      try {
+        if (!motionEnabled) {
+          throw new Error('Cannot recenter tilt before motion is enabled.');
+        }
 
-      tiltState = recenterTilt(tiltState, latestGamma);
-      recenterPulsePending = true;
-      await acquireWakeLock();
+        tiltState = recenterTilt(tiltState, latestGamma);
+        recenterPulsePending = true;
+        await acquireWakeLock();
+      } catch (error) {
+        const message = errorMessage(error);
+        setStatus(`recenter error: ${message}`, false);
+        sensorDebug.textContent = `recenter error: ${message}`;
+      }
     })();
   });
 
-  socket.addEventListener('open', () => {
-    if (socket === null) {
-      throw new Error('Phone WebSocket missing during open event.');
-    }
-
-    socket.send(
-      JSON.stringify({
-        type: 'join',
-        role: 'phone',
-        sessionId
-      })
-    );
-
-    setStatus('connected to relay', true);
-  });
-
-  socket.addEventListener('message', (event) => {
-    const message = parsePhoneRelayServerMessage(JSON.parse(event.data as string) as unknown);
-    if (message.type === 'status') {
-      if (message.status === 'host_connected') {
-        setStatus('host connected', true);
-        return;
-      }
-
-      if (message.status === 'host_lost') {
-        setStatus('host lost', false);
-        return;
-      }
-
-      return;
-    }
-
-    if (message.type === 'error') {
-      setStatus(`error: ${message.message}`, false);
-    }
-  });
-
-  socket.addEventListener('close', () => {
-    setStatus('relay disconnected', false);
-    socket = null;
-  });
-
   setMode('tilt');
+  void (async () => {
+    try {
+      await startPeer();
+    } catch (error) {
+      setStatus(`signal error: ${errorMessage(error)}`, false);
+    }
+  })();
+
   setInterval(sendInputFrame, 1000 / 60);
 }

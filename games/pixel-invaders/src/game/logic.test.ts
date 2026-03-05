@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   BULLET_HEIGHT,
+  BULLET_WIDTH,
   ENEMY_COLS,
   ENEMY_ROW_RESPAWN_Y,
   ENEMY_STANDARD_ACTIVE_HEIGHT,
@@ -75,6 +76,35 @@ describe('stepGame', () => {
 
     expect(next.score).toBe(1);
     expect(next.enemies[0].alive).toBe(false);
+  });
+
+  it('counts side graze hit using bullet thickness, not bullet center only', () => {
+    const state = createInitialState(18);
+    const target = state.enemies[0];
+    const grazeBulletX = target.x + ENEMY_STANDARD_ACTIVE_WIDTH / 2 + BULLET_WIDTH / 2 - 0.2;
+
+    const customState: GameState = {
+      ...state,
+      phase: 'playing',
+      bullets: [
+        {
+          owner: 'player',
+          x: grazeBulletX,
+          y: target.y,
+          vy: 0
+        }
+      ]
+    };
+
+    const next = stepState(customState, {
+      moveAxisSigned: 0,
+      moveAbsoluteUnit: null,
+      firePressed: false,
+      restartPressed: false
+    });
+
+    expect(next.enemies[0].alive).toBe(false);
+    expect(next.score).toBe(1);
   });
 
   it('detects swept bullet hit when bullet crosses enemy between frames', () => {

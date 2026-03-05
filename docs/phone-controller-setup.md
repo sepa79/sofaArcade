@@ -1,11 +1,11 @@
-# Phone Controller MVP Setup
+# Phone Controller Setup (WebRTC P2P)
 
 ## Run locally
 
-1. Start relay server:
+1. Start signaling server:
 
 ```bash
-pnpm dev:relay-server
+pnpm dev:signal-server
 ```
 
 2. In second terminal start web portal:
@@ -23,7 +23,7 @@ pnpm dev:web-portal
 
 4. Phone page:
 
-- Opens `/controller?sessionId=...&relay=...`
+- Opens `/controller?sessionId=...&signal=...`
 - Tap **Enable Motion**
 - Pick **Tilt** or **Slider** mode
 - Use **FIRE / START / RECENTER**
@@ -49,12 +49,11 @@ Notes:
 
 ## Env knobs
 
-Relay server defaults from script:
+Signal server defaults from script:
 
-- `RELAY_PORT=8787`
-- `RELAY_PUBLIC_WS_URL=ws://localhost:8787/ws`
-- `RELAY_SESSION_TTL_MS=600000`
+- `SIGNAL_PORT=8788`
+- `SIGNAL_SESSION_TTL_MS=600000`
 
 Web portal default from script:
 
-- `VITE_RELAY_HTTP_URL=http://localhost:8787`
+- `VITE_SIGNAL_HTTP_URL=http://localhost:8788`

@@ -1,12 +1,13 @@
 import QRCode from 'qrcode';
 import {
   createPhoneControllerProvider,
-  parsePhoneRelayServerMessage
+  parsePhoneRelayInputMessage
 } from '@light80/core';
+
+import { createSignalClient, type SignalClient, type SignalIceCandidate } from '../signal/client';
 
 interface SessionResponse {
   readonly sessionId: string;
-  readonly wsUrl: string;
 }
 
 function isLocalHostname(hostname: string): boolean {
@@ -31,23 +32,23 @@ function normalizePublicBaseUrl(raw: string): URL {
   return url;
 }
 
-function buildPhoneRelayWsUrl(sessionWsUrl: string, publicBaseUrl: URL): string {
-  const relayUrl = new URL(sessionWsUrl);
-  if (relayUrl.protocol !== 'ws:' && relayUrl.protocol !== 'wss:') {
-    throw new Error(`Relay wsUrl must use ws/wss, got "${relayUrl.protocol}".`);
+function buildPhoneSignalUrl(signalHttpUrl: string, publicBaseUrl: URL): string {
+  const signalUrl = new URL(signalHttpUrl);
+  if (signalUrl.protocol !== 'http:' && signalUrl.protocol !== 'https:') {
+    throw new Error(`Signal URL must use http/https, got "${signalUrl.protocol}".`);
   }
 
-  if (isLocalHostname(relayUrl.hostname)) {
-    relayUrl.hostname = publicBaseUrl.hostname;
+  if (isLocalHostname(signalUrl.hostname)) {
+    signalUrl.hostname = publicBaseUrl.hostname;
   }
 
-  return relayUrl.toString();
+  return signalUrl.toString();
 }
 
-function buildControllerUrl(base: URL, sessionId: string, relayWsUrl: string): string {
+function buildControllerUrl(base: URL, sessionId: string, signalHttpUrl: string): string {
   const controllerUrl = new URL('/controller', base);
   controllerUrl.searchParams.set('sessionId', sessionId);
-  controllerUrl.searchParams.set('relay', relayWsUrl);
+  controllerUrl.searchParams.set('signal', signalHttpUrl);
   return controllerUrl.toString();
 }
 
@@ -68,32 +69,43 @@ function requireCanvasContext(canvas: HTMLCanvasElement): CanvasRenderingContext
   return context;
 }
 
-async function createSession(relayHttpUrl: string): Promise<SessionResponse> {
-  const response = await fetch(`${relayHttpUrl}/session`, {
-    method: 'POST'
-  });
-
-  if (!response.ok) {
-    throw new Error(`Session creation failed: HTTP ${response.status}.`);
-  }
-
-  const payload = (await response.json()) as unknown;
-  if (typeof payload !== 'object' || payload === null) {
-    throw new Error('Invalid /session response shape.');
-  }
-
-  const body = payload as Record<string, unknown>;
-  if (typeof body.sessionId !== 'string' || typeof body.wsUrl !== 'string') {
-    throw new Error('Session response must include string sessionId and wsUrl.');
+function normalizeCandidate(candidate: RTCIceCandidate): SignalIceCandidate {
+  const init = candidate.toJSON();
+  if (typeof init.candidate !== 'string' || init.candidate.length === 0) {
+    throw new Error('ICE candidate string is missing.');
   }
 
   return {
-    sessionId: body.sessionId,
-    wsUrl: body.wsUrl
+    candidate: init.candidate,
+    sdpMid: init.sdpMid ?? null,
+    sdpMLineIndex: init.sdpMLineIndex ?? null,
+    usernameFragment: init.usernameFragment ?? null
   };
 }
 
-export function mountHostApp(root: HTMLElement, relayHttpUrl: string): void {
+function asSignalDescription(description: RTCSessionDescriptionInit): { type: 'offer' | 'answer'; sdp: string } {
+  if (description.type !== 'offer' && description.type !== 'answer') {
+    throw new Error(`Unsupported local description type: ${description.type}.`);
+  }
+
+  if (typeof description.sdp !== 'string' || description.sdp.length === 0) {
+    throw new Error('Local description SDP is missing.');
+  }
+
+  return {
+    type: description.type,
+    sdp: description.sdp
+  };
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+export function mountHostApp(root: HTMLElement, signalHttpUrl: string): void {
+  const signalClient = createSignalClient(signalHttpUrl);
   const defaultPublicBase =
     isLocalHostname(window.location.hostname)
       ? ''
@@ -103,7 +115,7 @@ export function mountHostApp(root: HTMLElement, relayHttpUrl: string): void {
   root.innerHTML = `
     <div class="panel">
       <div class="value">Light80 Host</div>
-      <div class="label">Relay: ${relayHttpUrl}</div>
+      <div class="label">Signaling: ${signalHttpUrl}</div>
     </div>
     <div class="host-grid">
       <div class="panel">
@@ -158,77 +170,197 @@ export function mountHostApp(root: HTMLElement, relayHttpUrl: string): void {
 
   const previewContext = requireCanvasContext(inputPreview);
   const provider = createPhoneControllerProvider();
-  let hostSocket: WebSocket | null = null;
   let paddleX = inputPreview.width / 2;
   let fireFlashFrames = 0;
   let lastSeq = 0;
   let lastTimestamp = 0;
+
+  let sessionToken = 0;
+  let hostPeer: RTCPeerConnection | null = null;
+  let inputChannel: RTCDataChannel | null = null;
+  let pendingRemoteCandidates: RTCIceCandidateInit[] = [];
 
   function setStatus(status: string, ok: boolean): void {
     sessionStatus.textContent = status;
     sessionStatus.className = ok ? 'value status-ok' : 'value status-warn';
   }
 
-  function attachHostSocket(wsUrl: string, sessionId: string): void {
-    if (hostSocket !== null) {
-      hostSocket.close();
-      hostSocket = null;
+  function releasePeer(): void {
+    sessionToken += 1;
+    pendingRemoteCandidates = [];
+
+    if (inputChannel !== null) {
+      inputChannel.close();
+      inputChannel = null;
     }
 
-    hostSocket = new WebSocket(wsUrl);
+    if (hostPeer !== null) {
+      hostPeer.close();
+      hostPeer = null;
+    }
 
-    hostSocket.addEventListener('open', () => {
-      hostSocket?.send(
-        JSON.stringify({
-          type: 'join',
-          role: 'host',
-          sessionId
-        })
-      );
-      setStatus('waiting', false);
-    });
+    provider.setConnected(false);
+  }
 
-    hostSocket.addEventListener('message', (event) => {
-      const raw = JSON.parse(event.data as string) as unknown;
-      const message = parsePhoneRelayServerMessage(raw);
+  async function flushPendingCandidates(peer: RTCPeerConnection): Promise<void> {
+    if (peer.remoteDescription === null) {
+      return;
+    }
 
-      if (message.type === 'status') {
-        if (message.status === 'phone_connected') {
-          setStatus('phone connected', true);
-          provider.setConnected(true);
-          return;
-        }
+    for (const candidate of pendingRemoteCandidates) {
+      await peer.addIceCandidate(candidate);
+    }
 
-        if (message.status === 'phone_lost') {
-          setStatus('phone lost', false);
-          provider.setConnected(false);
-          return;
-        }
+    pendingRemoteCandidates = [];
+  }
 
-        if (message.status === 'waiting') {
-          setStatus('waiting', false);
-          provider.setConnected(false);
-          return;
-        }
-
+  async function pollAnswer(
+    token: number,
+    sessionId: string,
+    peer: RTCPeerConnection,
+    signal: SignalClient
+  ): Promise<void> {
+    while (token === sessionToken && peer.remoteDescription === null) {
+      const answer = await signal.getAnswer(sessionId);
+      if (answer !== null) {
+        await peer.setRemoteDescription(answer);
+        await flushPendingCandidates(peer);
+        setStatus('phone answered, establishing direct link...', false);
         return;
       }
 
-      if (message.type === 'input') {
-        provider.ingest(message);
-        lastSeq = message.seq;
-        lastTimestamp = message.t;
+      await delay(240);
+    }
+  }
+
+  async function pollRemoteCandidates(
+    token: number,
+    sessionId: string,
+    peer: RTCPeerConnection,
+    signal: SignalClient
+  ): Promise<void> {
+    let after = 0;
+
+    while (token === sessionToken) {
+      const batch = await signal.listCandidates(sessionId, 'host', after);
+      for (const candidate of batch.candidates) {
+        const candidateInit: RTCIceCandidateInit = {
+          candidate: candidate.candidate,
+          sdpMid: candidate.sdpMid,
+          sdpMLineIndex: candidate.sdpMLineIndex,
+          usernameFragment: candidate.usernameFragment
+        };
+
+        if (peer.remoteDescription === null) {
+          pendingRemoteCandidates.push(candidateInit);
+        } else {
+          await peer.addIceCandidate(candidateInit);
+        }
+      }
+
+      after = batch.nextAfter;
+      await delay(120);
+    }
+  }
+
+  async function startHostPeer(sessionId: string): Promise<void> {
+    releasePeer();
+
+    sessionToken += 1;
+    const token = sessionToken;
+    const peer = new RTCPeerConnection({ iceServers: [] });
+    const channel = peer.createDataChannel('light80-input', {
+      ordered: false,
+      maxRetransmits: 0
+    });
+
+    hostPeer = peer;
+    inputChannel = channel;
+
+    channel.addEventListener('open', () => {
+      if (token !== sessionToken) {
         return;
       }
 
-      if (message.type === 'error') {
-        setStatus(`error: ${message.message}`, false);
-      }
+      provider.setConnected(true);
+      setStatus('phone connected (p2p)', true);
     });
 
-    hostSocket.addEventListener('close', () => {
-      setStatus('lost', false);
+    channel.addEventListener('close', () => {
+      if (token !== sessionToken) {
+        return;
+      }
+
       provider.setConnected(false);
+      setStatus('phone disconnected', false);
+    });
+
+    channel.addEventListener('message', (event) => {
+      if (typeof event.data !== 'string') {
+        throw new Error('Data channel payload must be string JSON.');
+      }
+
+      const parsed = parsePhoneRelayInputMessage(JSON.parse(event.data) as unknown);
+      provider.ingest(parsed);
+      lastSeq = parsed.seq;
+      lastTimestamp = parsed.t;
+    });
+
+    peer.addEventListener('icecandidate', (event) => {
+      if (event.candidate === null || token !== sessionToken) {
+        return;
+      }
+
+      void signalClient
+        .pushCandidate(sessionId, 'host', normalizeCandidate(event.candidate))
+        .catch((error: unknown) => {
+          if (token !== sessionToken) {
+            return;
+          }
+
+          const message = error instanceof Error ? error.message : 'unknown candidate push error';
+          setStatus(`signal error: ${message}`, false);
+        });
+    });
+
+    peer.addEventListener('connectionstatechange', () => {
+      if (token !== sessionToken) {
+        return;
+      }
+
+      if (peer.connectionState === 'failed') {
+        setStatus('p2p connection failed', false);
+      }
+
+      if (peer.connectionState === 'disconnected') {
+        setStatus('p2p disconnected', false);
+      }
+    });
+
+    const offer = await peer.createOffer();
+    await peer.setLocalDescription(offer);
+    if (peer.localDescription === null) {
+      throw new Error('Local offer missing after setLocalDescription.');
+    }
+
+    await signalClient.setOffer(sessionId, asSignalDescription(peer.localDescription));
+    setStatus('offer published, waiting for phone...', false);
+
+    void pollAnswer(token, sessionId, peer, signalClient).catch((error: unknown) => {
+      if (token !== sessionToken) {
+        return;
+      }
+
+      const message = error instanceof Error ? error.message : 'unknown answer poll error';
+      setStatus(`signal error: ${message}`, false);
+    });
+    void pollRemoteCandidates(token, sessionId, peer, signalClient).catch((error: unknown) => {
+      if (token !== sessionToken) {
+        return;
+      }
+
+      const message = error instanceof Error ? error.message : 'unknown candidate poll error';
+      setStatus(`signal error: ${message}`, false);
     });
   }
 
@@ -238,10 +370,10 @@ export function mountHostApp(root: HTMLElement, relayHttpUrl: string): void {
         createButton.disabled = true;
         setStatus('creating session...', false);
 
-        const session = await createSession(relayHttpUrl);
+        const session: SessionResponse = await signalClient.createSession();
         const publicBaseUrl = normalizePublicBaseUrl(publicBaseUrlInput.value);
-        const phoneRelayWsUrl = buildPhoneRelayWsUrl(session.wsUrl, publicBaseUrl);
-        const url = buildControllerUrl(publicBaseUrl, session.sessionId, phoneRelayWsUrl);
+        const phoneSignalUrl = buildPhoneSignalUrl(signalHttpUrl, publicBaseUrl);
+        const url = buildControllerUrl(publicBaseUrl, session.sessionId, phoneSignalUrl);
 
         sessionCode.textContent = session.sessionId;
         controllerUrl.textContent = url;
@@ -254,7 +386,7 @@ export function mountHostApp(root: HTMLElement, relayHttpUrl: string): void {
           }
         });
 
-        attachHostSocket(session.wsUrl, session.sessionId);
+        await startHostPeer(session.sessionId);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'unknown host error';
         setStatus(`create failed: ${message}`, false);
@@ -290,7 +422,7 @@ export function mountHostApp(root: HTMLElement, relayHttpUrl: string): void {
     previewContext.fillText(`START ${frame.start ? '1' : '0'} FIRE ${frame.fire ? '1' : '0'}`, 20, 90);
     previewContext.fillText(`SEQ ${lastSeq} T ${lastTimestamp}`, 20, 116);
 
-    inputDebug.textContent = 'Preview uses PhoneControllerProvider from @light80/core.';
+    inputDebug.textContent = 'Preview uses P2P WebRTC input channel + PhoneControllerProvider.';
 
     if (fireFlashFrames > 0) {
       fireFlashFrames -= 1;
