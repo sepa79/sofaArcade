@@ -2,9 +2,13 @@ import type Phaser from 'phaser';
 
 import orbitronFontUrl from '../assets/fonts/Orbitron[wght].ttf';
 import pressStart2PFontUrl from '../assets/fonts/PressStart2P-Regular.ttf';
+import silkscreenFontUrl from '../assets/fonts/Silkscreen-Regular.ttf';
+import vt323FontUrl from '../assets/fonts/VT323-Regular.ttf';
 
 const ORBITRON_FONT_FAMILY = 'Orbitron';
 const PRESS_START_2P_FONT_FAMILY = 'Press Start 2P';
+const SILKSCREEN_FONT_FAMILY = 'Silkscreen';
+const VT323_FONT_FAMILY = 'VT323';
 const MAX_UI_SCALE = 2;
 
 interface FontDefinition {
@@ -42,6 +46,16 @@ const FONT_DEFINITIONS: ReadonlyArray<FontDefinition> = [
   {
     family: PRESS_START_2P_FONT_FAMILY,
     sourceUrl: pressStart2PFontUrl,
+    weight: '400'
+  },
+  {
+    family: SILKSCREEN_FONT_FAMILY,
+    sourceUrl: silkscreenFontUrl,
+    weight: '400'
+  },
+  {
+    family: VT323_FONT_FAMILY,
+    sourceUrl: vt323FontUrl,
     weight: '400'
   }
 ] as const;
@@ -83,21 +97,21 @@ export const HUD_VALUE_TOKEN: TypographyToken = {
 };
 
 export const PROMPT_TOKEN: TypographyToken = {
-  fontFamily: PRESS_START_2P_FONT_FAMILY,
-  baseFontSize: 96,
-  letterSpacing: 0,
-  lineSpacing: 12,
+  fontFamily: VT323_FONT_FAMILY,
+  baseFontSize: 58,
+  letterSpacing: 1,
+  lineSpacing: 16,
   color: '#fff0cc',
-  strokeColor: '#0b1630',
-  strokeThickness: 4,
+  strokeColor: '#08101f',
+  strokeThickness: 2,
   shadow: {
-    color: 'rgba(103, 209, 255, 0.26)',
+    color: 'rgba(3, 8, 18, 0.72)',
     offsetX: 0,
-    offsetY: 0,
-    blur: 8
+    offsetY: 2,
+    blur: 0
   },
-  paddingX: 10,
-  paddingY: 10
+  paddingX: 2,
+  paddingY: 2
 };
 
 export const HINT_TOKEN: TypographyToken = {
@@ -175,15 +189,23 @@ export function applyTypographyToken(
   text.setLetterSpacing(token.letterSpacing * scale);
   text.setLineSpacing(snapUiValue(token.lineSpacing * scale));
   text.setColor(token.color);
-  text.setStroke(token.strokeColor, Math.max(1, snapUiValue(token.strokeThickness * scale)));
-  text.setShadow(
-    snapUiValue(token.shadow.offsetX * scale),
-    snapUiValue(token.shadow.offsetY * scale),
-    token.shadow.color,
-    snapUiValue(token.shadow.blur * scale),
-    true,
-    true
-  );
+  if (token.strokeThickness > 0) {
+    text.setStroke(token.strokeColor, Math.max(1, snapUiValue(token.strokeThickness * scale)));
+  } else {
+    text.setStroke(token.strokeColor, 0);
+  }
+  if (token.shadow.blur > 0 || token.shadow.offsetX !== 0 || token.shadow.offsetY !== 0) {
+    text.setShadow(
+      snapUiValue(token.shadow.offsetX * scale),
+      snapUiValue(token.shadow.offsetY * scale),
+      token.shadow.color,
+      snapUiValue(token.shadow.blur * scale),
+      true,
+      true
+    );
+  } else {
+    text.setShadow(0, 0, '#000000', 0, false, false);
+  }
   text.setPadding(
     snapUiValue(token.paddingX * scale),
     snapUiValue(token.paddingY * scale),

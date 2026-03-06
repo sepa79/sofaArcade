@@ -100,7 +100,6 @@ interface LauncherDom {
 interface LauncherCopy {
   readonly subtitle: string;
   readonly start: string;
-  readonly pressStart: string;
   readonly settingsTitle: string;
   readonly settingsHomeDescription: string;
   readonly controllerTitle: string;
@@ -259,7 +258,6 @@ const LAUNCHER_COPY: Readonly<Record<LauncherLanguage, LauncherCopy>> = {
   en: {
     subtitle: 'Plug in. Play together.',
     start: 'START',
-    pressStart: 'PRESS START',
     settingsTitle: 'SETTINGS',
     settingsHomeDescription: 'JOYSTICK: controllers | SPEAKER: audio',
     controllerTitle: 'CONTROLLER',
@@ -298,7 +296,6 @@ const LAUNCHER_COPY: Readonly<Record<LauncherLanguage, LauncherCopy>> = {
   pl: {
     subtitle: 'Bierz kontroler. Gramy.',
     start: 'START',
-    pressStart: 'PRESS START',
     settingsTitle: 'USTAWIENIA',
     settingsHomeDescription: 'JOYSTICK: kontrolery | SPEAKER: audio',
     controllerTitle: 'KONTROLER',
@@ -1056,7 +1053,7 @@ export class LauncherScene extends Phaser.Scene {
     this.dom.subtitle.textContent = copy.subtitle;
     this.dom.gameTitle.textContent = `${this.state.cursorIndex === MENU_ROW_GAME ? '>' : ''} ${gameOption.label}`;
     this.dom.gameDescription.textContent = gameDescription(gameOption, this.language);
-    this.dom.startButton.textContent = this.state.cursorIndex === MENU_ROW_START ? copy.pressStart : copy.start;
+    this.dom.startButton.textContent = copy.start;
     this.dom.previewLabel.textContent = previewLabel(gameOption);
     this.dom.languageEnButton.classList.toggle('is-active', this.language === 'en');
     this.dom.languagePlButton.classList.toggle('is-active', this.language === 'pl');

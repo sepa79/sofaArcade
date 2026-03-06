@@ -432,8 +432,11 @@ describe('stepGame', () => {
     expect(totalPlayerScore(afterThirdHit.players)).toBe(ENEMY_UFO_SCORE);
   });
 
-  it('starts gameplay when any player presses fire in ready phase', () => {
-    const state = createInitialState(23, 2);
+  it('starts gameplay when any player presses fire in explicit ready phase', () => {
+    const state: GameState = {
+      ...createInitialState(23, 2),
+      phase: 'ready'
+    };
 
     const wait = stepState(state, [emptyInput(), emptyInput()]);
     expect(wait.phase).toBe('ready');

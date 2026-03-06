@@ -1272,14 +1272,14 @@ export class PixelInvadersScene extends Phaser.Scene {
       this.bannerText.setText('PRESS FIRE TO START');
       this.bannerText.setAlpha(0.74 + pulse * 0.26);
       this.bannerText.setTint(mixColor(0xffd9a8, 0xffffff, pulse));
-      this.bannerText.setScale(3);
+      this.bannerText.setScale(1.55);
       return;
     }
 
     this.bannerText.setText('GAME OVER\nPRESS ENTER');
     this.bannerText.setAlpha(0.76 + pulse * 0.24);
     this.bannerText.setTint(mixColor(0xffc4a1, 0xfff7df, pulse));
-    this.bannerText.setScale(3);
+    this.bannerText.setScale(1.75);
   }
 
   private updateLayout(): void {
