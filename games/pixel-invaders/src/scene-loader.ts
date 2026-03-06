@@ -1,14 +1,6 @@
 import Phaser from 'phaser';
-import type { AudioMixProfileId } from '@light80/game-sdk';
 
 export type PlayableSceneKey = 'pixel-invaders' | 'tunnel-invaders';
-
-export interface GameLaunchData {
-  readonly controllerProfileId: string;
-  readonly controllerLabel: string;
-  readonly audioMixProfileId: AudioMixProfileId;
-  readonly phoneLinkEnabled: boolean;
-}
 
 export interface LazySceneLoader {
   ensureLoaded(sceneKey: PlayableSceneKey): Promise<void>;

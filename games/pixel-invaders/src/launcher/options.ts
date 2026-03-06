@@ -1,3 +1,6 @@
+import type { MultiplayerGameLaunchPlayerSlot } from '../launch-contract';
+import { PIXEL_PHONE_LINK_CONTROLLER_ID } from '../launch-contract';
+
 export interface GameOption {
   readonly id: string;
   readonly label: string;
@@ -6,10 +9,70 @@ export interface GameOption {
   readonly controllerOptions: ReadonlyArray<ControllerOption>;
 }
 
-export interface ControllerOption {
-  readonly profileId: string;
+export interface LegacyControllerOption {
+  readonly id: string;
   readonly label: string;
   readonly description: string;
+  readonly launchMode: 'legacy_single';
+  readonly controllerProfileId: string;
+  readonly phoneLinkEnabled: boolean;
+}
+
+export interface MultiplayerControllerOption {
+  readonly id: string;
+  readonly label: string;
+  readonly description: string;
+  readonly launchMode: 'pixel_multiplayer';
+  readonly playerSlots: ReadonlyArray<MultiplayerGameLaunchPlayerSlot>;
+}
+
+export type ControllerOption = LegacyControllerOption | MultiplayerControllerOption;
+
+function createPixelSlot(
+  slotId: string,
+  playerIndex: number,
+  profileId: string,
+  controllerLabel: string,
+  device:
+    | { readonly kind: 'shared_local' }
+    | { readonly kind: 'keyboard_mouse' }
+    | { readonly kind: 'gamepad'; readonly gamepadIndex: number }
+): MultiplayerGameLaunchPlayerSlot {
+  return {
+    slotId,
+    playerIndex,
+    profileId,
+    controllerLabel,
+    binding: {
+      transport: 'local',
+      device
+    }
+  };
+}
+
+function createPixelPhoneSlot(
+  slotId: string,
+  playerIndex: number,
+  controllerLabel: string
+): MultiplayerGameLaunchPlayerSlot {
+  return {
+    slotId,
+    playerIndex,
+    profileId: 'pixel-invaders-phone-link',
+    controllerLabel,
+    binding: {
+      transport: 'phone_link',
+      phoneControllerId: PIXEL_PHONE_LINK_CONTROLLER_ID
+    }
+  };
+}
+
+export function optionUsesPhoneLink(option: ControllerOption): boolean {
+  if (option.launchMode === 'legacy_single') {
+    return option.phoneLinkEnabled;
+  }
+
+  return option.playerSlots.some((playerSlot) => playerSlot.binding.transport === 'phone_link');
 }
 
 export const GAME_OPTIONS: ReadonlyArray<GameOption> = [
@@ -20,24 +83,66 @@ export const GAME_OPTIONS: ReadonlyArray<GameOption> = [
     sceneKey: 'pixel-invaders',
     controllerOptions: [
       {
-        profileId: 'pixel-invaders-keyboard-gamepad',
-        label: 'Keyboard + Gamepad',
-        description: 'Ruch wzgledny, idealne pod pad i klasyczne klawisze.'
+        id: 'pixel-solo-hybrid',
+        label: 'Solo Hybrid',
+        description: 'Jeden gracz: klawiatura + mysz + pierwszy pad jako wspolne lokalne wejscie.',
+        launchMode: 'pixel_multiplayer',
+        playerSlots: [
+          createPixelSlot('player-1', 0, 'pixel-invaders-hybrid', 'Hybrid Local', {
+            kind: 'shared_local'
+          })
+        ]
       },
       {
-        profileId: 'pixel-invaders-mouse-paddle',
-        label: 'Mouse Paddle',
-        description: 'Ruch absolutny (0-255), jak paddle na osi ekranu.'
+        id: 'pixel-coop-kb-pad',
+        label: 'KB + Pad',
+        description: 'Dwa lokalne sloty: klawiatura/mysz dla P1 i pad 1 dla P2.',
+        launchMode: 'pixel_multiplayer',
+        playerSlots: [
+          createPixelSlot('player-1', 0, 'pixel-invaders-keyboard-gamepad', 'Keyboard', {
+            kind: 'keyboard_mouse'
+          }),
+          createPixelSlot('player-2', 1, 'pixel-invaders-keyboard-gamepad', 'Gamepad 1', {
+            kind: 'gamepad',
+            gamepadIndex: 0
+          })
+        ]
       },
       {
-        profileId: 'pixel-invaders-hybrid',
-        label: 'Hybrid',
-        description: 'Laczy wzgledny ruch i tryb absolutny po przytrzymaniu myszy.'
+        id: 'pixel-coop-two-pads',
+        label: '2 Pads',
+        description: 'Dwa pady na dwoch slotach lokalnych. Dobre pod kanape bez klawiatury.',
+        launchMode: 'pixel_multiplayer',
+        playerSlots: [
+          createPixelSlot('player-1', 0, 'pixel-invaders-keyboard-gamepad', 'Gamepad 1', {
+            kind: 'gamepad',
+            gamepadIndex: 0
+          }),
+          createPixelSlot('player-2', 1, 'pixel-invaders-keyboard-gamepad', 'Gamepad 2', {
+            kind: 'gamepad',
+            gamepadIndex: 1
+          })
+        ]
       },
       {
-        profileId: 'pixel-invaders-phone-link',
-        label: 'Phone Link',
-        description: 'Sterowanie telefonem przez WebRTC (P2P).'
+        id: 'pixel-phone-solo',
+        label: 'Phone Solo',
+        description: 'Jeden slot telefonu przez WebRTC phone link.',
+        launchMode: 'pixel_multiplayer',
+        playerSlots: [createPixelPhoneSlot('player-1', 0, 'Phone Link')]
+      },
+      {
+        id: 'pixel-pad-phone',
+        label: 'Pad + Phone',
+        description: 'Dwa sloty: pad 1 lokalnie oraz jeden telefon przez phone link.',
+        launchMode: 'pixel_multiplayer',
+        playerSlots: [
+          createPixelSlot('player-1', 0, 'pixel-invaders-keyboard-gamepad', 'Gamepad 1', {
+            kind: 'gamepad',
+            gamepadIndex: 0
+          }),
+          createPixelPhoneSlot('player-2', 1, 'Phone Link')
+        ]
       }
     ]
   },
@@ -48,9 +153,12 @@ export const GAME_OPTIONS: ReadonlyArray<GameOption> = [
     sceneKey: 'tunnel-invaders',
     controllerOptions: [
       {
-        profileId: 'tunnel-invaders-keyboard-gamepad',
+        id: 'tunnel-solo-default',
         label: 'Keyboard + Gamepad',
-        description: 'Ruch wzgledny po obwodzie tunelu + strzal i skok fazowy.'
+        description: 'Ruch wzgledny po obwodzie tunelu + strzal i skok fazowy.',
+        launchMode: 'legacy_single',
+        controllerProfileId: 'tunnel-invaders-keyboard-gamepad',
+        phoneLinkEnabled: false
       }
     ]
   }

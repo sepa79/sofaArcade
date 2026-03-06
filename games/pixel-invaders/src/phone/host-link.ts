@@ -17,20 +17,53 @@ export interface PhoneHostSnapshot {
   readonly controllerUrl: string | null;
 }
 
-const provider = createPhoneControllerProvider();
-let peer: RTCPeerConnection | null = null;
-let channel: RTCDataChannel | null = null;
-let generation = 0;
+interface PhoneHostSessionState {
+  readonly provider: ReturnType<typeof createPhoneControllerProvider>;
+  peer: RTCPeerConnection | null;
+  channel: RTCDataChannel | null;
+  generation: number;
+  snapshot: PhoneHostSnapshot;
+}
 
-let snapshot: PhoneHostSnapshot = {
-  status: 'idle',
-  message: 'not connected',
-  sessionId: null,
-  controllerUrl: null
-};
+const sessions = new Map<string, PhoneHostSessionState>();
 
-function setSnapshot(next: PhoneHostSnapshot): void {
-  snapshot = next;
+function createIdleSnapshot(): PhoneHostSnapshot {
+  return {
+    status: 'idle',
+    message: 'not connected',
+    sessionId: null,
+    controllerUrl: null
+  };
+}
+
+function requireControllerId(controllerId: string): string {
+  if (controllerId.trim().length === 0) {
+    throw new Error('Phone host controllerId cannot be empty.');
+  }
+
+  return controllerId;
+}
+
+function requireSessionState(controllerId: string): PhoneHostSessionState {
+  const normalizedControllerId = requireControllerId(controllerId);
+  const existing = sessions.get(normalizedControllerId);
+  if (existing !== undefined) {
+    return existing;
+  }
+
+  const created: PhoneHostSessionState = {
+    provider: createPhoneControllerProvider(),
+    peer: null,
+    channel: null,
+    generation: 0,
+    snapshot: createIdleSnapshot()
+  };
+  sessions.set(normalizedControllerId, created);
+  return created;
+}
+
+function setSnapshot(controllerId: string, next: PhoneHostSnapshot): void {
+  requireSessionState(controllerId).snapshot = next;
 }
 
 function delay(ms: number): Promise<void> {
@@ -106,28 +139,31 @@ function asSignalDescription(description: RTCSessionDescriptionInit): { type: 'o
   };
 }
 
-function releasePeer(): void {
-  generation += 1;
-  provider.setConnected(false);
-  if (channel !== null) {
-    channel.close();
-    channel = null;
+function releasePeer(controllerId: string): void {
+  const session = requireSessionState(controllerId);
+  session.generation += 1;
+  session.provider.setConnected(false);
+  if (session.channel !== null) {
+    session.channel.close();
+    session.channel = null;
   }
 
-  if (peer !== null) {
-    peer.close();
-    peer = null;
+  if (session.peer !== null) {
+    session.peer.close();
+    session.peer = null;
   }
 }
 
 async function pollAnswer(
+  controllerId: string,
   token: number,
   sessionId: string,
   activePeer: RTCPeerConnection,
   signalClient: SignalClient,
   pendingRemoteCandidates: RTCIceCandidateInit[]
 ): Promise<void> {
-  while (token === generation && activePeer.remoteDescription === null) {
+  const session = requireSessionState(controllerId);
+  while (token === session.generation && activePeer.remoteDescription === null) {
     const answer = await signalClient.getAnswer(sessionId);
     if (answer !== null) {
       await activePeer.setRemoteDescription(answer);
@@ -135,8 +171,8 @@ async function pollAnswer(
         await activePeer.addIceCandidate(candidate);
       }
       pendingRemoteCandidates.length = 0;
-      setSnapshot({
-        ...snapshot,
+      setSnapshot(controllerId, {
+        ...session.snapshot,
         status: 'connecting',
         message: 'phone answered, establishing link...'
       });
@@ -148,15 +184,17 @@ async function pollAnswer(
 }
 
 async function pollRemoteCandidates(
+  controllerId: string,
   token: number,
   sessionId: string,
   activePeer: RTCPeerConnection,
   signalClient: SignalClient,
   pendingRemoteCandidates: RTCIceCandidateInit[]
 ): Promise<void> {
+  const session = requireSessionState(controllerId);
   let after = 0;
 
-  while (token === generation) {
+  while (token === session.generation) {
     const batch = await signalClient.listCandidates(sessionId, 'host', after);
     for (const candidate of batch.candidates) {
       const candidateInit: RTCIceCandidateInit = {
@@ -178,9 +216,11 @@ async function pollRemoteCandidates(
   }
 }
 
-export async function startPhoneHostSession(): Promise<PhoneHostSnapshot> {
-  releasePeer();
-  setSnapshot({
+export async function startPhoneHostSession(controllerId: string): Promise<PhoneHostSnapshot> {
+  const normalizedControllerId = requireControllerId(controllerId);
+  const sessionState = requireSessionState(normalizedControllerId);
+  releasePeer(normalizedControllerId);
+  setSnapshot(normalizedControllerId, {
     status: 'creating',
     message: 'creating phone session...',
     sessionId: null,
@@ -197,10 +237,10 @@ export async function startPhoneHostSession(): Promise<PhoneHostSnapshot> {
     maxRetransmits: 0
   });
   const pendingRemoteCandidates: RTCIceCandidateInit[] = [];
-  const token = generation;
+  const token = sessionState.generation;
 
-  peer = activePeer;
-  channel = activeChannel;
+  sessionState.peer = activePeer;
+  sessionState.channel = activeChannel;
 
   const controllerBaseUrl = buildControllerBaseUrl();
   const phoneSignalUrl = normalizeSignalUrlForPhone(signalHttpUrl, controllerBaseUrl);
@@ -209,7 +249,7 @@ export async function startPhoneHostSession(): Promise<PhoneHostSnapshot> {
   controllerUrl.searchParams.set('sessionId', session.sessionId);
   controllerUrl.searchParams.set('signal', phoneSignalUrl);
 
-  setSnapshot({
+  setSnapshot(normalizedControllerId, {
     status: 'waiting_answer',
     message: 'waiting for phone to connect...',
     sessionId: session.sessionId,
@@ -217,26 +257,28 @@ export async function startPhoneHostSession(): Promise<PhoneHostSnapshot> {
   });
 
   activeChannel.addEventListener('open', () => {
-    if (token !== generation) {
+    const currentSession = requireSessionState(normalizedControllerId);
+    if (token !== currentSession.generation) {
       return;
     }
 
-    provider.setConnected(true);
-    setSnapshot({
-      ...snapshot,
+    currentSession.provider.setConnected(true);
+    setSnapshot(normalizedControllerId, {
+      ...currentSession.snapshot,
       status: 'connected',
       message: 'phone connected (p2p)'
     });
   });
 
   activeChannel.addEventListener('close', () => {
-    if (token !== generation) {
+    const currentSession = requireSessionState(normalizedControllerId);
+    if (token !== currentSession.generation) {
       return;
     }
 
-    provider.setConnected(false);
-    setSnapshot({
-      ...snapshot,
+    currentSession.provider.setConnected(false);
+    setSnapshot(normalizedControllerId, {
+      ...currentSession.snapshot,
       status: 'disconnected',
       message: 'phone disconnected'
     });
@@ -248,17 +290,18 @@ export async function startPhoneHostSession(): Promise<PhoneHostSnapshot> {
     }
 
     const parsed = parsePhoneRelayInputMessage(JSON.parse(event.data) as unknown);
-    provider.ingest(parsed);
+    requireSessionState(normalizedControllerId).provider.ingest(parsed);
   });
 
   activePeer.addEventListener('connectionstatechange', () => {
-    if (token !== generation) {
+    const currentSession = requireSessionState(normalizedControllerId);
+    if (token !== currentSession.generation) {
       return;
     }
 
     if (activePeer.connectionState === 'failed') {
-      setSnapshot({
-        ...snapshot,
+      setSnapshot(normalizedControllerId, {
+        ...currentSession.snapshot,
         status: 'error',
         message: 'p2p connection failed'
       });
@@ -266,18 +309,20 @@ export async function startPhoneHostSession(): Promise<PhoneHostSnapshot> {
   });
 
   activePeer.addEventListener('icecandidate', (event) => {
-    if (event.candidate === null || token !== generation) {
+    const currentSession = requireSessionState(normalizedControllerId);
+    if (event.candidate === null || token !== currentSession.generation) {
       return;
     }
 
     void signalClient.pushCandidate(session.sessionId, 'host', normalizeCandidate(event.candidate)).catch((error) => {
-      if (token !== generation) {
+      const latestSession = requireSessionState(normalizedControllerId);
+      if (token !== latestSession.generation) {
         return;
       }
 
       const message = error instanceof Error ? error.message : 'unknown candidate push error';
-      setSnapshot({
-        ...snapshot,
+      setSnapshot(normalizedControllerId, {
+        ...latestSession.snapshot,
         status: 'error',
         message
       });
@@ -292,48 +337,50 @@ export async function startPhoneHostSession(): Promise<PhoneHostSnapshot> {
 
   await signalClient.setOffer(session.sessionId, asSignalDescription(activePeer.localDescription));
 
-  void pollAnswer(token, session.sessionId, activePeer, signalClient, pendingRemoteCandidates).catch((error) => {
-    if (token !== generation) {
+  void pollAnswer(normalizedControllerId, token, session.sessionId, activePeer, signalClient, pendingRemoteCandidates).catch((error) => {
+    const currentSession = requireSessionState(normalizedControllerId);
+    if (token !== currentSession.generation) {
       return;
     }
 
     const message = error instanceof Error ? error.message : 'unknown answer poll error';
-    setSnapshot({
-      ...snapshot,
+    setSnapshot(normalizedControllerId, {
+      ...currentSession.snapshot,
       status: 'error',
       message
     });
   });
 
-  void pollRemoteCandidates(token, session.sessionId, activePeer, signalClient, pendingRemoteCandidates).catch(
+  void pollRemoteCandidates(normalizedControllerId, token, session.sessionId, activePeer, signalClient, pendingRemoteCandidates).catch(
     (error) => {
-      if (token !== generation) {
+      const currentSession = requireSessionState(normalizedControllerId);
+      if (token !== currentSession.generation) {
         return;
       }
 
       const message = error instanceof Error ? error.message : 'unknown candidate poll error';
-      setSnapshot({
-        ...snapshot,
+      setSnapshot(normalizedControllerId, {
+        ...currentSession.snapshot,
         status: 'error',
         message
       });
     }
   );
 
-  return snapshot;
+  return requireSessionState(normalizedControllerId).snapshot;
 }
 
-export function currentPhoneHostSnapshot(): PhoneHostSnapshot {
-  return snapshot;
+export function currentPhoneHostSnapshot(controllerId: string): PhoneHostSnapshot {
+  return requireSessionState(controllerId).snapshot;
 }
 
-export function nextPhoneControllerFrame(): {
+export function nextPhoneControllerFrame(controllerId: string): {
   readonly connected: boolean;
   readonly moveX: number;
   readonly fire: boolean;
   readonly start: boolean;
 } {
-  const frame = provider.nextFrame();
+  const frame = requireSessionState(controllerId).provider.nextFrame();
   return {
     connected: frame.connected,
     moveX: frame.moveX,

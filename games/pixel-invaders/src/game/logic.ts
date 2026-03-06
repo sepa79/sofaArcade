@@ -1,3 +1,5 @@
+import type { MatchInput } from '@light80/core';
+
 import {
   BULLET_WIDTH,
   BULLET_HEIGHT,
@@ -39,7 +41,7 @@ import {
   type MutableCollisionDebugFrame
 } from './collision';
 import { createInitialState } from './state';
-import type { Bullet, Enemy, FrameInput, GameState } from './types';
+import type { Bullet, Enemy, FrameInput, GameState, PlayerState } from './types';
 
 interface RandomValue {
   readonly seed: number;
@@ -66,6 +68,83 @@ function playerXFromAbsoluteUnit(unitValue: number): number {
   }
 
   return clampPlayerX(PLAYER_WIDTH / 2 + unitValue * (WORLD_WIDTH - PLAYER_WIDTH));
+}
+
+function requireFiniteDt(dt: number): void {
+  if (!Number.isFinite(dt) || dt <= 0) {
+    throw new Error(`dt must be a positive finite number, got ${dt}.`);
+  }
+}
+
+function requirePlayerInputMap(
+  state: GameState,
+  matchInput: MatchInput<FrameInput>
+): ReadonlyMap<number, FrameInput> {
+  if (matchInput.players.length !== state.players.length) {
+    throw new Error(
+      `Match input player count mismatch: expected ${state.players.length}, got ${matchInput.players.length}.`
+    );
+  }
+
+  const byPlayerIndex = new Map<number, FrameInput>();
+  for (const player of matchInput.players) {
+    if (byPlayerIndex.has(player.playerIndex)) {
+      throw new Error(`Match input has duplicate playerIndex: ${player.playerIndex}.`);
+    }
+
+    if (!Number.isFinite(player.input.moveAxisSigned) || player.input.moveAxisSigned < -1 || player.input.moveAxisSigned > 1) {
+      throw new Error(`moveAxisSigned must be in [-1, 1], got ${player.input.moveAxisSigned}.`);
+    }
+
+    byPlayerIndex.set(player.playerIndex, player.input);
+  }
+
+  for (const player of state.players) {
+    if (!byPlayerIndex.has(player.playerIndex)) {
+      throw new Error(`Missing match input for playerIndex ${player.playerIndex}.`);
+    }
+  }
+
+  return byPlayerIndex;
+}
+
+function anyFirePressed(matchInput: MatchInput<FrameInput>): boolean {
+  return matchInput.players.some((player) => player.input.firePressed);
+}
+
+function anyRestartPressed(matchInput: MatchInput<FrameInput>): boolean {
+  return matchInput.players.some((player) => player.input.restartPressed);
+}
+
+function updatePlayers(
+  players: ReadonlyArray<PlayerState>,
+  inputByPlayerIndex: ReadonlyMap<number, FrameInput>,
+  dt: number
+): ReadonlyArray<PlayerState> {
+  return players.map((player) => {
+    const input = inputByPlayerIndex.get(player.playerIndex);
+    if (input === undefined) {
+      throw new Error(`Player input is missing for playerIndex ${player.playerIndex}.`);
+    }
+
+    if (player.lives <= 0) {
+      return {
+        ...player,
+        respawnTimer: 0,
+        shootTimer: 0
+      };
+    }
+
+    return {
+      ...player,
+      x:
+        input.moveAbsoluteUnit === null
+          ? clampPlayerX(player.x + input.moveAxisSigned * PLAYER_SPEED * dt)
+          : playerXFromAbsoluteUnit(input.moveAbsoluteUnit),
+      respawnTimer: Math.max(0, player.respawnTimer - dt),
+      shootTimer: Math.max(0, player.shootTimer - dt)
+    };
+  });
 }
 
 function moveEnemies(
@@ -124,6 +203,7 @@ function spawnEnemyBullet(
     rngSeed: random.seed,
     bullets: bullets.concat({
       owner: 'enemy',
+      playerIndex: null,
       x: shooter.x,
       y: shooter.y + enemyActiveHeight(shooter.kind) / 2,
       vy: ENEMY_BULLET_SPEED
@@ -274,7 +354,7 @@ function resolvePlayerShots(
   let nextScore = score;
   let nextHitStreak = hitStreak;
   let nextScoreMultiplier = scoreMultiplier;
-  const nextBullets: Bullet[] = [];
+    const nextBullets: Bullet[] = [];
 
   for (const bullet of bullets) {
     if (bullet.owner !== 'player') {
@@ -366,29 +446,20 @@ function resolvePlayerShots(
 }
 
 function resolveEnemyShots(
-  lives: number,
-  playerX: number,
-  playerRespawnTimer: number,
+  players: ReadonlyArray<PlayerState>,
   bullets: ReadonlyArray<Bullet>,
   dt: number,
   collisionRuntime: CollisionRuntime,
   collisionDebug: MutableCollisionDebugFrame | null
 ): {
-  readonly lives: number;
-  readonly playerRespawnTimer: number;
+  readonly players: ReadonlyArray<PlayerState>;
   readonly bullets: ReadonlyArray<Bullet>;
   readonly phase: 'playing' | 'lost';
 } {
-  if (playerRespawnTimer > 0) {
-    return {
-      lives,
-      playerRespawnTimer,
-      bullets,
-      phase: 'playing'
-    };
-  }
-
-  let playerHit = false;
+  const playersByIndex = new Map<number, PlayerState>(
+    players.map((player) => [player.playerIndex, { ...player }])
+  );
+  let anyPlayerHit = false;
   const nextBullets = bullets.filter((bullet) => {
     if (bullet.owner !== 'enemy') {
       return true;
@@ -398,41 +469,66 @@ function resolveEnemyShots(
     const segmentStartY = bullet.y - bullet.vy * dt;
     const segmentEndX = bullet.x;
     const segmentEndY = bullet.y;
-    const hit = collideEnemyBulletWithPlayer(
-      collisionRuntime,
-      playerX,
-      PLAYER_Y,
-      segmentStartX,
-      segmentStartY,
-      segmentEndX,
-      segmentEndY,
-      BULLET_WIDTH,
-      BULLET_HEIGHT,
-      collisionDebug
-    );
-    if (hit.hit) {
-      playerHit = true;
+    let hitPlayerIndex: number | null = null;
+    let bestT = Number.POSITIVE_INFINITY;
+    for (const player of playersByIndex.values()) {
+      if (player.lives <= 0 || player.respawnTimer > 0) {
+        continue;
+      }
+
+      const hit = collideEnemyBulletWithPlayer(
+        collisionRuntime,
+        player.x,
+        PLAYER_Y,
+        segmentStartX,
+        segmentStartY,
+        segmentEndX,
+        segmentEndY,
+        BULLET_WIDTH,
+        BULLET_HEIGHT,
+        collisionDebug
+      );
+      if (!hit.hit || hit.t >= bestT) {
+        continue;
+      }
+
+      bestT = hit.t;
+      hitPlayerIndex = player.playerIndex;
+    }
+
+    if (hitPlayerIndex !== null) {
+      const hitPlayer = playersByIndex.get(hitPlayerIndex);
+      if (hitPlayer === undefined) {
+        throw new Error(`Player state is missing for hit playerIndex ${hitPlayerIndex}.`);
+      }
+
+      anyPlayerHit = true;
+      const nextLives = hitPlayer.lives - 1;
+      playersByIndex.set(hitPlayerIndex, {
+        ...hitPlayer,
+        lives: nextLives,
+        respawnTimer: nextLives > 0 ? PLAYER_RESPAWN_INVULNERABILITY : 0,
+        shootTimer: nextLives > 0 ? hitPlayer.shootTimer : 0
+      });
       return false;
     }
 
     return true;
   });
 
-  if (!playerHit) {
-    return {
-      lives,
-      playerRespawnTimer,
-      bullets: nextBullets,
-      phase: 'playing'
-    };
-  }
+  const nextPlayers = players.map((player) => {
+    const nextPlayer = playersByIndex.get(player.playerIndex);
+    if (nextPlayer === undefined) {
+      throw new Error(`Resolved player state is missing for playerIndex ${player.playerIndex}.`);
+    }
 
-  const nextLives = lives - 1;
+    return nextPlayer;
+  });
+
   return {
-    lives: nextLives,
-    playerRespawnTimer: nextLives > 0 ? PLAYER_RESPAWN_INVULNERABILITY : 0,
+    players: nextPlayers,
     bullets: nextBullets,
-    phase: nextLives > 0 ? 'playing' : 'lost'
+    phase: anyPlayerHit && nextPlayers.every((player) => player.lives <= 0) ? 'lost' : 'playing'
   };
 }
 
@@ -450,22 +546,25 @@ export interface StepGameResult {
   readonly collisionDebug: CollisionDebugFrame;
 }
 
-export function stepGame(state: GameState, input: FrameInput, dt: number, options: StepGameOptions): StepGameResult {
-  if (!Number.isFinite(input.moveAxisSigned) || input.moveAxisSigned < -1 || input.moveAxisSigned > 1) {
-    throw new Error(`moveAxisSigned must be in [-1, 1], got ${input.moveAxisSigned}.`);
-  }
-
+export function stepGame(
+  state: GameState,
+  matchInput: MatchInput<FrameInput>,
+  dt: number,
+  options: StepGameOptions
+): StepGameResult {
+  requireFiniteDt(dt);
+  const inputByPlayerIndex = requirePlayerInputMap(state, matchInput);
   const collisionDebug = createMutableCollisionDebugFrame(options.captureCollisionDebug);
 
   if (state.phase === 'ready') {
-    if (input.restartPressed) {
+    if (anyRestartPressed(matchInput)) {
       return {
-        state: createInitialState(state.rngSeed + 1),
+        state: createInitialState(state.rngSeed + 1, state.players.length),
         collisionDebug: createEmptyCollisionDebugFrame()
       };
     }
 
-    if (input.firePressed) {
+    if (anyFirePressed(matchInput)) {
       return {
         state: {
           ...state,
@@ -483,30 +582,44 @@ export function stepGame(state: GameState, input: FrameInput, dt: number, option
 
   if (state.phase !== 'playing') {
     return {
-      state: input.restartPressed ? createInitialState(state.rngSeed + 1) : state,
+      state: anyRestartPressed(matchInput) ? createInitialState(state.rngSeed + 1, state.players.length) : state,
       collisionDebug: createEmptyCollisionDebugFrame()
     };
   }
 
-  const playerRespawnTimer = Math.max(0, state.playerRespawnTimer - dt);
-  const playerX =
-    input.moveAbsoluteUnit === null
-      ? clampPlayerX(state.playerX + input.moveAxisSigned * PLAYER_SPEED * dt)
-      : playerXFromAbsoluteUnit(input.moveAbsoluteUnit);
-
-  let playerShootTimer = Math.max(0, state.playerShootTimer - dt);
+  let players = updatePlayers(state.players, inputByPlayerIndex, dt);
   let bullets = moveBullets(state.bullets, dt);
 
-  const hasPlayerBullet = bullets.some((bullet) => bullet.owner === 'player');
-  if (input.firePressed && playerShootTimer === 0 && !hasPlayerBullet) {
-    bullets = bullets.concat({
-      owner: 'player',
-      x: playerX,
-      y: PLAYER_Y - PLAYER_HEIGHT / 2,
-      vy: -PLAYER_SHOT_SPEED
-    });
-    playerShootTimer = PLAYER_SHOOT_COOLDOWN;
+  const nextPlayers: PlayerState[] = [];
+  for (const player of players) {
+    const input = inputByPlayerIndex.get(player.playerIndex);
+    if (input === undefined) {
+      throw new Error(`Player input is missing for playerIndex ${player.playerIndex}.`);
+    }
+
+    if (player.lives > 0) {
+      const hasPlayerBullet = bullets.some(
+        (bullet) => bullet.owner === 'player' && bullet.playerIndex === player.playerIndex
+      );
+      if (input.firePressed && player.shootTimer === 0 && !hasPlayerBullet) {
+        bullets = bullets.concat({
+          owner: 'player',
+          playerIndex: player.playerIndex,
+          x: player.x,
+          y: PLAYER_Y - PLAYER_HEIGHT / 2,
+          vy: -PLAYER_SHOT_SPEED
+        });
+        nextPlayers.push({
+          ...player,
+          shootTimer: PLAYER_SHOOT_COOLDOWN
+        });
+        continue;
+      }
+    }
+
+    nextPlayers.push(player);
   }
+  players = nextPlayers;
 
   const movedEnemies = moveEnemies(state.enemies, state.enemyDirection, state.enemySpeed, dt);
   let enemyFireTimer = state.enemyFireTimer - dt;
@@ -531,16 +644,14 @@ export function stepGame(state: GameState, input: FrameInput, dt: number, option
     collisionDebug
   );
   const resolvedEnemyShots = resolveEnemyShots(
-    state.lives,
-    playerX,
-    playerRespawnTimer,
+    players,
     resolvedPlayerShots.bullets,
     dt,
     options.collisionRuntime,
     collisionDebug
   );
   const filteredBullets = filterBulletsAndCountPlayerMisses(resolvedEnemyShots.bullets);
-  const playerWasHit = resolvedEnemyShots.lives < state.lives;
+  const playerWasHit = resolvedEnemyShots.players.some((player, index) => player.lives < state.players[index].lives);
   const shouldResetBonus = filteredBullets.playerMisses > 0 || playerWasHit;
   const nextHitStreak = shouldResetBonus ? 0 : resolvedPlayerShots.hitStreak;
   const nextScoreMultiplier = shouldResetBonus ? 1 : resolvedPlayerShots.scoreMultiplier;
@@ -561,10 +672,7 @@ export function stepGame(state: GameState, input: FrameInput, dt: number, option
       score: resolvedPlayerShots.score,
       hitStreak: nextHitStreak,
       scoreMultiplier: nextScoreMultiplier,
-      lives: resolvedEnemyShots.lives,
-      playerX,
-      playerRespawnTimer: resolvedEnemyShots.playerRespawnTimer,
-      playerShootTimer,
+      players: resolvedEnemyShots.players,
       enemyDirection: movedEnemies.direction,
       enemySpeed: movedEnemies.speed,
       enemyFireTimer,

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { createMatchInput } from '@light80/core';
 
 import {
   BULLET_HEIGHT,
@@ -7,11 +8,11 @@ import {
   ENEMY_ROW_RESPAWN_Y,
   ENEMY_STANDARD_ACTIVE_HEIGHT,
   ENEMY_STANDARD_ACTIVE_WIDTH,
+  ENEMY_UFO_ACTIVE_HEIGHT,
+  ENEMY_UFO_ACTIVE_WIDTH,
   ENEMY_UFO_HIT_POINTS,
   ENEMY_UFO_SCORE,
   FIXED_TIMESTEP,
-  ENEMY_UFO_ACTIVE_HEIGHT,
-  ENEMY_UFO_ACTIVE_WIDTH,
   PLAYER_ACTIVE_HEIGHT,
   PLAYER_ACTIVE_WIDTH,
   PLAYER_Y
@@ -19,7 +20,7 @@ import {
 import { createCollisionRuntime, createFilledAlphaMask } from './collision';
 import { stepGame } from './logic';
 import { createInitialState } from './state';
-import type { GameState } from './types';
+import type { FrameInput, GameState } from './types';
 
 const TEST_STEP_OPTIONS = {
   collisionRuntime: createCollisionRuntime({
@@ -35,21 +36,37 @@ const TEST_STEP_OPTIONS = {
   captureCollisionDebug: false
 } as const;
 
-function stepState(state: GameState, input: GameStateInput): GameState {
-  return stepGame(state, input, FIXED_TIMESTEP, TEST_STEP_OPTIONS).state;
+function emptyInput(): FrameInput {
+  return {
+    moveAxisSigned: 0,
+    moveAbsoluteUnit: null,
+    firePressed: false,
+    restartPressed: false
+  };
 }
 
-interface GameStateInput {
-  readonly moveAxisSigned: number;
-  readonly moveAbsoluteUnit: number | null;
-  readonly firePressed: boolean;
-  readonly restartPressed: boolean;
+function stepState(
+  state: GameState,
+  inputs: ReadonlyArray<FrameInput> = [emptyInput()]
+): GameState {
+  return stepGame(
+    state,
+    createMatchInput(
+      state.players.map((player) => ({
+        playerIndex: player.playerIndex,
+        input: inputs[player.playerIndex] ?? emptyInput()
+      }))
+    ),
+    FIXED_TIMESTEP,
+    TEST_STEP_OPTIONS
+  ).state;
 }
 
 describe('stepGame', () => {
   it('kills enemy and adds score when player bullet hits', () => {
-    const state = createInitialState(7);
+    const state = createInitialState(7, 1);
     const target = state.enemies[0];
+    const player = state.players[0];
 
     const customState: GameState = {
       ...state,
@@ -57,6 +74,7 @@ describe('stepGame', () => {
       bullets: [
         {
           owner: 'player',
+          playerIndex: player.playerIndex,
           x: target.x,
           y: target.y,
           vy: 0
@@ -64,23 +82,16 @@ describe('stepGame', () => {
       ]
     };
 
-    const next = stepState(
-      customState,
-      {
-        moveAxisSigned: 0,
-        moveAbsoluteUnit: null,
-        firePressed: false,
-        restartPressed: false
-      }
-    );
+    const next = stepState(customState);
 
     expect(next.score).toBe(1);
-    expect(next.enemies[0].alive).toBe(false);
+    expect(next.enemies[0]?.alive).toBe(false);
   });
 
   it('counts side graze hit using bullet thickness, not bullet center only', () => {
-    const state = createInitialState(18);
+    const state = createInitialState(18, 1);
     const target = state.enemies[0];
+    const player = state.players[0];
     const grazeBulletX = target.x + ENEMY_STANDARD_ACTIVE_WIDTH / 2 + BULLET_WIDTH / 2 - 0.2;
 
     const customState: GameState = {
@@ -89,6 +100,7 @@ describe('stepGame', () => {
       bullets: [
         {
           owner: 'player',
+          playerIndex: player.playerIndex,
           x: grazeBulletX,
           y: target.y,
           vy: 0
@@ -96,20 +108,16 @@ describe('stepGame', () => {
       ]
     };
 
-    const next = stepState(customState, {
-      moveAxisSigned: 0,
-      moveAbsoluteUnit: null,
-      firePressed: false,
-      restartPressed: false
-    });
+    const next = stepState(customState);
 
-    expect(next.enemies[0].alive).toBe(false);
+    expect(next.enemies[0]?.alive).toBe(false);
     expect(next.score).toBe(1);
   });
 
   it('detects swept bullet hit when bullet crosses enemy between frames', () => {
-    const state = createInitialState(17);
+    const state = createInitialState(17, 1);
     const target = state.enemies[0];
+    const player = state.players[0];
 
     const customState: GameState = {
       ...state,
@@ -117,6 +125,7 @@ describe('stepGame', () => {
       bullets: [
         {
           owner: 'player',
+          playerIndex: player.playerIndex,
           x: target.x,
           y: target.y + 24,
           vy: -2000
@@ -124,19 +133,15 @@ describe('stepGame', () => {
       ]
     };
 
-    const next = stepState(customState, {
-      moveAxisSigned: 0,
-      moveAbsoluteUnit: null,
-      firePressed: false,
-      restartPressed: false
-    });
+    const next = stepState(customState);
 
-    expect(next.enemies[0].alive).toBe(false);
+    expect(next.enemies[0]?.alive).toBe(false);
     expect(next.score).toBe(1);
   });
 
   it('reduces life when enemy bullet hits player', () => {
-    const state = createInitialState(12);
+    const state = createInitialState(12, 1);
+    const player = state.players[0];
 
     const customState: GameState = {
       ...state,
@@ -144,28 +149,21 @@ describe('stepGame', () => {
       bullets: [
         {
           owner: 'enemy',
-          x: state.playerX,
+          playerIndex: null,
+          x: player.x,
           y: PLAYER_Y,
           vy: 0
         }
       ]
     };
 
-    const next = stepState(
-      customState,
-      {
-        moveAxisSigned: 0,
-        moveAbsoluteUnit: null,
-        firePressed: false,
-        restartPressed: false
-      }
-    );
+    const next = stepState(customState);
 
-    expect(next.lives).toBe(2);
+    expect(next.players[0]?.lives).toBe(2);
   });
 
   it('drops enemies when formation reaches boundary', () => {
-    const state = createInitialState(3);
+    const state = createInitialState(3, 1);
 
     const nearEdgeState: GameState = {
       ...state,
@@ -176,42 +174,36 @@ describe('stepGame', () => {
       }))
     };
 
-    const next = stepState(
-      nearEdgeState,
-      {
-        moveAxisSigned: 0,
-        moveAbsoluteUnit: null,
-        firePressed: false,
-        restartPressed: false
-      }
-    );
+    const next = stepState(nearEdgeState);
 
     expect(next.enemyDirection).toBe(-1);
     expect(next.enemies[0].y).toBeGreaterThan(nearEdgeState.enemies[0].y);
   });
 
   it('supports absolute paddle-like movement', () => {
-    const state = createInitialState(20);
+    const state = createInitialState(20, 1);
+    const player = state.players[0];
 
     const next = stepState(
       {
         ...state,
         phase: 'playing'
       },
-      {
-        moveAxisSigned: 0,
-        moveAbsoluteUnit: 1,
-        firePressed: false,
-        restartPressed: false
-      }
+      [
+        {
+          ...emptyInput(),
+          moveAbsoluteUnit: 1
+        }
+      ]
     );
 
-    expect(next.playerX).toBeGreaterThan(state.playerX);
+    expect(next.players[0].x).toBeGreaterThan(player.x);
   });
 
   it('increases bonus multiplier with consecutive hits', () => {
-    const state = createInitialState(21);
+    const state = createInitialState(21, 1);
     const target = state.enemies[0];
+    const player = state.players[0];
 
     const customState: GameState = {
       ...state,
@@ -221,6 +213,7 @@ describe('stepGame', () => {
       bullets: [
         {
           owner: 'player',
+          playerIndex: player.playerIndex,
           x: target.x,
           y: target.y,
           vy: 0
@@ -228,15 +221,7 @@ describe('stepGame', () => {
       ]
     };
 
-    const next = stepState(
-      customState,
-      {
-        moveAxisSigned: 0,
-        moveAbsoluteUnit: null,
-        firePressed: false,
-        restartPressed: false
-      }
-    );
+    const next = stepState(customState);
 
     expect(next.score).toBe(3);
     expect(next.hitStreak).toBe(3);
@@ -244,7 +229,8 @@ describe('stepGame', () => {
   });
 
   it('resets bonus multiplier on miss', () => {
-    const state = createInitialState(22);
+    const state = createInitialState(22, 1);
+    const player = state.players[0];
 
     const customState: GameState = {
       ...state,
@@ -254,29 +240,23 @@ describe('stepGame', () => {
       bullets: [
         {
           owner: 'player',
-          x: state.playerX,
+          playerIndex: player.playerIndex,
+          x: player.x,
           y: -BULLET_HEIGHT - 1,
           vy: 0
         }
       ]
     };
 
-    const next = stepState(
-      customState,
-      {
-        moveAxisSigned: 0,
-        moveAbsoluteUnit: null,
-        firePressed: false,
-        restartPressed: false
-      }
-    );
+    const next = stepState(customState);
 
     expect(next.hitStreak).toBe(0);
     expect(next.scoreMultiplier).toBe(1);
   });
 
-  it('resets bonus multiplier when player gets hit', () => {
-    const state = createInitialState(24);
+  it('resets bonus multiplier when any player gets hit', () => {
+    const state = createInitialState(24, 2);
+    const secondPlayer = state.players[1];
 
     const customState: GameState = {
       ...state,
@@ -286,30 +266,23 @@ describe('stepGame', () => {
       bullets: [
         {
           owner: 'enemy',
-          x: state.playerX,
+          playerIndex: null,
+          x: secondPlayer.x,
           y: PLAYER_Y,
           vy: 0
         }
       ]
     };
 
-    const next = stepState(
-      customState,
-      {
-        moveAxisSigned: 0,
-        moveAbsoluteUnit: null,
-        firePressed: false,
-        restartPressed: false
-      }
-    );
+    const next = stepState(customState, [emptyInput(), emptyInput()]);
 
-    expect(next.lives).toBe(2);
+    expect(next.players[1].lives).toBe(2);
     expect(next.hitStreak).toBe(0);
     expect(next.scoreMultiplier).toBe(1);
   });
 
   it('respawns defeated rows at the top in endless mode', () => {
-    const state = createInitialState(25);
+    const state = createInitialState(25, 1);
 
     const customState: GameState = {
       ...state,
@@ -324,15 +297,7 @@ describe('stepGame', () => {
       )
     };
 
-    const next = stepState(
-      customState,
-      {
-        moveAxisSigned: 0,
-        moveAbsoluteUnit: null,
-        firePressed: false,
-        restartPressed: false
-      }
-    );
+    const next = stepState(customState);
 
     const rowEnemies = next.enemies.filter((enemy) => enemy.id < ENEMY_COLS);
     expect(rowEnemies.every((enemy) => enemy.alive)).toBe(true);
@@ -341,8 +306,9 @@ describe('stepGame', () => {
   });
 
   it('requires three hits to destroy ufo enemy', () => {
-    const state = createInitialState(31);
+    const state = createInitialState(31, 1);
     const firstEnemy = state.enemies[0];
+    const player = state.players[0];
 
     const ufoState: GameState = {
       ...state,
@@ -360,6 +326,7 @@ describe('stepGame', () => {
       bullets: [
         {
           owner: 'player',
+          playerIndex: player.playerIndex,
           x: firstEnemy.x,
           y: firstEnemy.y,
           vy: 0
@@ -367,15 +334,7 @@ describe('stepGame', () => {
       ]
     };
 
-    const afterFirstHit = stepState(
-      ufoState,
-      {
-        moveAxisSigned: 0,
-        moveAbsoluteUnit: null,
-        firePressed: false,
-        restartPressed: false
-      }
-    );
+    const afterFirstHit = stepState(ufoState);
 
     expect(afterFirstHit.enemies[0].alive).toBe(true);
     expect(afterFirstHit.enemies[0].hitPoints).toBe(2);
@@ -386,6 +345,7 @@ describe('stepGame', () => {
       bullets: [
         {
           owner: 'player',
+          playerIndex: player.playerIndex,
           x: afterFirstHit.enemies[0].x,
           y: afterFirstHit.enemies[0].y,
           vy: 0
@@ -393,15 +353,7 @@ describe('stepGame', () => {
       ]
     };
 
-    const afterSecondHit = stepState(
-      secondHitState,
-      {
-        moveAxisSigned: 0,
-        moveAbsoluteUnit: null,
-        firePressed: false,
-        restartPressed: false
-      }
-    );
+    const afterSecondHit = stepState(secondHitState);
 
     expect(afterSecondHit.enemies[0].alive).toBe(true);
     expect(afterSecondHit.enemies[0].hitPoints).toBe(1);
@@ -412,6 +364,7 @@ describe('stepGame', () => {
       bullets: [
         {
           owner: 'player',
+          playerIndex: player.playerIndex,
           x: afterSecondHit.enemies[0].x,
           y: afterSecondHit.enemies[0].y,
           vy: 0
@@ -419,44 +372,53 @@ describe('stepGame', () => {
       ]
     };
 
-    const afterThirdHit = stepState(
-      thirdHitState,
-      {
-        moveAxisSigned: 0,
-        moveAbsoluteUnit: null,
-        firePressed: false,
-        restartPressed: false
-      }
-    );
+    const afterThirdHit = stepState(thirdHitState);
 
     expect(afterThirdHit.enemies[0].alive).toBe(false);
     expect(afterThirdHit.enemies[0].hitPoints).toBe(0);
     expect(afterThirdHit.score).toBe(ENEMY_UFO_SCORE);
   });
 
-  it('starts gameplay only after fire in ready phase', () => {
-    const state = createInitialState(23);
+  it('starts gameplay when any player presses fire in ready phase', () => {
+    const state = createInitialState(23, 2);
 
-    const wait = stepState(
-      state,
-      {
-        moveAxisSigned: 0,
-        moveAbsoluteUnit: null,
-        firePressed: false,
-        restartPressed: false
-      }
-    );
+    const wait = stepState(state, [emptyInput(), emptyInput()]);
     expect(wait.phase).toBe('ready');
 
-    const start = stepState(
-      state,
+    const start = stepState(state, [
+      emptyInput(),
       {
-        moveAxisSigned: 0,
-        moveAbsoluteUnit: null,
-        firePressed: true,
-        restartPressed: false
+        ...emptyInput(),
+        firePressed: true
       }
-    );
+    ]);
     expect(start.phase).toBe('playing');
+  });
+
+  it('lets two players move and shoot independently', () => {
+    const state = createInitialState(41, 2);
+    const playingState: GameState = {
+      ...state,
+      phase: 'playing'
+    };
+
+    const next = stepState(playingState, [
+      {
+        ...emptyInput(),
+        moveAxisSigned: -1,
+        firePressed: true
+      },
+      {
+        ...emptyInput(),
+        moveAxisSigned: 1,
+        firePressed: true
+      }
+    ]);
+
+    expect(next.players[0].x).toBeLessThan(playingState.players[0].x);
+    expect(next.players[1].x).toBeGreaterThan(playingState.players[1].x);
+    const playerBullets = next.bullets.filter((bullet) => bullet.owner === 'player');
+    expect(playerBullets).toHaveLength(2);
+    expect(playerBullets.map((bullet) => bullet.playerIndex).sort()).toEqual([0, 1]);
   });
 });

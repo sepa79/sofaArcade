@@ -19,6 +19,26 @@ export {
 } from './input/executor';
 
 export {
+  createInputSessionPlan,
+  type GamepadInputDevice,
+  type HidInputDevice,
+  type InputSessionPlan,
+  type InputSessionSlot,
+  type InputSlotBinding,
+  type KeyboardMouseInputDevice,
+  type LocalInputBinding,
+  type LocalInputDevice,
+  type PhoneLinkInputBinding,
+  type SharedLocalInputDevice
+} from './input/session';
+
+export {
+  createMatchInput,
+  type MatchInput,
+  type MatchPlayerInput
+} from './input/match-input';
+
+export {
   createInputProfile,
   type Axis1DBinding,
   type AxisSourceKind,

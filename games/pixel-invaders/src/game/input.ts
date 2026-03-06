@@ -2,16 +2,23 @@ import Phaser from 'phaser';
 import {
   applyInputProfile,
   createActionCatalog,
+  createMatchInput,
   createInputRuntime,
   createInputSourceFrame,
   loadInputProfile,
+  type LocalInputBinding,
+  type PhoneLinkInputBinding,
+  type InputSlotBinding,
   type InputProfile,
-  type InputRuntime
+  type InputRuntime,
+  type MatchInput
 } from '@light80/core';
 
 import hybridProfileJson from '../profiles/pixel-invaders.hybrid.input-profile.json';
 import keyboardGamepadProfileJson from '../profiles/pixel-invaders.keyboard-gamepad.input-profile.json';
 import mousePaddleProfileJson from '../profiles/pixel-invaders.mouse-paddle.input-profile.json';
+import type { MultiplayerGameLaunchPlayerSlot } from '../launch-contract';
+import { nextPhoneControllerFrame } from '../phone/host-link';
 import type { FrameInput } from './types';
 
 const ACTION_MOVE_X_RELATIVE = 'MOVE_X_RELATIVE';
@@ -77,14 +84,35 @@ export interface InputKeys {
 }
 
 export interface InputContext {
-  readonly runtime: InputRuntime;
-  readonly profile: InputProfile;
   readonly keys: InputKeys;
+  readonly playerSlots: ReadonlyArray<PlayerInputContext>;
 }
 
 export interface PointerRange {
   readonly minX: number;
   readonly maxX: number;
+}
+
+export interface LocalPlayerInputContext {
+  readonly slotId: string;
+  readonly playerIndex: number;
+  readonly controllerLabel: string;
+  readonly binding: LocalInputBinding;
+  readonly runtime: InputRuntime;
+  readonly profile: InputProfile;
+}
+
+export interface PhonePlayerInputContext {
+  readonly slotId: string;
+  readonly playerIndex: number;
+  readonly controllerLabel: string;
+  readonly binding: PhoneLinkInputBinding;
+}
+
+export type PlayerInputContext = LocalPlayerInputContext | PhonePlayerInputContext;
+
+function isPhonePlayerInputContext(playerInputContext: PlayerInputContext): playerInputContext is PhonePlayerInputContext {
+  return playerInputContext.binding.transport === 'phone_link';
 }
 
 function requireKeyboard(scene: Phaser.Scene): Phaser.Input.Keyboard.KeyboardPlugin {
@@ -137,6 +165,15 @@ function firstConnectedGamepad(): Gamepad | null {
   return null;
 }
 
+function connectedGamepad(gamepadIndex: number): Gamepad | null {
+  const gamepad = navigator.getGamepads()[gamepadIndex] ?? null;
+  if (gamepad === null || !gamepad.connected) {
+    return null;
+  }
+
+  return gamepad;
+}
+
 function readKeyboardAxis(keys: InputKeys): number {
   const keyboardLeft = keys.left.isDown || keys.altLeft.isDown;
   const keyboardRight = keys.right.isDown || keys.altRight.isDown;
@@ -151,12 +188,114 @@ function readGamepadAxis(gamepad: Gamepad | null): number {
   return clampSigned(gamepadWithDeadzone + dpadAxis);
 }
 
-export function createInputContext(scene: Phaser.Scene, profileId: string): InputContext {
+function readPhoneFrameInput(phoneControllerId: string): FrameInput {
+  const frame = nextPhoneControllerFrame(phoneControllerId);
+  return {
+    moveAxisSigned: frame.connected ? frame.moveX : 0,
+    moveAbsoluteUnit: null,
+    firePressed: frame.fire,
+    restartPressed: frame.start
+  };
+}
+
+function createLocalSourceFrame(
+  scene: Phaser.Scene,
+  keys: InputKeys,
+  binding: InputSlotBinding,
+  pointerRange?: PointerRange
+) {
+  if (binding.transport !== 'local') {
+    throw new Error(`Expected local input binding, got "${binding.transport}".`);
+  }
+
+  const pointer = scene.input.activePointer;
+  const pointerMinX = pointerRange?.minX ?? 0;
+  const pointerMaxX = pointerRange?.maxX ?? scene.scale.width;
+
+  let keyboardAxis = 0;
+  let keyboardFire = false;
+  let keyboardRestart = false;
+  let pointerPrimaryDown = false;
+  let pointerFire = false;
+  const pointerXByte = toByteRange(pointer.x, pointerMinX, pointerMaxX);
+  let gamepad: Gamepad | null = null;
+
+  if (binding.device.kind === 'shared_local') {
+    keyboardAxis = readKeyboardAxis(keys);
+    keyboardFire = keys.fire.isDown;
+    keyboardRestart = keys.restart.isDown;
+    pointerPrimaryDown = pointer.isDown;
+    pointerFire = pointer.isDown;
+    gamepad = firstConnectedGamepad();
+  } else if (binding.device.kind === 'keyboard_mouse') {
+    keyboardAxis = readKeyboardAxis(keys);
+    keyboardFire = keys.fire.isDown;
+    keyboardRestart = keys.restart.isDown;
+    pointerPrimaryDown = pointer.isDown;
+    pointerFire = pointer.isDown;
+  } else if (binding.device.kind === 'gamepad') {
+    gamepad = connectedGamepad(binding.device.gamepadIndex);
+  } else {
+    throw new Error('Pixel Invaders does not implement HID input bindings.');
+  }
+
+  return createInputSourceFrame({
+    digital: {
+      [SOURCE_POINTER_PRIMARY_DOWN]: pointerPrimaryDown,
+      [SOURCE_POINTER_FIRE]: pointerFire,
+      [SOURCE_KEYBOARD_FIRE]: keyboardFire,
+      [SOURCE_GAMEPAD_FIRE]: buttonPressed(gamepad, 0),
+      [SOURCE_KEYBOARD_RESTART]: keyboardRestart,
+      [SOURCE_GAMEPAD_RESTART]: buttonPressed(gamepad, 9)
+    },
+    axis: {
+      [SOURCE_KEYBOARD_MOVE_X]: keyboardAxis,
+      [SOURCE_GAMEPAD_MOVE_X]: readGamepadAxis(gamepad),
+      [SOURCE_POINTER_X_BYTE]: pointerXByte
+    }
+  });
+}
+
+function readPlayerFrameInput(
+  scene: Phaser.Scene,
+  inputContext: InputContext,
+  playerInputContext: PlayerInputContext,
+  pointerRange?: PointerRange
+): FrameInput {
+  if (isPhonePlayerInputContext(playerInputContext)) {
+    return readPhoneFrameInput(playerInputContext.binding.phoneControllerId);
+  }
+
+  const localPlayerInputContext: LocalPlayerInputContext = playerInputContext;
+  const sourceFrame = createLocalSourceFrame(
+    scene,
+    inputContext.keys,
+    localPlayerInputContext.binding,
+    pointerRange
+  );
+  applyInputProfile(localPlayerInputContext.runtime, localPlayerInputContext.profile, sourceFrame);
+
+  return {
+    moveAxisSigned: localPlayerInputContext.runtime.readAxisSigned(ACTION_MOVE_X_RELATIVE),
+    moveAbsoluteUnit: localPlayerInputContext.runtime.isPressed(ACTION_MOVE_X_ABSOLUTE_ACTIVE)
+      ? localPlayerInputContext.runtime.readAxisUnit(ACTION_MOVE_X_ABSOLUTE)
+      : null,
+    firePressed: localPlayerInputContext.runtime.isPressed(ACTION_FIRE_PRIMARY),
+    restartPressed: localPlayerInputContext.runtime.wasPressed(ACTION_RESTART)
+  };
+}
+
+export function describeInputContext(inputContext: InputContext): string {
+  return inputContext.playerSlots.map((playerSlot) => playerSlot.controllerLabel).join(' + ');
+}
+
+export function createInputContext(
+  scene: Phaser.Scene,
+  playerSlots: ReadonlyArray<MultiplayerGameLaunchPlayerSlot>
+): InputContext {
   const keyboard = requireKeyboard(scene);
 
   return {
-    runtime: createInputRuntime(GAME_ACTION_CATALOG),
-    profile: requireProfile(profileId),
     keys: {
       left: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.LEFT),
       right: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.RIGHT),
@@ -164,44 +303,36 @@ export function createInputContext(scene: Phaser.Scene, profileId: string): Inpu
       altRight: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D),
       fire: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE),
       restart: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER)
-    }
+    },
+    playerSlots: playerSlots.map((playerSlot) => ({
+      ...(playerSlot.binding.transport === 'phone_link'
+        ? {
+            slotId: playerSlot.slotId,
+            playerIndex: playerSlot.playerIndex,
+            controllerLabel: playerSlot.controllerLabel,
+            binding: playerSlot.binding
+          }
+        : {
+            slotId: playerSlot.slotId,
+            playerIndex: playerSlot.playerIndex,
+            controllerLabel: playerSlot.controllerLabel,
+            binding: playerSlot.binding,
+            runtime: createInputRuntime(GAME_ACTION_CATALOG),
+            profile: requireProfile(playerSlot.profileId)
+          })
+    }))
   };
 }
 
-export function readFrameInput(
+export function readMatchInput(
   scene: Phaser.Scene,
   inputContext: InputContext,
   pointerRange?: PointerRange
-): FrameInput {
-  const pointer = scene.input.activePointer;
-  const gamepad = firstConnectedGamepad();
-  const pointerMinX = pointerRange?.minX ?? 0;
-  const pointerMaxX = pointerRange?.maxX ?? scene.scale.width;
-
-  const sourceFrame = createInputSourceFrame({
-    digital: {
-      [SOURCE_POINTER_PRIMARY_DOWN]: pointer.isDown,
-      [SOURCE_POINTER_FIRE]: pointer.isDown,
-      [SOURCE_KEYBOARD_FIRE]: inputContext.keys.fire.isDown,
-      [SOURCE_GAMEPAD_FIRE]: buttonPressed(gamepad, 0),
-      [SOURCE_KEYBOARD_RESTART]: inputContext.keys.restart.isDown,
-      [SOURCE_GAMEPAD_RESTART]: buttonPressed(gamepad, 9)
-    },
-    axis: {
-      [SOURCE_KEYBOARD_MOVE_X]: readKeyboardAxis(inputContext.keys),
-      [SOURCE_GAMEPAD_MOVE_X]: readGamepadAxis(gamepad),
-      [SOURCE_POINTER_X_BYTE]: toByteRange(pointer.x, pointerMinX, pointerMaxX)
-    }
-  });
-
-  applyInputProfile(inputContext.runtime, inputContext.profile, sourceFrame);
-
-  return {
-    moveAxisSigned: inputContext.runtime.readAxisSigned(ACTION_MOVE_X_RELATIVE),
-    moveAbsoluteUnit: inputContext.runtime.isPressed(ACTION_MOVE_X_ABSOLUTE_ACTIVE)
-      ? inputContext.runtime.readAxisUnit(ACTION_MOVE_X_ABSOLUTE)
-      : null,
-    firePressed: inputContext.runtime.isPressed(ACTION_FIRE_PRIMARY),
-    restartPressed: inputContext.runtime.wasPressed(ACTION_RESTART)
-  };
+): MatchInput<FrameInput> {
+  return createMatchInput(
+    inputContext.playerSlots.map((playerInputContext) => ({
+      playerIndex: playerInputContext.playerIndex,
+      input: readPlayerFrameInput(scene, inputContext, playerInputContext, pointerRange)
+    }))
+  );
 }

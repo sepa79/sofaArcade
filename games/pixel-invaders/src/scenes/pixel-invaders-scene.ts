@@ -3,8 +3,7 @@ import {
   RetroSfx,
   getCachedAlphaMaskFromSource,
   getGlobalDebugMode,
-  toggleGlobalDebugMode,
-  type AudioMixProfileId
+  toggleGlobalDebugMode
 } from '@light80/game-sdk';
 import { loadPersistentNonNegativeInt, savePersistentNonNegativeInt } from '@light80/core';
 
@@ -50,12 +49,23 @@ import {
   type CollisionDebugFrame,
   type CollisionRuntime
 } from '../game/collision';
-import { createInputContext, readFrameInput } from '../game/input';
+import { createInputContext, describeInputContext, readMatchInput } from '../game/input';
 import { stepGame } from '../game/logic';
 import { createInitialState } from '../game/state';
-import { nextPhoneControllerFrame } from '../phone/host-link';
+import {
+  createMultiplayerGameLaunchData,
+  type MultiplayerGameLaunchData
+} from '../launch-contract';
+import {
+  applyTypographyToken,
+  HUD_LABEL_TOKEN,
+  HUD_VALUE_TOKEN,
+  HINT_TOKEN,
+  PROMPT_TOKEN,
+  snapUiPixel
+} from '../ui/typography';
 import type { InputContext } from '../game/input';
-import type { Bullet, Enemy, FrameInput, GameState } from '../game/types';
+import type { Bullet, Enemy, GameState, PlayerState } from '../game/types';
 
 export const PIXEL_INVADERS_SCENE_KEY = 'pixel-invaders';
 const PLAYER_SPRITE_KEY = 'pixel-invaders-player-ship';
@@ -263,45 +273,17 @@ interface EnemyReactiveBurst {
   readonly swayDirection: -1 | 1;
 }
 
-export interface PixelInvadersSceneData {
-  readonly controllerProfileId: string;
-  readonly controllerLabel: string;
-  readonly audioMixProfileId: AudioMixProfileId;
-  readonly phoneLinkEnabled: boolean;
-}
-
-function parseSceneData(rawData: unknown): PixelInvadersSceneData {
+function parseSceneData(rawData: unknown): MultiplayerGameLaunchData {
   if (typeof rawData !== 'object' || rawData === null) {
     throw new Error('Pixel Invaders scene requires launch data object.');
   }
 
   const data = rawData as Record<string, unknown>;
-  if (typeof data.controllerProfileId !== 'string' || data.controllerProfileId.trim().length === 0) {
-    throw new Error('Pixel Invaders scene requires a valid controllerProfileId.');
+  if (!Array.isArray(data.playerSlots)) {
+    throw new Error('Pixel Invaders scene requires playerSlots array in launch data.');
   }
 
-  if (typeof data.controllerLabel !== 'string' || data.controllerLabel.trim().length === 0) {
-    throw new Error('Pixel Invaders scene requires a valid controllerLabel.');
-  }
-
-  if (
-    data.audioMixProfileId !== 'cinema' &&
-    data.audioMixProfileId !== 'arcade' &&
-    data.audioMixProfileId !== 'late-night'
-  ) {
-    throw new Error('Pixel Invaders scene requires a valid audioMixProfileId.');
-  }
-
-  if (typeof data.phoneLinkEnabled !== 'boolean') {
-    throw new Error('Pixel Invaders scene requires boolean phoneLinkEnabled.');
-  }
-
-  return {
-    controllerProfileId: data.controllerProfileId,
-    controllerLabel: data.controllerLabel,
-    audioMixProfileId: data.audioMixProfileId,
-    phoneLinkEnabled: data.phoneLinkEnabled
-  };
+  return createMultiplayerGameLaunchData(rawData as MultiplayerGameLaunchData);
 }
 
 function clamp01(value: number): number {
@@ -396,6 +378,26 @@ function playerXToMotionTheta(x: number): number {
   return xToStereoPan(x) * (Math.PI / 2);
 }
 
+function playerColor(playerIndex: number): number {
+  const palette: readonly number[] = [0x90f0ff, 0xffc06a, 0xc6ffa4, 0xff8ed8];
+  const color = palette[playerIndex];
+  if (color === undefined) {
+    throw new Error(`Missing player color for playerIndex ${playerIndex}.`);
+  }
+
+  return color;
+}
+
+function averageLivingPlayerX(players: ReadonlyArray<PlayerState>): number {
+  const livingPlayers = players.filter((player) => player.lives > 0);
+  if (livingPlayers.length === 0) {
+    return WORLD_WIDTH / 2;
+  }
+
+  const totalX = livingPlayers.reduce((sum, player) => sum + player.x, 0);
+  return totalX / livingPlayers.length;
+}
+
 function isSeekableSound(
   sound: Phaser.Sound.BaseSound
 ): sound is Phaser.Sound.WebAudioSound | Phaser.Sound.HTML5AudioSound {
@@ -437,7 +439,7 @@ function normalizeBinaryBytes(raw: unknown, source: string): Uint8Array {
 export class PixelInvadersScene extends Phaser.Scene {
   private graphics!: Phaser.GameObjects.Graphics;
   private syncVignette!: Phaser.GameObjects.Image;
-  private playerSprite!: Phaser.GameObjects.Image;
+  private playerSprites = new Map<number, Phaser.GameObjects.Image>();
   private enemySprites = new Map<number, Phaser.GameObjects.Image>();
   private scoreText!: Phaser.GameObjects.Text;
   private highScoreText!: Phaser.GameObjects.Text;
@@ -462,7 +464,7 @@ export class PixelInvadersScene extends Phaser.Scene {
   private inputContext: InputContext | null = null;
   private collisionRuntime!: CollisionRuntime;
   private collisionDebugFrame: CollisionDebugFrame = createEmptyCollisionDebugFrame();
-  private state: GameState = createInitialState(1337);
+  private state!: GameState;
   private stars: ReadonlyArray<PixelStar> = [];
   private readonly starRespawnRng = new Phaser.Math.RandomDataGenerator(['pixel-stars-respawn-v1']);
   private skylineBuildings: ReadonlyArray<PixelSkylineBuilding> = [];
@@ -495,7 +497,7 @@ export class PixelInvadersScene extends Phaser.Scene {
     this.updateLayout();
   };
   private accumulator = 0;
-  private launchData: PixelInvadersSceneData | null = null;
+  private launchData: MultiplayerGameLaunchData | null = null;
   private highScore = 0;
 
   constructor() {
@@ -504,6 +506,7 @@ export class PixelInvadersScene extends Phaser.Scene {
 
   init(rawData: unknown): void {
     this.launchData = parseSceneData(rawData);
+    this.state = createInitialState(1337, this.launchData.playerSlots.length);
   }
 
   preload(): void {
@@ -563,9 +566,13 @@ export class PixelInvadersScene extends Phaser.Scene {
     this.skylineBuildings = this.createSkylineBuildings();
     this.collisionRuntime = this.buildCollisionRuntime();
     this.collisionDebugFrame = createEmptyCollisionDebugFrame();
-    this.playerSprite = this.add.image(this.scale.width / 2, this.scale.height / 2, PLAYER_SPRITE_KEY);
-    this.playerSprite.setOrigin(0.5, 0.5);
-    this.playerSprite.setScale(PLAYER_SPRITE_SCALE * this.visualScale());
+    for (const player of this.state.players) {
+      const playerSprite = this.add.image(this.scale.width / 2, this.scale.height / 2, PLAYER_SPRITE_KEY);
+      playerSprite.setOrigin(0.5, 0.5);
+      playerSprite.setScale(PLAYER_SPRITE_SCALE * this.visualScale());
+      playerSprite.setTint(playerColor(player.playerIndex));
+      this.playerSprites.set(player.playerIndex, playerSprite);
+    }
 
     for (const enemy of this.state.enemies) {
       const sprite = this.add.image(
@@ -579,70 +586,35 @@ export class PixelInvadersScene extends Phaser.Scene {
     }
     this.setupExplosionAnimations();
 
-    this.scoreText = this.add.text(20, 18, '', {
-      fontFamily: 'Trebuchet MS',
-      fontSize: '24px',
-      color: '#f4f7ff'
-    });
+    this.scoreText = this.add.text(20, 18, '');
     this.scoreText.setDepth(HUD_DEPTH);
 
-    this.highScoreText = this.add.text(this.scale.width / 2, 18, '', {
-      fontFamily: 'Trebuchet MS',
-      fontSize: '24px',
-      color: '#f4f7ff',
-      align: 'center'
-    });
+    this.highScoreText = this.add.text(this.scale.width / 2, 18, '');
     this.highScoreText.setOrigin(0.5, 0);
     this.highScoreText.setDepth(HUD_DEPTH);
 
-    this.bonusText = this.add.text(this.scale.width / 2, 52, '', {
-      fontFamily: 'Trebuchet MS',
-      fontSize: '26px',
-      color: '#ffd7a8',
-      align: 'center'
-    });
+    this.bonusText = this.add.text(this.scale.width / 2, 52, '');
     this.bonusText.setOrigin(0.5, 0);
     this.bonusText.setDepth(HUD_DEPTH);
 
-    this.livesText = this.add.text(this.scale.width - 20, 18, '', {
-      fontFamily: 'Trebuchet MS',
-      fontSize: '24px',
-      color: '#f4f7ff',
-      align: 'right'
-    });
+    this.livesText = this.add.text(this.scale.width - 20, 18, '');
     this.livesText.setOrigin(1, 0);
     this.livesText.setDepth(HUD_DEPTH);
 
-    this.controllerText = this.add.text(20, 52, `CTRL ${this.launchData.controllerLabel}`, {
-      fontFamily: 'Trebuchet MS',
-      fontSize: '18px',
-      color: '#90f0ff'
-    });
+    this.controllerText = this.add.text(20, 52, '');
     this.controllerText.setDepth(HUD_DEPTH);
 
-    this.debugText = this.add.text(this.scale.width - 16, 18, '', {
-      fontFamily: 'Trebuchet MS',
-      fontSize: '14px',
-      color: '#9fe4ff',
-      align: 'left'
-    });
+    this.debugText = this.add.text(this.scale.width - 16, 18, '');
     this.debugText.setOrigin(0, 1);
     this.debugText.setDepth(HUD_DEPTH);
 
-    this.bannerText = this.add.text(this.scale.width / 2, this.scale.height / 2 - 40, '', {
-      fontFamily: 'Trebuchet MS',
-      fontSize: '42px',
-      color: '#fff1d8',
-      align: 'center'
-    });
+    this.bannerText = this.add.text(this.scale.width / 2, this.scale.height / 2 - 40, '');
     this.bannerText.setOrigin(0.5, 0.5);
     this.bannerText.setDepth(HUD_DEPTH);
 
     this.updateLayout();
 
-    if (!this.launchData.phoneLinkEnabled) {
-      this.inputContext = createInputContext(this, this.launchData.controllerProfileId);
-    }
+    this.inputContext = createInputContext(this, this.launchData.playerSlots);
     this.cameras.main.setBackgroundColor('#060913');
     this.musicTracks = this.readMusicTrackRuntimes();
     this.musicBannerElement = this.createMusicBannerElement();
@@ -665,12 +637,10 @@ export class PixelInvadersScene extends Phaser.Scene {
     this.updateMusicBannerVisibility();
     const deltaSeconds = delta * 0.001;
     this.accumulator += deltaSeconds;
-    let playerShot = false;
-    let playerShotX = this.state.playerX;
+    const playerShotXs: number[] = [];
     let enemyShot = false;
-    let enemyShotX = this.state.playerX;
-    let playerHit = false;
-    let playerHitX = this.state.playerX;
+    let enemyShotX = averageLivingPlayerX(this.state.players);
+    const playerHitXs: number[] = [];
     let lost = false;
     let maxMoveSpeedUnit = 0;
     const destroyedEnemies: Enemy[] = [];
@@ -679,7 +649,14 @@ export class PixelInvadersScene extends Phaser.Scene {
 
     while (this.accumulator >= FIXED_TIMESTEP) {
       const input = this.readControlInput();
-      if (input.firePressed || input.restartPressed || input.moveAxisSigned !== 0 || input.moveAbsoluteUnit !== null) {
+      const hasInteraction = input.players.some(
+        (player) =>
+          player.input.firePressed ||
+          player.input.restartPressed ||
+          player.input.moveAxisSigned !== 0 ||
+          player.input.moveAbsoluteUnit !== null
+      );
+      if (hasInteraction) {
         this.ensureFullscreenOnInteraction();
         this.startBackgroundMusic();
         this.sfx.unlock();
@@ -693,14 +670,20 @@ export class PixelInvadersScene extends Phaser.Scene {
       const next = step.state;
       frameCollisionDebug = step.collisionDebug;
 
-      const previousPlayerBullets = previous.bullets.filter((bullet) => bullet.owner === 'player').length;
-      const nextPlayerBullets = next.bullets.filter((bullet) => bullet.owner === 'player').length;
+      const previousPlayerBulletOwners = new Set(
+        previous.bullets
+          .filter((bullet) => bullet.owner === 'player')
+          .map((bullet) => bullet.playerIndex)
+      );
       const previousEnemyBullets = previous.bullets.filter((bullet) => bullet.owner === 'enemy').length;
       const nextEnemyBullets = next.bullets.filter((bullet) => bullet.owner === 'enemy').length;
 
-      if (nextPlayerBullets > previousPlayerBullets) {
-        playerShot = true;
-        playerShotX = next.playerX;
+      for (const bullet of next.bullets) {
+        if (bullet.owner !== 'player' || previousPlayerBulletOwners.has(bullet.playerIndex)) {
+          continue;
+        }
+
+        playerShotXs.push(bullet.x);
       }
       if (nextEnemyBullets > previousEnemyBullets) {
         enemyShot = true;
@@ -738,15 +721,29 @@ export class PixelInvadersScene extends Phaser.Scene {
           respawnedRows.add(Math.floor(nextEnemy.id / ENEMY_COLS));
         }
       }
-      if (next.lives < previous.lives) {
-        playerHit = true;
-        playerHitX = previous.playerX;
+      for (const previousPlayer of previous.players) {
+        const nextPlayer = next.players.find((player) => player.playerIndex === previousPlayer.playerIndex);
+        if (nextPlayer === undefined) {
+          throw new Error(`Missing next player state for playerIndex ${previousPlayer.playerIndex}.`);
+        }
+        if (nextPlayer.lives < previousPlayer.lives) {
+          playerHitXs.push(previousPlayer.x);
+        }
       }
       if (previous.phase === 'playing' && next.phase === 'lost') {
         lost = true;
       }
-      const moveSpeedUnit = Math.min(1, Math.abs(next.playerX - previous.playerX) / (PLAYER_SPEED * FIXED_TIMESTEP));
-      maxMoveSpeedUnit = Math.max(maxMoveSpeedUnit, moveSpeedUnit);
+      for (const previousPlayer of previous.players) {
+        const nextPlayer = next.players.find((player) => player.playerIndex === previousPlayer.playerIndex);
+        if (nextPlayer === undefined) {
+          throw new Error(`Missing moved player state for playerIndex ${previousPlayer.playerIndex}.`);
+        }
+        const moveSpeedUnit = Math.min(
+          1,
+          Math.abs(nextPlayer.x - previousPlayer.x) / (PLAYER_SPEED * FIXED_TIMESTEP)
+        );
+        maxMoveSpeedUnit = Math.max(maxMoveSpeedUnit, moveSpeedUnit);
+      }
 
       this.state = next;
       this.accumulator -= FIXED_TIMESTEP;
@@ -776,7 +773,10 @@ export class PixelInvadersScene extends Phaser.Scene {
       savePersistentNonNegativeInt(HIGH_SCORE_STORAGE_KEY, this.highScore);
     }
 
-    if (this.sfxEnabled && playerShot) {
+    for (const playerShotX of playerShotXs.slice(0, 2)) {
+      if (!this.sfxEnabled) {
+        continue;
+      }
       this.sfx.playPlayerShot({ pan: xToStereoPan(playerShotX), depth: 0 });
     }
     if (this.sfxEnabled && enemyShot) {
@@ -788,7 +788,7 @@ export class PixelInvadersScene extends Phaser.Scene {
       }
       this.spawnExplosion(enemy.x, enemy.y);
     }
-    if (playerHit) {
+    for (const playerHitX of playerHitXs.slice(0, 2)) {
       if (this.sfxEnabled) {
         this.sfx.playPlayerHit({ pan: xToStereoPan(playerHitX), depth: 0 });
       }
@@ -798,7 +798,7 @@ export class PixelInvadersScene extends Phaser.Scene {
       this.sfx.playLose();
     }
     this.sfx.updateTunnelMotion({
-      theta: playerXToMotionTheta(this.state.playerX),
+      theta: playerXToMotionTheta(averageLivingPlayerX(this.state.players)),
       speedUnit: maxMoveSpeedUnit,
       active: this.sfxEnabled && this.state.phase === 'playing' && maxMoveSpeedUnit > 0.02
     });
@@ -807,26 +807,12 @@ export class PixelInvadersScene extends Phaser.Scene {
     this.renderState();
   }
 
-  private readControlInput(): FrameInput {
-    if (this.launchData === null) {
-      throw new Error('Pixel Invaders launchData is missing in readControlInput().');
-    }
-
-    if (this.launchData.phoneLinkEnabled) {
-      const frame = nextPhoneControllerFrame();
-      return {
-        moveAxisSigned: frame.connected ? frame.moveX : 0,
-        moveAbsoluteUnit: null,
-        firePressed: frame.fire,
-        restartPressed: frame.start
-      };
-    }
-
+  private readControlInput() {
     if (this.inputContext === null) {
-      throw new Error('Input context is missing for non-phone controller mode.');
+      throw new Error('Input context is missing for Pixel Invaders.');
     }
 
-    return readFrameInput(this, this.inputContext, {
+    return readMatchInput(this, this.inputContext, {
       minX: this.playfieldOffsetX,
       maxX: this.playfieldOffsetX + this.playfieldWidth
     });
@@ -838,8 +824,9 @@ export class PixelInvadersScene extends Phaser.Scene {
 
     this.drawBackground(graphics);
     this.drawRowRespawnFlashes(graphics);
+    this.syncPlayerSprites();
     this.syncEnemySprites();
-    this.drawPlayer();
+    this.drawPlayers();
     this.drawEnemies();
     this.drawBullets(graphics);
     this.drawCollisionDebug(graphics);
@@ -877,21 +864,31 @@ export class PixelInvadersScene extends Phaser.Scene {
     };
   }
 
-  private drawPlayer(): void {
-    const blink = this.state.playerRespawnTimer > 0 && Math.floor(this.time.now / 100) % 2 === 0;
-    if (blink) {
-      this.playerSprite.setVisible(false);
-      return;
-    }
-
-    this.playerSprite.setVisible(true);
+  private drawPlayers(): void {
+    const visualScale = this.visualScale();
     const playerTextureKey = Math.floor(this.time.now / 120) % 2 === 0 ? PLAYER_SPRITE_KEY : PLAYER_SPRITE_ALT_KEY;
-    if (this.playerSprite.texture.key !== playerTextureKey) {
-      this.playerSprite.setTexture(playerTextureKey);
+
+    for (const player of this.state.players) {
+      const playerSprite = this.playerSprites.get(player.playerIndex);
+      if (playerSprite === undefined) {
+        throw new Error(`Player sprite is missing for playerIndex ${player.playerIndex}.`);
+      }
+
+      const blink = player.respawnTimer > 0 && Math.floor(this.time.now / 100) % 2 === 0;
+      if (blink || player.lives <= 0) {
+        playerSprite.setVisible(false);
+        continue;
+      }
+
+      playerSprite.setVisible(true);
+      if (playerSprite.texture.key !== playerTextureKey) {
+        playerSprite.setTexture(playerTextureKey);
+      }
+      playerSprite.setTint(playerColor(player.playerIndex));
+      playerSprite.setPosition(this.worldToScreenX(player.x), this.worldToScreenY(PLAYER_Y));
+      playerSprite.setRotation(0);
+      playerSprite.setScale(PLAYER_SPRITE_SCALE * visualScale);
     }
-    this.playerSprite.setPosition(this.worldToScreenX(this.state.playerX), this.worldToScreenY(PLAYER_Y));
-    this.playerSprite.setRotation(0);
-    this.playerSprite.setScale(PLAYER_SPRITE_SCALE * this.visualScale());
   }
 
   private drawEnemies(): void {
@@ -999,6 +996,7 @@ export class PixelInvadersScene extends Phaser.Scene {
         continue;
       }
 
+      const color = bullet.playerIndex === null ? 0xfff6b2 : playerColor(bullet.playerIndex);
       const headX = this.worldToScreenX(bullet.x);
       const headY = this.worldToScreenY(bullet.y);
       const trailX = headX;
@@ -1026,36 +1024,36 @@ export class PixelInvadersScene extends Phaser.Scene {
         );
       };
 
-      drawPixelBlock(trailX, trailY, Math.max(shotPixelSize, Math.round(bodySize * 0.8)), 0xff8a42, 0.42);
+      drawPixelBlock(trailX, trailY, Math.max(shotPixelSize, Math.round(bodySize * 0.8)), color, 0.42);
       drawPixelBlock(
         headX - dirX * step * 2.2,
         headY - dirY * step * 2.2,
         bodySize,
-        0xffb866,
+        color,
         0.72
       );
       drawPixelBlock(
         headX - dirX * step * 1.25,
         headY - dirY * step * 1.25,
         bodySize,
-        0xffd39a,
+        color,
         0.95
       );
       drawPixelBlock(
         headX - dirX * step * 1.4 + sideX * step * 0.9,
         headY - dirY * step * 1.4 + sideY * step * 0.9,
         finSize,
-        0xffa95f,
+        color,
         0.88
       );
       drawPixelBlock(
         headX - dirX * step * 1.4 - sideX * step * 0.9,
         headY - dirY * step * 1.4 - sideY * step * 0.9,
         finSize,
-        0xffa95f,
+        color,
         0.88
       );
-      drawPixelBlock(headX, headY, noseSize, 0xfff6b2, 1);
+      drawPixelBlock(headX, headY, noseSize, color, 1);
     }
   }
 
@@ -1094,16 +1092,39 @@ export class PixelInvadersScene extends Phaser.Scene {
     if (this.launchData === null) {
       throw new Error('Pixel Invaders launchData is missing in drawHud().');
     }
-    this.scoreText.setPosition(this.playfieldOffsetX + 20, this.playfieldOffsetY + 18);
-    this.highScoreText.setPosition(this.playfieldOffsetX + this.playfieldWidth * 0.5, this.playfieldOffsetY + 18);
-    this.bonusText.setPosition(this.playfieldOffsetX + this.playfieldWidth * 0.5, this.playfieldOffsetY + 52);
-    this.livesText.setPosition(this.playfieldOffsetX + this.playfieldWidth - 20, this.playfieldOffsetY + 18);
-    this.controllerText.setPosition(this.playfieldOffsetX + 20, this.playfieldOffsetY + 52);
+    this.scoreText.setPosition(snapUiPixel(this.playfieldOffsetX + 20), snapUiPixel(this.playfieldOffsetY + 18));
+    this.highScoreText.setPosition(
+      snapUiPixel(this.playfieldOffsetX + this.playfieldWidth * 0.5),
+      snapUiPixel(this.playfieldOffsetY + 18)
+    );
+    this.bonusText.setPosition(
+      snapUiPixel(this.playfieldOffsetX + this.playfieldWidth * 0.5),
+      snapUiPixel(this.playfieldOffsetY + 52)
+    );
+    this.livesText.setPosition(
+      snapUiPixel(this.playfieldOffsetX + this.playfieldWidth - 20),
+      snapUiPixel(this.playfieldOffsetY + 18)
+    );
+    this.controllerText.setPosition(snapUiPixel(this.playfieldOffsetX + 20), snapUiPixel(this.playfieldOffsetY + 52));
     this.scoreText.setText(`SCORE ${this.state.score.toString().padStart(6, '0')}`);
     this.highScoreText.setText(`HI ${this.highScore.toString().padStart(6, '0')}`);
     this.bonusText.setText(`x${this.state.scoreMultiplier}`);
-    this.livesText.setText(`LIVES ${this.state.lives}`);
-    this.controllerText.setText(`CTRL ${this.launchData.controllerLabel}`);
+    if (this.state.players.length === 1) {
+      const singlePlayer = this.state.players[0];
+      if (singlePlayer === undefined) {
+        throw new Error('Single-player HUD expected player state at index 0.');
+      }
+      this.livesText.setText(`LIVES ${singlePlayer.lives}`);
+    } else {
+      this.livesText.setText(
+        this.state.players.map((player) => `P${player.playerIndex + 1}:${player.lives}`).join('  ')
+      );
+    }
+    if (this.inputContext === null) {
+      throw new Error('Input context is missing in drawHud().');
+    }
+
+    this.controllerText.setText(`CTRL ${describeInputContext(this.inputContext)}`);
     const hudPulse = clamp01(
       this.musicReactive.beatPulse * 0.85 + this.musicReactive.barPulse + this.musicReactive.midOnsetPulse * 0.65
     );
@@ -1138,7 +1159,10 @@ export class PixelInvadersScene extends Phaser.Scene {
       return;
     }
 
-    this.debugText.setPosition(this.playfieldOffsetX + 16, this.playfieldOffsetY + this.playfieldHeight - 16);
+    this.debugText.setPosition(
+      snapUiPixel(this.playfieldOffsetX + 16),
+      snapUiPixel(this.playfieldOffsetY + this.playfieldHeight - 16)
+    );
     this.debugText.setText(
       `DEBUG MODE [F6]\nPULSES [F7]: ${this.debugMusicLanePulsesEnabled ? 'ON' : 'OFF'}\nLANES [F8]: ${this.debugMusicLaneGuidesEnabled ? 'ON' : 'OFF'}\nBOTTOM [F9]: ${this.debugBottomVisualsEnabled ? 'ON' : 'OFF'}\nBG FLASH [F10]: ${this.debugBackgroundFlashEnabled ? 'ON' : 'OFF'}\nCOLLISION B/N: ${this.collisionDebugFrame.broadPhaseEnvelopes.length}/${this.collisionDebugFrame.narrowPhaseMarkers.length}`
     );
@@ -1156,8 +1180,23 @@ export class PixelInvadersScene extends Phaser.Scene {
     }
   }
 
+  private syncPlayerSprites(): void {
+    const activePlayerIndices = new Set(this.state.players.map((player) => player.playerIndex));
+    for (const [playerIndex, sprite] of this.playerSprites.entries()) {
+      if (activePlayerIndices.has(playerIndex)) {
+        continue;
+      }
+
+      sprite.destroy();
+      this.playerSprites.delete(playerIndex);
+    }
+  }
+
   private drawBanner(): void {
-    this.bannerText.setPosition(this.worldToScreenX(WORLD_WIDTH / 2), this.worldToScreenY(WORLD_HEIGHT / 2 - 40));
+    this.bannerText.setPosition(
+      snapUiPixel(this.worldToScreenX(WORLD_WIDTH / 2)),
+      snapUiPixel(this.worldToScreenY(WORLD_HEIGHT / 2 - 40))
+    );
 
     if (this.state.phase === 'playing') {
       this.bannerText.setText('');
@@ -1181,9 +1220,31 @@ export class PixelInvadersScene extends Phaser.Scene {
     this.playfieldScaleY = this.playfieldHeight / WORLD_HEIGHT;
 
     if (this.syncVignette !== undefined) {
-      this.syncVignette.setPosition(this.scale.width / 2, this.scale.height / 2);
+      this.syncVignette.setPosition(snapUiPixel(this.scale.width / 2), snapUiPixel(this.scale.height / 2));
       this.syncVignette.setDisplaySize(this.playfieldWidth * 1.45, this.playfieldHeight * 1.45);
     }
+
+    this.updateTextStyles();
+  }
+
+  private updateTextStyles(): void {
+    if (this.scoreText === undefined) {
+      return;
+    }
+
+    const uiScale = this.visualScale();
+    applyTypographyToken(this.scoreText, HUD_LABEL_TOKEN, uiScale);
+    applyTypographyToken(this.highScoreText, HUD_LABEL_TOKEN, uiScale);
+    applyTypographyToken(this.bonusText, HUD_VALUE_TOKEN, uiScale);
+    applyTypographyToken(this.livesText, HUD_LABEL_TOKEN, uiScale);
+    applyTypographyToken(this.controllerText, HINT_TOKEN, uiScale);
+    applyTypographyToken(this.debugText, HINT_TOKEN, uiScale);
+    applyTypographyToken(this.bannerText, PROMPT_TOKEN, uiScale);
+    this.highScoreText.setAlign('center');
+    this.bonusText.setAlign('center');
+    this.livesText.setAlign('right');
+    this.debugText.setAlign('left');
+    this.bannerText.setAlign('center');
   }
 
   private createStars(): ReadonlyArray<PixelStar> {

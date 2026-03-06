@@ -5,12 +5,10 @@ import { AUDIO_MIX_PROFILE_IDS, RetroSfx, type AudioMixProfileId } from '@light8
 import arcadeLogoImage from '../../../shared-assets/src/logo_cropped.png';
 import launcherJoystickImage from '../../../shared-assets/src/launcher_joystick.png';
 import launcherSpeakerImage from '../../../shared-assets/src/launcher_speaker.png';
+import { createMultiplayerGameLaunchData } from '../launch-contract';
+import { PIXEL_PHONE_LINK_CONTROLLER_ID } from '../launch-contract';
 import { currentPhoneHostSnapshot, startPhoneHostSession } from '../phone/host-link';
-import {
-  requireLazySceneLoader,
-  type GameLaunchData,
-  type PlayableSceneKey
-} from '../scene-loader';
+import { requireLazySceneLoader, type PlayableSceneKey } from '../scene-loader';
 import {
   MENU_ROW_CONTROLLER,
   MENU_ROW_GAME,
@@ -18,7 +16,12 @@ import {
   createInitialLauncherState,
   type LauncherState
 } from '../launcher/model';
-import { GAME_OPTIONS, type ControllerOption, type GameOption } from '../launcher/options';
+import {
+  GAME_OPTIONS,
+  optionUsesPhoneLink,
+  type ControllerOption,
+  type GameOption
+} from '../launcher/options';
 
 export const LAUNCHER_SCENE_KEY = 'launcher';
 
@@ -226,43 +229,29 @@ function gameDescription(game: GameOption, language: LauncherLanguage): string {
 
 function controllerDescription(option: ControllerOption, language: LauncherLanguage): string {
   if (language === 'pl') {
-    if (option.profileId === 'pixel-invaders-keyboard-gamepad') {
-      return 'Ruch wzgledny, idealne pod pad i klasyczne klawisze.';
-    }
-    if (option.profileId === 'pixel-invaders-mouse-paddle') {
-      return 'Ruch absolutny (0-255), jak paddle na osi ekranu.';
-    }
-    if (option.profileId === 'pixel-invaders-hybrid') {
-      return 'Laczy wzgledny ruch i tryb absolutny po przytrzymaniu myszy.';
-    }
-    if (option.profileId === 'pixel-invaders-phone-link') {
-      return 'Telefon jako kontroler. Najpierw podlacz sesje przez przycisk ponizej.';
-    }
-    if (option.profileId === 'tunnel-invaders-keyboard-gamepad') {
-      return 'Ruch wzgledny po obwodzie tunelu + strzal i skok fazowy.';
-    }
-    throw new Error(
-      `Missing localized controller description for profile "${option.profileId}" and language "${language}".`
-    );
+    return option.description;
   }
 
-  if (option.profileId === 'pixel-invaders-keyboard-gamepad') {
-    return 'Relative movement, best for gamepad and classic keyboard input.';
+  if (option.id === 'pixel-solo-hybrid') {
+    return 'One player: keyboard + mouse + first gamepad as a shared local input set.';
   }
-  if (option.profileId === 'pixel-invaders-mouse-paddle') {
-    return 'Absolute movement (0-255), paddle style across screen axis.';
+  if (option.id === 'pixel-coop-kb-pad') {
+    return 'Two local slots: keyboard/mouse for P1 and gamepad 1 for P2.';
   }
-  if (option.profileId === 'pixel-invaders-hybrid') {
-    return 'Combines relative movement with absolute mouse-hold mode.';
+  if (option.id === 'pixel-coop-two-pads') {
+    return 'Two gamepads on separate local slots. Best couch setup without keyboard.';
   }
-  if (option.profileId === 'pixel-invaders-phone-link') {
-    return 'Phone as controller. Pair it first with the connect button below.';
+  if (option.id === 'pixel-phone-solo') {
+    return 'One phone slot through WebRTC phone link.';
   }
-  if (option.profileId === 'tunnel-invaders-keyboard-gamepad') {
+  if (option.id === 'pixel-pad-phone') {
+    return 'Two slots: local gamepad 1 plus one phone through phone link.';
+  }
+  if (option.id === 'tunnel-solo-default') {
     return 'Relative orbit movement with primary fire and phase-jump.';
   }
   throw new Error(
-    `Missing localized controller description for profile "${option.profileId}" and language "${language}".`
+    `Missing localized controller description for option "${option.id}" and language "${language}".`
   );
 }
 
@@ -408,7 +397,7 @@ export class LauncherScene extends Phaser.Scene {
 
     this.mountDom();
     this.renderDom();
-    const initialSnapshot = currentPhoneHostSnapshot();
+    const initialSnapshot = currentPhoneHostSnapshot(PIXEL_PHONE_LINK_CONTROLLER_ID);
     this.phoneSnapshotSignature = [
       initialSnapshot.status,
       initialSnapshot.message,
@@ -553,7 +542,7 @@ export class LauncherScene extends Phaser.Scene {
       this.renderDom();
     }
 
-    const phoneSnapshot = currentPhoneHostSnapshot();
+    const phoneSnapshot = currentPhoneHostSnapshot(PIXEL_PHONE_LINK_CONTROLLER_ID);
     const snapshotSignature = [
       phoneSnapshot.status,
       phoneSnapshot.message,
@@ -982,7 +971,7 @@ export class LauncherScene extends Phaser.Scene {
   }
 
   private phoneStatusText(): string {
-    const snapshot = currentPhoneHostSnapshot();
+    const snapshot = currentPhoneHostSnapshot(PIXEL_PHONE_LINK_CONTROLLER_ID);
     if (snapshot.controllerUrl === null || snapshot.sessionId === null) {
       return snapshot.message;
     }
@@ -1033,7 +1022,7 @@ export class LauncherScene extends Phaser.Scene {
     this.phoneConnectInFlight = true;
     this.renderDom();
     try {
-      await startPhoneHostSession();
+      await startPhoneHostSession(PIXEL_PHONE_LINK_CONTROLLER_ID);
     } finally {
       this.phoneConnectInFlight = false;
       this.renderDom();
@@ -1081,7 +1070,7 @@ export class LauncherScene extends Phaser.Scene {
 
     this.dom.gameCard.classList.toggle('is-focused', this.state.cursorIndex === MENU_ROW_GAME);
     this.dom.startButton.classList.toggle('is-focused', this.state.cursorIndex === MENU_ROW_START);
-    const phoneProfileActive = controllerOption.profileId === 'pixel-invaders-phone-link';
+    const phoneProfileActive = optionUsesPhoneLink(controllerOption);
 
     if (!phoneProfileActive) {
       this.phoneSetupVisible = false;
@@ -1125,7 +1114,7 @@ export class LauncherScene extends Phaser.Scene {
     this.dom.speakerButton.classList.toggle('is-active', this.settingsPanelMode === 'audio');
     this.dom.settingsPanel.classList.toggle('is-focused', this.state.cursorIndex === MENU_ROW_CONTROLLER);
 
-    const phoneSnapshot = currentPhoneHostSnapshot();
+    const phoneSnapshot = currentPhoneHostSnapshot(PIXEL_PHONE_LINK_CONTROLLER_ID);
     this.dom.phoneSetupModal.classList.toggle('is-visible', this.phoneSetupVisible && phoneProfileActive);
     this.dom.phoneSetupStatus.textContent = this.phoneStatusText();
     this.dom.phoneSetupConnectButton.textContent = this.phoneConnectInFlight
@@ -1362,13 +1351,18 @@ export class LauncherScene extends Phaser.Scene {
     const controllerOption = requireControllerOption(this.state);
     const audioMixProfileId = requireAudioMixProfileId(this.state.audioMixProfileIndex);
     const sceneKey = requirePlayableSceneKey(gameOption.sceneKey);
-    const phoneLinkEnabled = controllerOption.profileId === 'pixel-invaders-phone-link';
-    const data: GameLaunchData = {
-      controllerProfileId: controllerOption.profileId,
-      controllerLabel: controllerOption.label,
-      audioMixProfileId,
-      phoneLinkEnabled
-    };
+    const data =
+      controllerOption.launchMode === 'pixel_multiplayer'
+        ? createMultiplayerGameLaunchData({
+            playerSlots: controllerOption.playerSlots,
+            audioMixProfileId
+          })
+        : {
+            controllerProfileId: controllerOption.controllerProfileId,
+            controllerLabel: controllerOption.label,
+            audioMixProfileId,
+            phoneLinkEnabled: controllerOption.phoneLinkEnabled
+          };
 
     try {
       const sceneLoader = requireLazySceneLoader(this);

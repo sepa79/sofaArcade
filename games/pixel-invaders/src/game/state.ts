@@ -9,9 +9,10 @@ import {
   ENEMY_START_Y,
   PLAYER_LIVES,
   SCORE_PER_ENEMY,
+  PLAYER_WIDTH,
   WORLD_WIDTH
 } from './constants';
-import type { Enemy, GameState } from './types';
+import type { Enemy, GameState, PlayerState } from './types';
 
 function createEnemyGrid(): ReadonlyArray<Enemy> {
   const enemies: Enemy[] = [];
@@ -35,16 +36,36 @@ function createEnemyGrid(): ReadonlyArray<Enemy> {
   return enemies;
 }
 
-export function createInitialState(seed: number): GameState {
+function createPlayers(playerCount: number): ReadonlyArray<PlayerState> {
+  if (!Number.isInteger(playerCount) || playerCount <= 0) {
+    throw new Error(`playerCount must be a positive integer, got ${playerCount}.`);
+  }
+
+  const centerX = WORLD_WIDTH / 2;
+  const spacing = Math.min(220, Math.max(90, WORLD_WIDTH / (playerCount + 2)));
+
+  return Array.from({ length: playerCount }, (_, playerIndex) => ({
+    playerIndex,
+    x: Math.max(
+      PLAYER_WIDTH / 2,
+      Math.min(
+        WORLD_WIDTH - PLAYER_WIDTH / 2,
+        centerX + (playerIndex - (playerCount - 1) / 2) * spacing
+      )
+    ),
+    lives: PLAYER_LIVES,
+    respawnTimer: 0,
+    shootTimer: 0
+  }));
+}
+
+export function createInitialState(seed: number, playerCount: number): GameState {
   return {
     phase: 'ready',
     score: 0,
     hitStreak: 0,
     scoreMultiplier: 1,
-    lives: PLAYER_LIVES,
-    playerX: WORLD_WIDTH / 2,
-    playerRespawnTimer: 0,
-    playerShootTimer: 0,
+    players: createPlayers(playerCount),
     enemyDirection: 1,
     enemySpeed: ENEMY_SPEED_START,
     enemyFireTimer: ENEMY_FIRE_INTERVAL,

@@ -1,3 +1,11 @@
+export interface PlayerState {
+  readonly playerIndex: number;
+  readonly x: number;
+  readonly lives: number;
+  readonly respawnTimer: number;
+  readonly shootTimer: number;
+}
+
 export interface Enemy {
   readonly id: number;
   readonly x: number;
@@ -13,6 +21,7 @@ export interface Bullet {
   readonly y: number;
   readonly vy: number;
   readonly owner: 'player' | 'enemy';
+  readonly playerIndex: number | null;
 }
 
 export interface FrameInput {
@@ -29,10 +38,7 @@ export interface GameState {
   readonly score: number;
   readonly hitStreak: number;
   readonly scoreMultiplier: number;
-  readonly lives: number;
-  readonly playerX: number;
-  readonly playerRespawnTimer: number;
-  readonly playerShootTimer: number;
+  readonly players: ReadonlyArray<PlayerState>;
   readonly enemyDirection: -1 | 1;
   readonly enemySpeed: number;
   readonly enemyFireTimer: number;
