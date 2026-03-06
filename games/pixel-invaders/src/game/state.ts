@@ -12,6 +12,7 @@ import {
   PLAYER_WIDTH,
   WORLD_WIDTH
 } from './constants';
+import { defaultPlayerLaneForIndex } from './player-lanes';
 import type { Enemy, GameState, PlayerState } from './types';
 
 function createEnemyGrid(): ReadonlyArray<Enemy> {
@@ -55,22 +56,27 @@ function createPlayers(playerCount: number): ReadonlyArray<PlayerState> {
     ),
     lives: PLAYER_LIVES,
     respawnTimer: 0,
-    shootTimer: 0
+    shootTimer: 0,
+    lane: defaultPlayerLaneForIndex(playerIndex),
+    recentMovementMomentum: 0,
+    pushbackVelocityX: 0,
+    score: 0,
+    hitStreak: 0,
+    scoreMultiplier: 1
   }));
 }
 
 export function createInitialState(seed: number, playerCount: number): GameState {
   return {
     phase: 'ready',
-    score: 0,
-    hitStreak: 0,
-    scoreMultiplier: 1,
+    elapsedTimeSec: 0,
     players: createPlayers(playerCount),
     enemyDirection: 1,
     enemySpeed: ENEMY_SPEED_START,
     enemyFireTimer: ENEMY_FIRE_INTERVAL,
     rngSeed: seed,
     enemies: createEnemyGrid(),
-    bullets: []
+    bullets: [],
+    pendingRowRespawns: []
   };
 }

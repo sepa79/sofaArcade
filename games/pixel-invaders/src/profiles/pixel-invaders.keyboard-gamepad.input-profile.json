@@ -25,6 +25,42 @@
       "invert": false
     },
     {
+      "id": "lane-up-keyboard",
+      "actionId": "MOVE_LANE_UP",
+      "type": "digital",
+      "source": {
+        "kind": "keyboard_key",
+        "code": "keyboard.lane_up"
+      }
+    },
+    {
+      "id": "lane-up-gamepad",
+      "actionId": "MOVE_LANE_UP",
+      "type": "digital",
+      "source": {
+        "kind": "gamepad_button",
+        "code": "gamepad.lane_up"
+      }
+    },
+    {
+      "id": "lane-down-keyboard",
+      "actionId": "MOVE_LANE_DOWN",
+      "type": "digital",
+      "source": {
+        "kind": "keyboard_key",
+        "code": "keyboard.lane_down"
+      }
+    },
+    {
+      "id": "lane-down-gamepad",
+      "actionId": "MOVE_LANE_DOWN",
+      "type": "digital",
+      "source": {
+        "kind": "gamepad_button",
+        "code": "gamepad.lane_down"
+      }
+    },
+    {
       "id": "fire-keyboard",
       "actionId": "FIRE_PRIMARY",
       "type": "digital",

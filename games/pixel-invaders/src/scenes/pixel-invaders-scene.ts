@@ -37,7 +37,6 @@ import {
   PLAYER_HEIGHT,
   PLAYER_SPEED,
   PLAYER_WIDTH,
-  PLAYER_Y,
   WORLD_HEIGHT,
   WORLD_WIDTH
 } from '../game/constants';
@@ -51,6 +50,8 @@ import {
 } from '../game/collision';
 import { createInputContext, describeInputContext, readMatchInput } from '../game/input';
 import { stepGame } from '../game/logic';
+import { playerLaneWorldY } from '../game/player-lanes';
+import { highestPlayerMultiplier, totalPlayerScore } from '../game/score';
 import { createInitialState } from '../game/state';
 import {
   createMultiplayerGameLaunchData,
@@ -59,7 +60,6 @@ import {
 import {
   applyTypographyToken,
   HUD_LABEL_TOKEN,
-  HUD_VALUE_TOKEN,
   HINT_TOKEN,
   PROMPT_TOKEN,
   snapUiPixel
@@ -106,13 +106,13 @@ const PLAYER_DEATH_CLUSTER_BURST_TOTAL = 7;
 const PLAYER_DEATH_CLUSTER_BURST_INTERVAL_MS = 62;
 const PLAYER_DEATH_CLUSTER_RADIUS_X = PLAYER_WIDTH * 1.7;
 const PLAYER_DEATH_CLUSTER_RADIUS_Y = PLAYER_HEIGHT * 1.9;
-const SCORE_WIREFRAME_DIGIT_WIDTH = 34;
-const SCORE_WIREFRAME_DIGIT_HEIGHT = 56;
-const SCORE_WIREFRAME_DIGIT_GAP = 11;
+const SCORE_MULTIPLIER_PULSE_DURATION_MS = 220;
 const SYNC_VIGNETTE_TEXTURE_KEY = 'pixel-invaders-sync-vignette';
 const SYNC_VIGNETTE_TEXTURE_SIZE = 512;
 const SYNC_VIGNETTE_DEPTH = 900;
 const HUD_DEPTH = 1_100;
+const PLAYER_LANE_FLASH_DURATION_MS = 220;
+const PLAYER_PUSH_FLASH_DURATION_MS = 160;
 const SYNC_PULSE_DECAY_PER_SECOND = 2.2;
 const SYNC_BAR_PULSE_DECAY_PER_SECOND = 1.6;
 const SYNC_ONSET_DECAY_PER_SECOND = 4.2;
@@ -136,19 +136,6 @@ const SKYLINE_NEON_COLORS = [
   [255, 118, 226],
   [112, 152, 255]
 ] as const;
-const SCORE_WIREFRAME_SEGMENTS: Readonly<Record<number, ReadonlyArray<0 | 1 | 2 | 3 | 4 | 5 | 6>>> = {
-  0: [0, 1, 2, 3, 4, 5],
-  1: [1, 2],
-  2: [0, 1, 6, 4, 3],
-  3: [0, 1, 6, 2, 3],
-  4: [5, 6, 1, 2],
-  5: [0, 5, 6, 2, 3],
-  6: [0, 5, 6, 2, 3, 4],
-  7: [0, 1, 2],
-  8: [0, 1, 2, 3, 4, 5, 6],
-  9: [0, 1, 2, 3, 5, 6]
-};
-
 interface MusicTrackDefinition {
   readonly id: string;
   readonly audioCacheKey: string;
@@ -398,6 +385,10 @@ function averageLivingPlayerX(players: ReadonlyArray<PlayerState>): number {
   return totalX / livingPlayers.length;
 }
 
+function informationPulse(timeMs: number): number {
+  return 0.5 + 0.5 * Math.sin(timeMs * 0.008);
+}
+
 function isSeekableSound(
   sound: Phaser.Sound.BaseSound
 ): sound is Phaser.Sound.WebAudioSound | Phaser.Sound.HTML5AudioSound {
@@ -493,6 +484,9 @@ export class PixelInvadersScene extends Phaser.Scene {
   private playfieldHeight = WORLD_HEIGHT;
   private playfieldScaleX = 1;
   private playfieldScaleY = 1;
+  private scoreMultiplierPulseUntilMs = 0;
+  private readonly playerLaneFlashUntilMs = new Map<number, number>();
+  private readonly playerPushFlashUntilMs = new Map<number, number>();
   private readonly onResize = (): void => {
     this.updateLayout();
   };
@@ -602,6 +596,7 @@ export class PixelInvadersScene extends Phaser.Scene {
     this.livesText.setDepth(HUD_DEPTH);
 
     this.controllerText = this.add.text(20, 52, '');
+    this.controllerText.setOrigin(0, 1);
     this.controllerText.setDepth(HUD_DEPTH);
 
     this.debugText = this.add.text(this.scale.width - 16, 18, '');
@@ -640,7 +635,7 @@ export class PixelInvadersScene extends Phaser.Scene {
     const playerShotXs: number[] = [];
     let enemyShot = false;
     let enemyShotX = averageLivingPlayerX(this.state.players);
-    const playerHitXs: number[] = [];
+    const playerHitPoints: Array<{ readonly x: number; readonly y: number }> = [];
     let lost = false;
     let maxMoveSpeedUnit = 0;
     const destroyedEnemies: Enemy[] = [];
@@ -727,7 +722,28 @@ export class PixelInvadersScene extends Phaser.Scene {
           throw new Error(`Missing next player state for playerIndex ${previousPlayer.playerIndex}.`);
         }
         if (nextPlayer.lives < previousPlayer.lives) {
-          playerHitXs.push(previousPlayer.x);
+          playerHitPoints.push({
+            x: previousPlayer.x,
+            y: playerLaneWorldY(previousPlayer.lane)
+          });
+        }
+        if (nextPlayer.lane !== previousPlayer.lane) {
+          this.playerLaneFlashUntilMs.set(nextPlayer.playerIndex, this.time.now + PLAYER_LANE_FLASH_DURATION_MS);
+        }
+        if (
+          nextPlayer.lives === previousPlayer.lives &&
+          Math.abs(nextPlayer.pushbackVelocityX) > Math.abs(previousPlayer.pushbackVelocityX) + 12
+        ) {
+          this.playerPushFlashUntilMs.set(nextPlayer.playerIndex, this.time.now + PLAYER_PUSH_FLASH_DURATION_MS);
+        }
+        if (
+          nextPlayer.lives === previousPlayer.lives &&
+          Math.abs(nextPlayer.x - previousPlayer.x) > PLAYER_SPEED * FIXED_TIMESTEP + 1
+        ) {
+          this.playerPushFlashUntilMs.set(nextPlayer.playerIndex, this.time.now + PLAYER_PUSH_FLASH_DURATION_MS);
+        }
+        if (nextPlayer.scoreMultiplier !== previousPlayer.scoreMultiplier) {
+          this.scoreMultiplierPulseUntilMs = this.time.now + SCORE_MULTIPLIER_PULSE_DURATION_MS;
         }
       }
       if (previous.phase === 'playing' && next.phase === 'lost') {
@@ -768,8 +784,9 @@ export class PixelInvadersScene extends Phaser.Scene {
       };
     });
     this.updateMusicReactive(deltaSeconds);
-    if (this.state.score > this.highScore) {
-      this.highScore = this.state.score;
+    const totalScore = totalPlayerScore(this.state.players);
+    if (totalScore > this.highScore) {
+      this.highScore = totalScore;
       savePersistentNonNegativeInt(HIGH_SCORE_STORAGE_KEY, this.highScore);
     }
 
@@ -788,11 +805,11 @@ export class PixelInvadersScene extends Phaser.Scene {
       }
       this.spawnExplosion(enemy.x, enemy.y);
     }
-    for (const playerHitX of playerHitXs.slice(0, 2)) {
+    for (const playerHitPoint of playerHitPoints.slice(0, 2)) {
       if (this.sfxEnabled) {
-        this.sfx.playPlayerHit({ pan: xToStereoPan(playerHitX), depth: 0 });
+        this.sfx.playPlayerHit({ pan: xToStereoPan(playerHitPoint.x), depth: 0 });
       }
-      this.spawnPlayerDeathCluster(playerHitX, PLAYER_Y);
+      this.spawnPlayerDeathCluster(playerHitPoint.x, playerHitPoint.y);
     }
     if (this.sfxEnabled && lost) {
       this.sfx.playLose();
@@ -880,14 +897,29 @@ export class PixelInvadersScene extends Phaser.Scene {
         continue;
       }
 
+      const laneFlashActive = (this.playerLaneFlashUntilMs.get(player.playerIndex) ?? 0) > this.time.now;
+      const pushFlashActive = (this.playerPushFlashUntilMs.get(player.playerIndex) ?? 0) > this.time.now;
+      const laneY = playerLaneWorldY(player.lane);
+      const pushTilt = Math.max(-0.18, Math.min(0.18, player.pushbackVelocityX / 900));
+      const displayScale =
+        PLAYER_SPRITE_SCALE *
+        visualScale *
+        (pushFlashActive ? 1.05 : laneFlashActive ? 1.03 : 1);
+
       playerSprite.setVisible(true);
       if (playerSprite.texture.key !== playerTextureKey) {
         playerSprite.setTexture(playerTextureKey);
       }
-      playerSprite.setTint(playerColor(player.playerIndex));
-      playerSprite.setPosition(this.worldToScreenX(player.x), this.worldToScreenY(PLAYER_Y));
-      playerSprite.setRotation(0);
-      playerSprite.setScale(PLAYER_SPRITE_SCALE * visualScale);
+      playerSprite.setTint(
+        pushFlashActive
+          ? mixColor(playerColor(player.playerIndex), 0xffffff, 0.38)
+          : laneFlashActive
+            ? mixColor(playerColor(player.playerIndex), 0xffdd9c, 0.32)
+            : playerColor(player.playerIndex)
+      );
+      playerSprite.setPosition(this.worldToScreenX(player.x), this.worldToScreenY(laneY));
+      playerSprite.setRotation(pushTilt);
+      playerSprite.setScale(displayScale);
     }
   }
 
@@ -985,75 +1017,79 @@ export class PixelInvadersScene extends Phaser.Scene {
     const shotPixelSize = Math.max(1, Math.round(2 * this.visualScale()));
 
     for (const bullet of this.state.bullets) {
+      const snapRect = (
+        centerX: number,
+        centerY: number,
+        width: number,
+        height: number
+      ): Readonly<{ x: number; y: number; width: number; height: number }> => ({
+        x: Math.round((centerX - width / 2) / shotPixelSize) * shotPixelSize,
+        y: Math.round((centerY - height / 2) / shotPixelSize) * shotPixelSize,
+        width,
+        height
+      });
+
       if (bullet.owner === 'enemy') {
-        graphics.fillStyle(0xffe274, 1);
-        graphics.fillRect(
-          this.worldToScreenX(bullet.x) - (BULLET_WIDTH * this.playfieldScaleX) / 2,
-          this.worldToScreenY(bullet.y) - (BULLET_HEIGHT * this.playfieldScaleY) / 2,
-          BULLET_WIDTH * this.playfieldScaleX,
-          BULLET_HEIGHT * this.playfieldScaleY
-        );
+        const centerX = this.worldToScreenX(bullet.x);
+        const centerY = this.worldToScreenY(bullet.y);
+        const bodyWidth = Math.max(shotPixelSize * 2, Math.round(BULLET_WIDTH * this.playfieldScaleX));
+        const bodyHeight = Math.max(shotPixelSize * 5, Math.round(BULLET_HEIGHT * this.playfieldScaleY));
+        const glowRect = snapRect(centerX, centerY, bodyWidth + shotPixelSize * 2, bodyHeight + shotPixelSize * 2);
+        const outerRect = snapRect(centerX, centerY, bodyWidth, bodyHeight);
+        const middleRect = snapRect(centerX, centerY - shotPixelSize, Math.max(shotPixelSize, bodyWidth - shotPixelSize * 2), Math.max(shotPixelSize * 3, bodyHeight - shotPixelSize * 4));
+        const coreRect = snapRect(centerX, centerY - shotPixelSize * 2, Math.max(shotPixelSize, bodyWidth - shotPixelSize * 3), Math.max(shotPixelSize * 2, bodyHeight - shotPixelSize * 7));
+        const tailRect = snapRect(centerX, centerY + bodyHeight * 0.18, Math.max(shotPixelSize, bodyWidth - shotPixelSize), Math.max(shotPixelSize * 2, Math.round(bodyHeight * 0.28)));
+
+        graphics.fillStyle(0xff8e66, 0.14);
+        graphics.fillRect(glowRect.x, glowRect.y, glowRect.width, glowRect.height);
+        graphics.fillStyle(0xffa852, 0.92);
+        graphics.fillRect(outerRect.x, outerRect.y, outerRect.width, outerRect.height);
+        graphics.fillStyle(0xffd56e, 0.96);
+        graphics.fillRect(middleRect.x, middleRect.y, middleRect.width, middleRect.height);
+        graphics.fillStyle(0xfff3ba, 1);
+        graphics.fillRect(coreRect.x, coreRect.y, coreRect.width, coreRect.height);
+        graphics.fillStyle(0xff6b58, 0.82);
+        graphics.fillRect(tailRect.x, tailRect.y, tailRect.width, tailRect.height);
         continue;
       }
 
       const color = bullet.playerIndex === null ? 0xfff6b2 : playerColor(bullet.playerIndex);
+      const glowColor = mixColor(color, 0xffffff, 0.24);
+      const coreColor = mixColor(color, 0xffffff, 0.56);
+      const trailColor = mixColor(color, 0x0f1630, 0.18);
       const headX = this.worldToScreenX(bullet.x);
       const headY = this.worldToScreenY(bullet.y);
-      const trailX = headX;
-      const trailY = this.worldToScreenY(bullet.y + 9);
+      const bodyWidth = Math.max(shotPixelSize * 2, Math.round(BULLET_WIDTH * this.playfieldScaleX));
+      const bodyHeight = Math.max(shotPixelSize * 5, Math.round(BULLET_HEIGHT * this.playfieldScaleY));
+      const glowRect = snapRect(headX, headY - shotPixelSize, bodyWidth + shotPixelSize * 2, bodyHeight + shotPixelSize * 3);
+      const bodyRect = snapRect(headX, headY - shotPixelSize, bodyWidth, bodyHeight);
+      const coreRect = snapRect(headX, headY - shotPixelSize * 2, Math.max(shotPixelSize, bodyWidth - shotPixelSize * 2), Math.max(shotPixelSize * 3, bodyHeight - shotPixelSize * 4));
+      const trailTopRect = snapRect(headX, headY + bodyHeight * 0.46, Math.max(shotPixelSize, bodyWidth - shotPixelSize), Math.max(shotPixelSize * 2, Math.round(bodyHeight * 0.34)));
+      const trailBottomRect = snapRect(headX, headY + bodyHeight * 0.82, Math.max(shotPixelSize, bodyWidth - shotPixelSize * 2), Math.max(shotPixelSize * 2, Math.round(bodyHeight * 0.24)));
+      const noseLeftX = Math.round(headX - bodyWidth / 2);
+      const noseRightX = Math.round(headX + bodyWidth / 2);
+      const noseBaseY = Math.round(headY - bodyHeight / 2 + shotPixelSize);
+      const noseTipY = Math.round(noseBaseY - shotPixelSize * 2);
 
-      const deltaX = headX - trailX;
-      const deltaY = headY - trailY;
-      const deltaLength = Math.hypot(deltaX, deltaY);
-      const dirX = deltaLength === 0 ? 0 : deltaX / deltaLength;
-      const dirY = deltaLength === 0 ? -1 : deltaY / deltaLength;
-      const sideX = -dirY;
-      const sideY = dirX;
-      const step = Math.max(shotPixelSize, 3.4 * this.visualScale());
-      const bodySize = Math.max(shotPixelSize, Math.round(3 * this.visualScale()));
-      const finSize = Math.max(shotPixelSize, Math.round(2 * this.visualScale()));
-      const noseSize = Math.max(shotPixelSize, Math.round(4 * this.visualScale()));
-
-      const drawPixelBlock = (cx: number, cy: number, size: number, color: number, alpha: number): void => {
-        graphics.fillStyle(color, alpha);
-        graphics.fillRect(
-          Math.round((cx - size / 2) / shotPixelSize) * shotPixelSize,
-          Math.round((cy - size / 2) / shotPixelSize) * shotPixelSize,
-          size,
-          size
-        );
-      };
-
-      drawPixelBlock(trailX, trailY, Math.max(shotPixelSize, Math.round(bodySize * 0.8)), color, 0.42);
-      drawPixelBlock(
-        headX - dirX * step * 2.2,
-        headY - dirY * step * 2.2,
-        bodySize,
-        color,
-        0.72
+      graphics.fillStyle(glowColor, 0.18);
+      graphics.fillRect(glowRect.x, glowRect.y, glowRect.width, glowRect.height);
+      graphics.fillStyle(color, 0.96);
+      graphics.fillRect(bodyRect.x, bodyRect.y, bodyRect.width, bodyRect.height);
+      graphics.fillStyle(coreColor, 1);
+      graphics.fillRect(coreRect.x, coreRect.y, coreRect.width, coreRect.height);
+      graphics.fillStyle(trailColor, 0.88);
+      graphics.fillRect(trailTopRect.x, trailTopRect.y, trailTopRect.width, trailTopRect.height);
+      graphics.fillStyle(glowColor, 0.76);
+      graphics.fillRect(trailBottomRect.x, trailBottomRect.y, trailBottomRect.width, trailBottomRect.height);
+      graphics.fillStyle(coreColor, 1);
+      graphics.fillTriangle(
+        Math.round(headX),
+        noseTipY,
+        noseLeftX,
+        noseBaseY,
+        noseRightX,
+        noseBaseY
       );
-      drawPixelBlock(
-        headX - dirX * step * 1.25,
-        headY - dirY * step * 1.25,
-        bodySize,
-        color,
-        0.95
-      );
-      drawPixelBlock(
-        headX - dirX * step * 1.4 + sideX * step * 0.9,
-        headY - dirY * step * 1.4 + sideY * step * 0.9,
-        finSize,
-        color,
-        0.88
-      );
-      drawPixelBlock(
-        headX - dirX * step * 1.4 - sideX * step * 0.9,
-        headY - dirY * step * 1.4 - sideY * step * 0.9,
-        finSize,
-        color,
-        0.88
-      );
-      drawPixelBlock(headX, headY, noseSize, color, 1);
     }
   }
 
@@ -1092,23 +1128,40 @@ export class PixelInvadersScene extends Phaser.Scene {
     if (this.launchData === null) {
       throw new Error('Pixel Invaders launchData is missing in drawHud().');
     }
+    const totalScore = totalPlayerScore(this.state.players);
+    const playerScoreLines = this.state.players
+      .map((player) => `P${player.playerIndex + 1} ${player.score.toString().padStart(6, '0')}`)
+      .join('\n');
+    const playerBonusSummary = this.state.players
+      .map((player) => `x${player.scoreMultiplier}`)
+      .join('\n');
     this.scoreText.setPosition(snapUiPixel(this.playfieldOffsetX + 20), snapUiPixel(this.playfieldOffsetY + 18));
     this.highScoreText.setPosition(
       snapUiPixel(this.playfieldOffsetX + this.playfieldWidth * 0.5),
       snapUiPixel(this.playfieldOffsetY + 18)
     );
-    this.bonusText.setPosition(
-      snapUiPixel(this.playfieldOffsetX + this.playfieldWidth * 0.5),
-      snapUiPixel(this.playfieldOffsetY + 52)
-    );
     this.livesText.setPosition(
       snapUiPixel(this.playfieldOffsetX + this.playfieldWidth - 20),
       snapUiPixel(this.playfieldOffsetY + 18)
     );
-    this.controllerText.setPosition(snapUiPixel(this.playfieldOffsetX + 20), snapUiPixel(this.playfieldOffsetY + 52));
-    this.scoreText.setText(`SCORE ${this.state.score.toString().padStart(6, '0')}`);
-    this.highScoreText.setText(`HI ${this.highScore.toString().padStart(6, '0')}`);
-    this.bonusText.setText(`x${this.state.scoreMultiplier}`);
+    this.controllerText.setPosition(
+      snapUiPixel(this.playfieldOffsetX + 20),
+      snapUiPixel(this.playfieldOffsetY + this.playfieldHeight - 18)
+    );
+    this.scoreText.setText(
+      this.state.players.length === 1
+        ? `SCORE ${this.state.players[0]?.score.toString().padStart(6, '0')}`
+        : playerScoreLines
+    );
+    this.highScoreText.setText(`TOTAL ${totalScore.toString().padStart(6, '0')}\nHI ${this.highScore.toString().padStart(6, '0')}`);
+    this.bonusText.setText(
+      this.state.players.length === 1 ? `x${this.state.players[0]?.scoreMultiplier}` : playerBonusSummary
+    );
+    this.bonusText.setOrigin(0, 0);
+    this.bonusText.setPosition(
+      snapUiPixel(this.scoreText.getTopRight().x + 28),
+      snapUiPixel(this.scoreText.y)
+    );
     if (this.state.players.length === 1) {
       const singlePlayer = this.state.players[0];
       if (singlePlayer === undefined) {
@@ -1125,6 +1178,7 @@ export class PixelInvadersScene extends Phaser.Scene {
     }
 
     this.controllerText.setText(`CTRL ${describeInputContext(this.inputContext)}`);
+    const infoPulse = informationPulse(this.time.now);
     const hudPulse = clamp01(
       this.musicReactive.beatPulse * 0.85 + this.musicReactive.barPulse + this.musicReactive.midOnsetPulse * 0.65
     );
@@ -1143,17 +1197,25 @@ export class PixelInvadersScene extends Phaser.Scene {
       Math.round(lerp(240, 248, hudPulse)),
       Math.round(lerp(255, 255, hudPulse))
     );
-    const bonusPulse = clamp01(hudPulse * 0.6 + this.state.scoreMultiplier / 14);
+    const bonusPulse = clamp01(hudPulse * 0.6 + highestPlayerMultiplier(this.state.players) / 14);
     const bonusColor = Phaser.Display.Color.GetColor(
       Math.round(lerp(255, 255, bonusPulse)),
       Math.round(lerp(215, 144, bonusPulse)),
       Math.round(lerp(168, 106, bonusPulse))
     );
+    const multiplierPulse = Math.max(0, (this.scoreMultiplierPulseUntilMs - this.time.now) / SCORE_MULTIPLIER_PULSE_DURATION_MS);
+    const multiplierScale = 1 + multiplierPulse * 0.18;
+    const multiplierAlpha = 0.82 + multiplierPulse * 0.18;
     this.scoreText.setTint(scoreColor);
     this.highScoreText.setTint(highScoreColor);
     this.livesText.setTint(scoreColor);
     this.controllerText.setTint(controllerColor);
     this.bonusText.setTint(bonusColor);
+    this.scoreText.setScale(1);
+    this.bonusText.setScale(multiplierScale);
+    this.scoreText.setAlpha(1);
+    this.bonusText.setAlpha(multiplierAlpha);
+    this.controllerText.setAlpha(this.state.phase === 'playing' ? 0.94 : 0.72 + infoPulse * 0.28);
     if (!this.debugModeEnabled) {
       this.debugText.setText('');
       return;
@@ -1197,18 +1259,27 @@ export class PixelInvadersScene extends Phaser.Scene {
       snapUiPixel(this.worldToScreenX(WORLD_WIDTH / 2)),
       snapUiPixel(this.worldToScreenY(WORLD_HEIGHT / 2 - 40))
     );
+    const pulse = informationPulse(this.time.now);
 
     if (this.state.phase === 'playing') {
       this.bannerText.setText('');
+      this.bannerText.setAlpha(1);
+      this.bannerText.setScale(1);
       return;
     }
 
     if (this.state.phase === 'ready') {
       this.bannerText.setText('PRESS FIRE TO START');
+      this.bannerText.setAlpha(0.74 + pulse * 0.26);
+      this.bannerText.setTint(mixColor(0xffd9a8, 0xffffff, pulse));
+      this.bannerText.setScale(3);
       return;
     }
 
     this.bannerText.setText('GAME OVER\nPRESS ENTER');
+    this.bannerText.setAlpha(0.76 + pulse * 0.24);
+    this.bannerText.setTint(mixColor(0xffc4a1, 0xfff7df, pulse));
+    this.bannerText.setScale(3);
   }
 
   private updateLayout(): void {
@@ -1235,13 +1306,13 @@ export class PixelInvadersScene extends Phaser.Scene {
     const uiScale = this.visualScale();
     applyTypographyToken(this.scoreText, HUD_LABEL_TOKEN, uiScale);
     applyTypographyToken(this.highScoreText, HUD_LABEL_TOKEN, uiScale);
-    applyTypographyToken(this.bonusText, HUD_VALUE_TOKEN, uiScale);
+    applyTypographyToken(this.bonusText, HUD_LABEL_TOKEN, uiScale);
     applyTypographyToken(this.livesText, HUD_LABEL_TOKEN, uiScale);
     applyTypographyToken(this.controllerText, HINT_TOKEN, uiScale);
     applyTypographyToken(this.debugText, HINT_TOKEN, uiScale);
     applyTypographyToken(this.bannerText, PROMPT_TOKEN, uiScale);
     this.highScoreText.setAlign('center');
-    this.bonusText.setAlign('center');
+    this.bonusText.setAlign('left');
     this.livesText.setAlign('right');
     this.debugText.setAlign('left');
     this.bannerText.setAlign('center');
@@ -1325,7 +1396,6 @@ export class PixelInvadersScene extends Phaser.Scene {
     );
     graphics.fillStyle(bgColor, 1);
     graphics.fillRect(this.playfieldOffsetX, this.playfieldOffsetY, this.playfieldWidth, this.playfieldHeight);
-    this.drawScoreWireframe(graphics);
 
     const starCutoffY = this.debugBottomVisualsEnabled
       ? WORLD_HEIGHT * PLAYFIELD_HORIZON_Y_RATIO - 1
@@ -1351,76 +1421,6 @@ export class PixelInvadersScene extends Phaser.Scene {
     }
   }
 
-  private drawScoreWireframe(graphics: Phaser.GameObjects.Graphics): void {
-    const scale = this.visualScale();
-    const digitWidth = SCORE_WIREFRAME_DIGIT_WIDTH * scale;
-    const digitHeight = SCORE_WIREFRAME_DIGIT_HEIGHT * scale;
-    const digitGap = SCORE_WIREFRAME_DIGIT_GAP * scale;
-    const scoreText = this.state.score.toString().padStart(6, '0');
-    const totalWidth = scoreText.length * digitWidth + Math.max(0, scoreText.length - 1) * digitGap;
-    const startX = this.playfieldOffsetX + this.playfieldWidth * 0.5 - totalWidth * 0.5;
-    const originY = this.playfieldOffsetY + this.playfieldHeight * 0.3;
-    const intensity = clamp01(this.musicReactive.barPulse * 0.45 + this.musicReactive.beatPulse * 0.24);
-    const lineAlpha = 0.07 + intensity * 0.08;
-    const glowAlpha = 0.035 + intensity * 0.04;
-    const strokeColor = Phaser.Display.Color.GetColor(96, 170, 255);
-    const glowColor = Phaser.Display.Color.GetColor(168, 108, 255);
-    const inset = Math.max(2, 5 * scale);
-    const midY = digitHeight * 0.5;
-
-    const segmentPoints = (segment: 0 | 1 | 2 | 3 | 4 | 5 | 6): Readonly<[number, number, number, number]> => {
-      if (segment === 0) {
-        return [inset, 0, digitWidth - inset, 0];
-      }
-      if (segment === 1) {
-        return [digitWidth - inset, inset, digitWidth - inset, midY - inset * 0.3];
-      }
-      if (segment === 2) {
-        return [digitWidth - inset, midY + inset * 0.3, digitWidth - inset, digitHeight - inset];
-      }
-      if (segment === 3) {
-        return [inset, digitHeight, digitWidth - inset, digitHeight];
-      }
-      if (segment === 4) {
-        return [inset, midY + inset * 0.3, inset, digitHeight - inset];
-      }
-      if (segment === 5) {
-        return [inset, inset, inset, midY - inset * 0.3];
-      }
-      return [inset, midY, digitWidth - inset, midY];
-    };
-
-    for (let index = 0; index < scoreText.length; index += 1) {
-      const digitChar = scoreText[index];
-      if (digitChar === undefined) {
-        throw new Error(`Missing score digit at index ${index}.`);
-      }
-      const digitValue = Number.parseInt(digitChar, 10);
-      if (!Number.isInteger(digitValue) || digitValue < 0 || digitValue > 9) {
-        throw new Error(`Invalid score digit "${digitChar}" at index ${index}.`);
-      }
-      const segments = SCORE_WIREFRAME_SEGMENTS[digitValue];
-      if (segments === undefined) {
-        throw new Error(`Missing wireframe segment map for digit ${digitValue}.`);
-      }
-
-      const offsetX = startX + index * (digitWidth + digitGap);
-      for (const segment of segments) {
-        const [x0, y0, x1, y1] = segmentPoints(segment);
-        graphics.lineStyle(Math.max(1, Math.round(4 * scale)), glowColor, glowAlpha);
-        graphics.beginPath();
-        graphics.moveTo(offsetX + x0, originY + y0);
-        graphics.lineTo(offsetX + x1, originY + y1);
-        graphics.strokePath();
-
-        graphics.lineStyle(Math.max(1, Math.round(2 * scale)), strokeColor, lineAlpha);
-        graphics.beginPath();
-        graphics.moveTo(offsetX + x0, originY + y0);
-        graphics.lineTo(offsetX + x1, originY + y1);
-        graphics.strokePath();
-      }
-    }
-  }
 
   private updateMusicReactive(deltaSeconds: number): void {
     const backgroundMusic = this.requireBackgroundMusic();

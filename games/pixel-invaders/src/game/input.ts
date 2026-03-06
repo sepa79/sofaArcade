@@ -24,6 +24,8 @@ import type { FrameInput } from './types';
 const ACTION_MOVE_X_RELATIVE = 'MOVE_X_RELATIVE';
 const ACTION_MOVE_X_ABSOLUTE = 'MOVE_X_ABSOLUTE';
 const ACTION_MOVE_X_ABSOLUTE_ACTIVE = 'MOVE_X_ABSOLUTE_ACTIVE';
+const ACTION_MOVE_LANE_UP = 'MOVE_LANE_UP';
+const ACTION_MOVE_LANE_DOWN = 'MOVE_LANE_DOWN';
 const ACTION_FIRE_PRIMARY = 'FIRE_PRIMARY';
 const ACTION_RESTART = 'RESTART';
 
@@ -34,6 +36,10 @@ const SOURCE_POINTER_PRIMARY_DOWN = 'pointer.primary_down';
 const SOURCE_POINTER_FIRE = 'pointer.fire';
 const SOURCE_KEYBOARD_FIRE = 'keyboard.fire';
 const SOURCE_GAMEPAD_FIRE = 'gamepad.fire';
+const SOURCE_KEYBOARD_LANE_UP = 'keyboard.lane_up';
+const SOURCE_KEYBOARD_LANE_DOWN = 'keyboard.lane_down';
+const SOURCE_GAMEPAD_LANE_UP = 'gamepad.lane_up';
+const SOURCE_GAMEPAD_LANE_DOWN = 'gamepad.lane_down';
 const SOURCE_KEYBOARD_RESTART = 'keyboard.restart';
 const SOURCE_GAMEPAD_RESTART = 'gamepad.restart';
 
@@ -52,6 +58,14 @@ const GAME_ACTION_CATALOG = createActionCatalog([
   },
   {
     id: ACTION_MOVE_X_ABSOLUTE_ACTIVE,
+    type: 'digital'
+  },
+  {
+    id: ACTION_MOVE_LANE_UP,
+    type: 'digital'
+  },
+  {
+    id: ACTION_MOVE_LANE_DOWN,
     type: 'digital'
   },
   {
@@ -79,6 +93,10 @@ export interface InputKeys {
   readonly right: Phaser.Input.Keyboard.Key;
   readonly altLeft: Phaser.Input.Keyboard.Key;
   readonly altRight: Phaser.Input.Keyboard.Key;
+  readonly up: Phaser.Input.Keyboard.Key;
+  readonly down: Phaser.Input.Keyboard.Key;
+  readonly altUp: Phaser.Input.Keyboard.Key;
+  readonly altDown: Phaser.Input.Keyboard.Key;
   readonly fire: Phaser.Input.Keyboard.Key;
   readonly restart: Phaser.Input.Keyboard.Key;
 }
@@ -193,6 +211,8 @@ function readPhoneFrameInput(phoneControllerId: string): FrameInput {
   return {
     moveAxisSigned: frame.connected ? frame.moveX : 0,
     moveAbsoluteUnit: null,
+    moveLaneUpPressed: false,
+    moveLaneDownPressed: false,
     firePressed: frame.fire,
     restartPressed: frame.start
   };
@@ -214,6 +234,8 @@ function createLocalSourceFrame(
 
   let keyboardAxis = 0;
   let keyboardFire = false;
+  let keyboardLaneUp = false;
+  let keyboardLaneDown = false;
   let keyboardRestart = false;
   let pointerPrimaryDown = false;
   let pointerFire = false;
@@ -223,6 +245,8 @@ function createLocalSourceFrame(
   if (binding.device.kind === 'shared_local') {
     keyboardAxis = readKeyboardAxis(keys);
     keyboardFire = keys.fire.isDown;
+    keyboardLaneUp = keys.up.isDown || keys.altUp.isDown;
+    keyboardLaneDown = keys.down.isDown || keys.altDown.isDown;
     keyboardRestart = keys.restart.isDown;
     pointerPrimaryDown = pointer.isDown;
     pointerFire = pointer.isDown;
@@ -230,6 +254,8 @@ function createLocalSourceFrame(
   } else if (binding.device.kind === 'keyboard_mouse') {
     keyboardAxis = readKeyboardAxis(keys);
     keyboardFire = keys.fire.isDown;
+    keyboardLaneUp = keys.up.isDown || keys.altUp.isDown;
+    keyboardLaneDown = keys.down.isDown || keys.altDown.isDown;
     keyboardRestart = keys.restart.isDown;
     pointerPrimaryDown = pointer.isDown;
     pointerFire = pointer.isDown;
@@ -245,6 +271,10 @@ function createLocalSourceFrame(
       [SOURCE_POINTER_FIRE]: pointerFire,
       [SOURCE_KEYBOARD_FIRE]: keyboardFire,
       [SOURCE_GAMEPAD_FIRE]: buttonPressed(gamepad, 0),
+      [SOURCE_KEYBOARD_LANE_UP]: keyboardLaneUp,
+      [SOURCE_KEYBOARD_LANE_DOWN]: keyboardLaneDown,
+      [SOURCE_GAMEPAD_LANE_UP]: buttonPressed(gamepad, 12) || (gamepad?.axes[1] ?? 0) < -0.55,
+      [SOURCE_GAMEPAD_LANE_DOWN]: buttonPressed(gamepad, 13) || (gamepad?.axes[1] ?? 0) > 0.55,
       [SOURCE_KEYBOARD_RESTART]: keyboardRestart,
       [SOURCE_GAMEPAD_RESTART]: buttonPressed(gamepad, 9)
     },
@@ -280,6 +310,8 @@ function readPlayerFrameInput(
     moveAbsoluteUnit: localPlayerInputContext.runtime.isPressed(ACTION_MOVE_X_ABSOLUTE_ACTIVE)
       ? localPlayerInputContext.runtime.readAxisUnit(ACTION_MOVE_X_ABSOLUTE)
       : null,
+    moveLaneUpPressed: localPlayerInputContext.runtime.wasPressed(ACTION_MOVE_LANE_UP),
+    moveLaneDownPressed: localPlayerInputContext.runtime.wasPressed(ACTION_MOVE_LANE_DOWN),
     firePressed: localPlayerInputContext.runtime.isPressed(ACTION_FIRE_PRIMARY),
     restartPressed: localPlayerInputContext.runtime.wasPressed(ACTION_RESTART)
   };
@@ -301,6 +333,10 @@ export function createInputContext(
       right: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.RIGHT),
       altLeft: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A),
       altRight: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D),
+      up: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.UP),
+      down: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.DOWN),
+      altUp: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W),
+      altDown: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S),
       fire: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE),
       restart: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER)
     },

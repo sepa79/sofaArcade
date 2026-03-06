@@ -84,7 +84,7 @@ export const HUD_VALUE_TOKEN: TypographyToken = {
 
 export const PROMPT_TOKEN: TypographyToken = {
   fontFamily: PRESS_START_2P_FONT_FAMILY,
-  baseFontSize: 48,
+  baseFontSize: 96,
   letterSpacing: 0,
   lineSpacing: 12,
   color: '#fff0cc',
