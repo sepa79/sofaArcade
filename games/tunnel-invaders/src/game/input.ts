@@ -131,12 +131,23 @@ function requireProfile(profileId: string): InputProfile {
   return profile;
 }
 
+function profileUsesMouse(profile: InputProfile): boolean {
+  return profile.bindings.some(
+    (binding) =>
+      binding.source.kind === 'mouse_position_x' ||
+      binding.source.kind === 'mouse_position_y' ||
+      binding.source.kind === 'mouse_delta_x' ||
+      binding.source.kind === 'mouse_button'
+  );
+}
+
 export function createInputContext(scene: Phaser.Scene, profileId: string): InputContext {
   const keyboard = requireKeyboard(scene);
+  const profile = requireProfile(profileId);
 
   return {
     runtime: createInputRuntime(ACTION_CATALOG),
-    profile: requireProfile(profileId),
+    profile,
     keys: {
       left: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.LEFT),
       right: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.RIGHT),
@@ -148,6 +159,10 @@ export function createInputContext(scene: Phaser.Scene, profileId: string): Inpu
       start: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER)
     }
   };
+}
+
+export function inputContextUsesMouseControl(inputContext: InputContext): boolean {
+  return profileUsesMouse(inputContext.profile);
 }
 
 export function readFrameInput(inputContext: InputContext): FrameInput {

@@ -1,4 +1,10 @@
 export type PlayerLane = 'low' | 'mid' | 'high';
+export type PowerupKind = 'shield' | 'rapid-fire';
+
+export interface ActivePowerup {
+  readonly kind: PowerupKind;
+  readonly remainingSec: number;
+}
 
 export interface PlayerState {
   readonly playerIndex: number;
@@ -12,6 +18,7 @@ export interface PlayerState {
   readonly score: number;
   readonly hitStreak: number;
   readonly scoreMultiplier: number;
+  readonly activePowerups: ReadonlyArray<ActivePowerup>;
 }
 
 export interface Enemy {
@@ -32,9 +39,18 @@ export interface Bullet {
   readonly playerIndex: number | null;
 }
 
+export interface PickupEntity {
+  readonly id: number;
+  readonly kind: PowerupKind;
+  readonly x: number;
+  readonly y: number;
+  readonly vy: number;
+}
+
 export interface FrameInput {
   readonly moveAxisSigned: number;
   readonly moveAbsoluteUnit: number | null;
+  readonly moveLaneTarget: PlayerLane | null;
   readonly moveLaneUpPressed: boolean;
   readonly moveLaneDownPressed: boolean;
   readonly firePressed: boolean;
@@ -59,5 +75,7 @@ export interface GameState {
   readonly rngSeed: number;
   readonly enemies: ReadonlyArray<Enemy>;
   readonly bullets: ReadonlyArray<Bullet>;
+  readonly pickups: ReadonlyArray<PickupEntity>;
+  readonly nextPickupId: number;
   readonly pendingRowRespawns: ReadonlyArray<RowRespawnTicket>;
 }

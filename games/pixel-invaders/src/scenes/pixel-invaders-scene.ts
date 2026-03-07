@@ -34,6 +34,7 @@ import {
   ENEMY_COLS,
   ENEMY_UFO_HIT_POINTS,
   FIXED_TIMESTEP,
+  PICKUP_SIZE,
   PLAYER_HEIGHT,
   PLAYER_SPEED,
   PLAYER_WIDTH,
@@ -48,9 +49,10 @@ import {
   type CollisionDebugFrame,
   type CollisionRuntime
 } from '../game/collision';
-import { createInputContext, describeInputContext, readMatchInput } from '../game/input';
+import { createInputContext, describeInputContext, inputContextUsesMouseControl, readMatchInput } from '../game/input';
 import { stepGame } from '../game/logic';
 import { playerLaneWorldY } from '../game/player-lanes';
+import { hasActivePowerup, powerupHudLabel } from '../game/powerups';
 import { highestPlayerMultiplier, totalPlayerScore } from '../game/score';
 import { createInitialState } from '../game/state';
 import {
@@ -65,7 +67,7 @@ import {
   snapUiPixel
 } from '../ui/typography';
 import type { InputContext } from '../game/input';
-import type { Bullet, Enemy, GameState, PlayerState } from '../game/types';
+import type { Bullet, Enemy, GameState, PickupEntity, PlayerState } from '../game/types';
 
 export const PIXEL_INVADERS_SCENE_KEY = 'pixel-invaders';
 const PLAYER_SPRITE_KEY = 'pixel-invaders-player-ship';
@@ -375,6 +377,19 @@ function playerColor(playerIndex: number): number {
   return color;
 }
 
+function pickupColor(pickup: PickupEntity): number {
+  return pickup.kind === 'shield' ? 0x83f6ff : 0xffb870;
+}
+
+function playerPowerupSummary(player: PlayerState): string {
+  const activeLabels = player.activePowerups.map((powerup) => powerupHudLabel(powerup.kind)).join(' ');
+  return activeLabels.length === 0 ? `x${player.scoreMultiplier}` : `x${player.scoreMultiplier} ${activeLabels}`;
+}
+
+function activePowerupSignature(player: PlayerState): string {
+  return player.activePowerups.map((powerup) => powerup.kind).join('|');
+}
+
 function averageLivingPlayerX(players: ReadonlyArray<PlayerState>): number {
   const livingPlayers = players.filter((player) => player.lives > 0);
   if (livingPlayers.length === 0) {
@@ -610,6 +625,7 @@ export class PixelInvadersScene extends Phaser.Scene {
     this.updateLayout();
 
     this.inputContext = createInputContext(this, this.launchData.playerSlots);
+    this.input.setDefaultCursor(inputContextUsesMouseControl(this.inputContext) ? 'none' : 'default');
     this.cameras.main.setBackgroundColor('#060913');
     this.musicTracks = this.readMusicTrackRuntimes();
     this.musicBannerElement = this.createMusicBannerElement();
@@ -623,6 +639,7 @@ export class PixelInvadersScene extends Phaser.Scene {
         this.musicBannerElement.remove();
         this.musicBannerElement = null;
       }
+      this.input.setDefaultCursor('default');
       this.scale.off(Phaser.Scale.Events.RESIZE, this.onResize);
     });
   }
@@ -665,20 +682,50 @@ export class PixelInvadersScene extends Phaser.Scene {
       const next = step.state;
       frameCollisionDebug = step.collisionDebug;
 
-      const previousPlayerBulletOwners = new Set(
-        previous.bullets
-          .filter((bullet) => bullet.owner === 'player')
-          .map((bullet) => bullet.playerIndex)
-      );
+      const previousPlayerBulletCounts = new Map<number, number>();
+      for (const bullet of previous.bullets) {
+        if (bullet.owner !== 'player') {
+          continue;
+        }
+        if (bullet.playerIndex === null) {
+          throw new Error('Player-owned bullet is missing playerIndex in previous state.');
+        }
+
+        previousPlayerBulletCounts.set(
+          bullet.playerIndex,
+          (previousPlayerBulletCounts.get(bullet.playerIndex) ?? 0) + 1
+        );
+      }
+      const nextPlayerBulletsByPlayerIndex = new Map<number, Bullet[]>();
+      for (const bullet of next.bullets) {
+        if (bullet.owner !== 'player') {
+          continue;
+        }
+        if (bullet.playerIndex === null) {
+          throw new Error('Player-owned bullet is missing playerIndex in next state.');
+        }
+
+        const playerBullets = nextPlayerBulletsByPlayerIndex.get(bullet.playerIndex) ?? [];
+        playerBullets.push(bullet);
+        nextPlayerBulletsByPlayerIndex.set(bullet.playerIndex, playerBullets);
+      }
       const previousEnemyBullets = previous.bullets.filter((bullet) => bullet.owner === 'enemy').length;
       const nextEnemyBullets = next.bullets.filter((bullet) => bullet.owner === 'enemy').length;
 
-      for (const bullet of next.bullets) {
-        if (bullet.owner !== 'player' || previousPlayerBulletOwners.has(bullet.playerIndex)) {
+      for (const [playerIndex, playerBullets] of nextPlayerBulletsByPlayerIndex.entries()) {
+        const previousCount = previousPlayerBulletCounts.get(playerIndex) ?? 0;
+        const spawnedCount = playerBullets.length - previousCount;
+        if (spawnedCount <= 0) {
           continue;
         }
 
-        playerShotXs.push(bullet.x);
+        const spawnedBullets = playerBullets
+          .slice()
+          .sort((left, right) => Math.abs(right.vy) - Math.abs(left.vy) || right.y - left.y)
+          .slice(0, spawnedCount);
+        for (const bullet of spawnedBullets) {
+          playerShotXs.push(bullet.x);
+        }
       }
       if (nextEnemyBullets > previousEnemyBullets) {
         enemyShot = true;
@@ -742,7 +789,10 @@ export class PixelInvadersScene extends Phaser.Scene {
         ) {
           this.playerPushFlashUntilMs.set(nextPlayer.playerIndex, this.time.now + PLAYER_PUSH_FLASH_DURATION_MS);
         }
-        if (nextPlayer.scoreMultiplier !== previousPlayer.scoreMultiplier) {
+        if (
+          nextPlayer.scoreMultiplier !== previousPlayer.scoreMultiplier ||
+          activePowerupSignature(nextPlayer) !== activePowerupSignature(previousPlayer)
+        ) {
           this.scoreMultiplierPulseUntilMs = this.time.now + SCORE_MULTIPLIER_PULSE_DURATION_MS;
         }
       }
@@ -831,7 +881,9 @@ export class PixelInvadersScene extends Phaser.Scene {
 
     return readMatchInput(this, this.inputContext, {
       minX: this.playfieldOffsetX,
-      maxX: this.playfieldOffsetX + this.playfieldWidth
+      maxX: this.playfieldOffsetX + this.playfieldWidth,
+      minY: this.playfieldOffsetY,
+      maxY: this.playfieldOffsetY + this.playfieldHeight
     });
   }
 
@@ -843,8 +895,9 @@ export class PixelInvadersScene extends Phaser.Scene {
     this.drawRowRespawnFlashes(graphics);
     this.syncPlayerSprites();
     this.syncEnemySprites();
-    this.drawPlayers();
+    this.drawPlayers(graphics);
     this.drawEnemies();
+    this.drawPickups(graphics);
     this.drawBullets(graphics);
     this.drawCollisionDebug(graphics);
     this.drawExplosions(graphics);
@@ -881,7 +934,7 @@ export class PixelInvadersScene extends Phaser.Scene {
     };
   }
 
-  private drawPlayers(): void {
+  private drawPlayers(graphics: Phaser.GameObjects.Graphics): void {
     const visualScale = this.visualScale();
     const playerTextureKey = Math.floor(this.time.now / 120) % 2 === 0 ? PLAYER_SPRITE_KEY : PLAYER_SPRITE_ALT_KEY;
 
@@ -920,6 +973,22 @@ export class PixelInvadersScene extends Phaser.Scene {
       playerSprite.setPosition(this.worldToScreenX(player.x), this.worldToScreenY(laneY));
       playerSprite.setRotation(pushTilt);
       playerSprite.setScale(displayScale);
+
+      if (hasActivePowerup(player, 'shield')) {
+        const centerX = Math.round(this.worldToScreenX(player.x));
+        const centerY = Math.round(this.worldToScreenY(laneY));
+        const auraPulse = 0.5 + Math.sin(this.time.now * 0.01 + player.playerIndex * 0.8) * 0.5;
+        const auraRadius = Math.max(16, Math.round((PLAYER_WIDTH * 0.48 + auraPulse * 5) * visualScale));
+        const auraCoreRadius = Math.max(12, auraRadius - Math.max(3, Math.round(visualScale * 3)));
+        const auraThickness = Math.max(2, Math.round(visualScale * 2));
+
+        graphics.fillStyle(0x83f6ff, 0.08 + auraPulse * 0.06);
+        graphics.fillCircle(centerX, centerY, auraCoreRadius);
+        graphics.lineStyle(auraThickness, 0xb8fbff, 0.85);
+        graphics.strokeCircle(centerX, centerY, auraRadius);
+        graphics.lineStyle(Math.max(1, auraThickness - 1), 0x3bdcff, 0.6);
+        graphics.strokeCircle(centerX, centerY, Math.max(8, auraRadius - auraThickness * 2));
+      }
     }
   }
 
@@ -1093,6 +1162,44 @@ export class PixelInvadersScene extends Phaser.Scene {
     }
   }
 
+  private drawPickups(graphics: Phaser.GameObjects.Graphics): void {
+    const visualScale = this.visualScale();
+    const outerSize = Math.max(8, Math.round(PICKUP_SIZE * visualScale));
+    const innerSize = Math.max(4, outerSize - Math.max(4, Math.round(visualScale * 4)));
+
+    for (const pickup of this.state.pickups) {
+      const centerX = Math.round(this.worldToScreenX(pickup.x));
+      const centerY = Math.round(this.worldToScreenY(pickup.y));
+      const baseColor = pickupColor(pickup);
+      const coreColor = mixColor(baseColor, 0xffffff, 0.5);
+      const shadowColor = mixColor(baseColor, 0x091120, 0.7);
+
+      graphics.fillStyle(baseColor, 0.16);
+      graphics.fillCircle(centerX, centerY, outerSize * 0.9);
+      graphics.fillStyle(shadowColor, 0.92);
+      graphics.fillRect(centerX - outerSize / 2, centerY - outerSize / 2, outerSize, outerSize);
+      graphics.fillStyle(baseColor, 0.98);
+      graphics.fillTriangle(
+        centerX,
+        centerY - outerSize / 2,
+        centerX + outerSize / 2,
+        centerY,
+        centerX,
+        centerY + outerSize / 2
+      );
+      graphics.fillTriangle(
+        centerX,
+        centerY - outerSize / 2,
+        centerX - outerSize / 2,
+        centerY,
+        centerX,
+        centerY + outerSize / 2
+      );
+      graphics.fillStyle(coreColor, 1);
+      graphics.fillRect(centerX - innerSize / 2, centerY - innerSize / 2, innerSize, innerSize);
+    }
+  }
+
   private drawCollisionDebug(graphics: Phaser.GameObjects.Graphics): void {
     if (!this.debugModeEnabled) {
       return;
@@ -1133,7 +1240,7 @@ export class PixelInvadersScene extends Phaser.Scene {
       .map((player) => `P${player.playerIndex + 1} ${player.score.toString().padStart(6, '0')}`)
       .join('\n');
     const playerBonusSummary = this.state.players
-      .map((player) => `x${player.scoreMultiplier}`)
+      .map((player) => playerPowerupSummary(player))
       .join('\n');
     this.scoreText.setPosition(snapUiPixel(this.playfieldOffsetX + 20), snapUiPixel(this.playfieldOffsetY + 18));
     this.highScoreText.setPosition(
@@ -1154,9 +1261,15 @@ export class PixelInvadersScene extends Phaser.Scene {
         : playerScoreLines
     );
     this.highScoreText.setText(`TOTAL ${totalScore.toString().padStart(6, '0')}\nHI ${this.highScore.toString().padStart(6, '0')}`);
-    this.bonusText.setText(
-      this.state.players.length === 1 ? `x${this.state.players[0]?.scoreMultiplier}` : playerBonusSummary
-    );
+    if (this.state.players.length === 1) {
+      const singlePlayer = this.state.players[0];
+      if (singlePlayer === undefined) {
+        throw new Error('Single-player HUD expected player state at index 0.');
+      }
+      this.bonusText.setText(playerPowerupSummary(singlePlayer));
+    } else {
+      this.bonusText.setText(playerBonusSummary);
+    }
     this.bonusText.setOrigin(0, 0);
     this.bonusText.setPosition(
       snapUiPixel(this.scoreText.getTopRight().x + 28),

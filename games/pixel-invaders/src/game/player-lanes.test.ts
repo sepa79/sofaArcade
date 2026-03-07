@@ -7,6 +7,7 @@ function emptyInput(): FrameInput {
   return {
     moveAxisSigned: 0,
     moveAbsoluteUnit: null,
+    moveLaneTarget: null,
     moveLaneUpPressed: false,
     moveLaneDownPressed: false,
     firePressed: false,
@@ -36,5 +37,9 @@ describe('player lanes', () => {
   it('maps higher lanes to lower world y values', () => {
     expect(playerLaneWorldY('high')).toBeLessThan(playerLaneWorldY('mid'));
     expect(playerLaneWorldY('mid')).toBeLessThan(playerLaneWorldY('low'));
+  });
+
+  it('accepts direct lane target selection', () => {
+    expect(applyLaneInput('low', { ...emptyInput(), moveLaneTarget: 'high' })).toBe('high');
   });
 });

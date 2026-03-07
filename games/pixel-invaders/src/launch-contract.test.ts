@@ -17,7 +17,7 @@ describe('createMultiplayerGameLaunchData', () => {
           binding: {
             transport: 'local',
             device: {
-              kind: 'keyboard_mouse'
+              kind: 'keyboard'
             }
           }
         },
@@ -51,12 +51,12 @@ describe('createMultiplayerGameLaunchData', () => {
             profileId: 'pixel-keyboard',
             controllerLabel: '',
             binding: {
-              transport: 'local',
-              device: {
-                kind: 'keyboard_mouse'
-              }
+            transport: 'local',
+            device: {
+              kind: 'keyboard'
             }
           }
+        }
         ],
         audioMixProfileId: 'cinema'
       })

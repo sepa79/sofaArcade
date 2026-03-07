@@ -6,6 +6,14 @@ export interface KeyboardMouseInputDevice {
   readonly kind: 'keyboard_mouse';
 }
 
+export interface KeyboardInputDevice {
+  readonly kind: 'keyboard';
+}
+
+export interface MouseInputDevice {
+  readonly kind: 'mouse';
+}
+
 export interface GamepadInputDevice {
   readonly kind: 'gamepad';
   readonly gamepadIndex: number;
@@ -19,6 +27,8 @@ export interface HidInputDevice {
 export type LocalInputDevice =
   | SharedLocalInputDevice
   | KeyboardMouseInputDevice
+  | KeyboardInputDevice
+  | MouseInputDevice
   | GamepadInputDevice
   | HidInputDevice;
 
@@ -75,6 +85,8 @@ export function createInputSessionPlan(plan: InputSessionPlan): InputSessionPlan
   const phoneControllerIds = new Set<string>();
   let usesSharedLocal = false;
   let usesKeyboardMouse = false;
+  let usesKeyboard = false;
+  let usesMouse = false;
 
   for (const slot of plan.slots) {
     requireNonEmptyString(slot.slotId, 'Input session slotId');
@@ -117,11 +129,38 @@ export function createInputSessionPlan(plan: InputSessionPlan): InputSessionPlan
     }
 
     if (slot.binding.device.kind === 'keyboard_mouse') {
+      if (usesKeyboard || usesMouse) {
+        throw new Error('Input session plan cannot mix keyboard_mouse with keyboard or mouse slots.');
+      }
       if (usesKeyboardMouse) {
         throw new Error('Input session plan can assign keyboard_mouse to only one slot.');
       }
 
       usesKeyboardMouse = true;
+      continue;
+    }
+
+    if (slot.binding.device.kind === 'keyboard') {
+      if (usesKeyboardMouse) {
+        throw new Error('Input session plan cannot mix keyboard with keyboard_mouse slot.');
+      }
+      if (usesKeyboard) {
+        throw new Error('Input session plan can assign keyboard to only one slot.');
+      }
+
+      usesKeyboard = true;
+      continue;
+    }
+
+    if (slot.binding.device.kind === 'mouse') {
+      if (usesKeyboardMouse) {
+        throw new Error('Input session plan cannot mix mouse with keyboard_mouse slot.');
+      }
+      if (usesMouse) {
+        throw new Error('Input session plan can assign mouse to only one slot.');
+      }
+
+      usesMouse = true;
       continue;
     }
 

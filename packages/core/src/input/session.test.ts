@@ -13,13 +13,24 @@ describe('createInputSessionPlan', () => {
           binding: {
             transport: 'local',
             device: {
-              kind: 'keyboard_mouse'
+              kind: 'keyboard'
             }
           }
         },
         {
           slotId: 'p2',
           playerIndex: 1,
+          profileId: 'pong-mouse',
+          binding: {
+            transport: 'local',
+            device: {
+              kind: 'mouse'
+            }
+          }
+        },
+        {
+          slotId: 'p3',
+          playerIndex: 2,
           profileId: 'pong-gamepad',
           binding: {
             transport: 'local',
@@ -32,7 +43,38 @@ describe('createInputSessionPlan', () => {
       ]
     });
 
-    expect(plan.slots).toHaveLength(2);
+    expect(plan.slots).toHaveLength(3);
+  });
+
+  it('rejects mixing keyboard_mouse with separate keyboard slot', () => {
+    expect(() =>
+      createInputSessionPlan({
+        slots: [
+          {
+            slotId: 'p1',
+            playerIndex: 0,
+            profileId: 'pixel-shared-kbm',
+            binding: {
+              transport: 'local',
+              device: {
+                kind: 'keyboard_mouse'
+              }
+            }
+          },
+          {
+            slotId: 'p2',
+            playerIndex: 1,
+            profileId: 'pixel-keyboard',
+            binding: {
+              transport: 'local',
+              device: {
+                kind: 'keyboard'
+              }
+            }
+          }
+        ]
+      })
+    ).toThrowError('Input session plan cannot mix keyboard with keyboard_mouse slot.');
   });
 
   it('rejects mixing shared_local with any other slot', () => {

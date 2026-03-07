@@ -11,7 +11,6 @@ import {
   ENEMY_WIDTH,
   PLAYER_HEIGHT,
   PLAYER_RESPAWN_INVULNERABILITY,
-  PLAYER_SHOOT_COOLDOWN,
   PLAYER_SHOT_SPEED,
   PLAYER_SPEED,
   PLAYER_WIDTH,
@@ -32,7 +31,9 @@ import {
 } from './collision';
 import { resolveFriendlyFire } from './friendly-fire';
 import { applyLaneInput, playerLaneWorldY } from './player-lanes';
+import { spawnPickupsFromDefeatedUfos, stepPickups } from './pickups';
 import { clampPlayerX, decayPushbackVelocity, resolvePlayerSeparation, updateRecentMovementMomentum } from './player-separation';
+import { consumeShield, playerBulletCapacity, playerShootCooldown, tickPlayersPowerups } from './powerups';
 import { drainRowRespawnQueue, enqueueDefeatedRows } from './row-respawn';
 import { createInitialState } from './state';
 import type { Bullet, Enemy, FrameInput, GameState, PlayerState } from './types';
@@ -296,10 +297,14 @@ function spawnPlayerShots(
       return player;
     }
 
-    const hasPlayerBullet = nextBullets.some(
+    const activePlayerBulletCount = nextBullets.filter(
       (bullet) => bullet.owner === 'player' && bullet.playerIndex === player.playerIndex
-    );
-    if (!input.firePressed || player.shootTimer !== 0 || hasPlayerBullet) {
+    ).length;
+    if (
+      !input.firePressed ||
+      player.shootTimer !== 0 ||
+      activePlayerBulletCount >= playerBulletCapacity(player)
+    ) {
       return player;
     }
 
@@ -313,7 +318,7 @@ function spawnPlayerShots(
 
     return {
       ...player,
-      shootTimer: PLAYER_SHOOT_COOLDOWN
+      shootTimer: playerShootCooldown(player)
     };
   });
 
@@ -334,10 +339,12 @@ function resolvePlayerShots(
   readonly players: ReadonlyArray<PlayerState>;
   readonly enemies: ReadonlyArray<Enemy>;
   readonly bullets: ReadonlyArray<Bullet>;
+  readonly defeatedEnemies: ReadonlyArray<Enemy>;
 } {
   const playersByIndex = new Map<number, PlayerState>(players.map((player) => [player.playerIndex, { ...player }]));
   const aliveById = new Set<number>();
   const hitPointsById = new Map<number, number>();
+  const defeatedEnemies: Enemy[] = [];
   enemies.forEach((enemy) => {
     if (enemy.alive) {
       aliveById.add(enemy.id);
@@ -408,6 +415,7 @@ function resolvePlayerShots(
       aliveById.delete(target.id);
       hitPointsById.set(target.id, 0);
       playersByIndex.set(bullet.playerIndex, awardPlayerScore(shooter, target.scoreValue));
+      defeatedEnemies.push(target);
       continue;
     }
 
@@ -444,7 +452,8 @@ function resolvePlayerShots(
         hitPoints: hitPoints === undefined ? enemy.hitPoints : hitPoints
       };
     }),
-    bullets: nextBullets
+    bullets: nextBullets,
+    defeatedEnemies
   };
 }
 
@@ -506,6 +515,12 @@ function resolveEnemyShots(
       throw new Error(`Player state is missing for hit playerIndex ${hitPlayerIndex}.`);
     }
 
+    const shield = consumeShield(hitPlayer);
+    if (shield.consumed) {
+      playersByIndex.set(hitPlayerIndex, shield.player);
+      return false;
+    }
+
     anyPlayerHit = true;
     const nextLives = hitPlayer.lives - 1;
     playersByIndex.set(hitPlayerIndex, {
@@ -541,7 +556,7 @@ function livingPlayerFrontlineY(players: ReadonlyArray<PlayerState>): number {
     return playerLaneWorldY('low');
   }
 
-  return Math.min(...livingPlayers.map((player) => playerLaneWorldY(player.lane)));
+  return Math.max(...livingPlayers.map((player) => playerLaneWorldY(player.lane)));
 }
 
 function enemiesReachedPlayer(
@@ -611,8 +626,11 @@ export function stepGame(
   }
 
   const elapsedTimeSec = state.elapsedTimeSec + dt;
-  let players = resolvePlayerSeparation(updatePlayers(state.players, inputByPlayerIndex, dt));
+  let players = tickPlayersPowerups(resolvePlayerSeparation(updatePlayers(state.players, inputByPlayerIndex, dt)), dt);
   let bullets = moveBullets(state.bullets, dt);
+  const steppedPickups = stepPickups(players, state.pickups, dt);
+  players = steppedPickups.players;
+  let pickups = steppedPickups.pickups;
 
   const spawnedShots = spawnPlayerShots(players, bullets, inputByPlayerIndex);
   players = spawnedShots.players;
@@ -642,6 +660,14 @@ export function stepGame(
     options.collisionRuntime,
     collisionDebug
   );
+  const spawnedPickups = spawnPickupsFromDefeatedUfos(
+    pickups,
+    state.nextPickupId,
+    rngSeed,
+    resolvedPlayerShots.defeatedEnemies
+  );
+  pickups = spawnedPickups.pickups;
+  rngSeed = spawnedPickups.rngSeed;
   const resolvedEnemyShots = resolveEnemyShots(
     resolvedPlayerShots.players,
     resolvedPlayerShots.bullets,
@@ -677,6 +703,8 @@ export function stepGame(
       rngSeed: respawnResult.rngSeed,
       enemies: respawnResult.enemies,
       bullets: filteredBullets.bullets,
+      pickups,
+      nextPickupId: spawnedPickups.nextPickupId,
       pendingRowRespawns: respawnResult.pendingRowRespawns
     },
     collisionDebug: freezeCollisionDebugFrame(collisionDebug)

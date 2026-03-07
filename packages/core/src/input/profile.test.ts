@@ -70,6 +70,32 @@ describe('createInputProfile', () => {
     expect(profile.bindings).toHaveLength(2);
   });
 
+  it('accepts mouse Y absolute binding', () => {
+    const catalog = createActionCatalog([
+      { id: 'PADDLE_Y', type: 'axis_1d', space: 'absolute', domain: 'byte' }
+    ]);
+
+    const profile = createInputProfile(catalog, {
+      id: 'player-1',
+      playerIndex: 0,
+      bindings: [
+        {
+          id: 'paddle-mouse-y',
+          actionId: 'PADDLE_Y',
+          type: 'axis_1d',
+          source: {
+            kind: 'mouse_position_y',
+            code: 'MouseY'
+          },
+          scale: 1,
+          invert: false
+        }
+      ]
+    });
+
+    expect(profile.bindings[0]?.source.kind).toBe('mouse_position_y');
+  });
+
   it('rejects multiple absolute bindings for one action', () => {
     const catalog = createActionCatalog([
       { id: 'PADDLE_X', type: 'axis_1d', space: 'absolute', domain: 'byte' }

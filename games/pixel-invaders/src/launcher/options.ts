@@ -1,3 +1,5 @@
+import pixelInvadersThumbnail from '../../screenshots/start-screen-1080p.png';
+import tunnelInvadersThumbnail from '../../../tunnel-invaders/screenshots/launcher-thumbnail.png';
 import type { MultiplayerGameLaunchPlayerSlot } from '../launch-contract';
 import { PIXEL_PHONE_LINK_CONTROLLER_ID } from '../launch-contract';
 
@@ -6,6 +8,8 @@ export interface GameOption {
   readonly label: string;
   readonly description: string;
   readonly sceneKey: string;
+  readonly thumbnailSrc: string;
+  readonly thumbnailAlt: string;
   readonly controllerOptions: ReadonlyArray<ControllerOption>;
 }
 
@@ -35,7 +39,8 @@ function createPixelSlot(
   controllerLabel: string,
   device:
     | { readonly kind: 'shared_local' }
-    | { readonly kind: 'keyboard_mouse' }
+    | { readonly kind: 'keyboard' }
+    | { readonly kind: 'mouse' }
     | { readonly kind: 'gamepad'; readonly gamepadIndex: number }
 ): MultiplayerGameLaunchPlayerSlot {
   return {
@@ -81,26 +86,53 @@ export const GAME_OPTIONS: ReadonlyArray<GameOption> = [
     label: 'Pixel Invaders',
     description: 'Klasyczny test loop: ruch, strzal, fala przeciwnikow.',
     sceneKey: 'pixel-invaders',
+    thumbnailSrc: pixelInvadersThumbnail,
+    thumbnailAlt: 'Pixel Invaders screenshot',
     controllerOptions: [
       {
-        id: 'pixel-solo-hybrid',
-        label: 'Solo Hybrid',
-        description: 'Jeden gracz: klawiatura + mysz + pierwszy pad jako wspolne lokalne wejscie.',
+        id: 'pixel-solo-keyboard',
+        label: 'Solo Keyboard',
+        description: 'Jeden gracz: osobny slot klawiatury.',
         launchMode: 'pixel_multiplayer',
         playerSlots: [
-          createPixelSlot('player-1', 0, 'pixel-invaders-hybrid', 'Hybrid Local', {
-            kind: 'shared_local'
+          createPixelSlot('player-1', 0, 'pixel-invaders-keyboard-only', 'Keyboard', {
+            kind: 'keyboard'
+          })
+        ]
+      },
+      {
+        id: 'pixel-solo-mouse',
+        label: 'Solo Mouse',
+        description: 'Jeden gracz: osobny slot myszy z ruchem X/Y i fire na klik.',
+        launchMode: 'pixel_multiplayer',
+        playerSlots: [
+          createPixelSlot('player-1', 0, 'pixel-invaders-mouse-paddle', 'Mouse', {
+            kind: 'mouse'
+          })
+        ]
+      },
+      {
+        id: 'pixel-coop-kb-mouse',
+        label: 'KB + Mouse',
+        description: 'Dwa lokalne sloty: klawiatura dla P1 i mysz dla P2.',
+        launchMode: 'pixel_multiplayer',
+        playerSlots: [
+          createPixelSlot('player-1', 0, 'pixel-invaders-keyboard-only', 'Keyboard', {
+            kind: 'keyboard'
+          }),
+          createPixelSlot('player-2', 1, 'pixel-invaders-mouse-paddle', 'Mouse', {
+            kind: 'mouse'
           })
         ]
       },
       {
         id: 'pixel-coop-kb-pad',
         label: 'KB + Pad',
-        description: 'Dwa lokalne sloty: klawiatura/mysz dla P1 i pad 1 dla P2.',
+        description: 'Dwa lokalne sloty: klawiatura dla P1 i pad 1 dla P2.',
         launchMode: 'pixel_multiplayer',
         playerSlots: [
-          createPixelSlot('player-1', 0, 'pixel-invaders-keyboard-gamepad', 'Keyboard', {
-            kind: 'keyboard_mouse'
+          createPixelSlot('player-1', 0, 'pixel-invaders-keyboard-only', 'Keyboard', {
+            kind: 'keyboard'
           }),
           createPixelSlot('player-2', 1, 'pixel-invaders-keyboard-gamepad', 'Gamepad 1', {
             kind: 'gamepad',
@@ -151,6 +183,8 @@ export const GAME_OPTIONS: ReadonlyArray<GameOption> = [
     label: 'Tunnel Invaders',
     description: 'Pseudo-3D tunel: przeciwnicy nadlatuja z glebi na krawedz.',
     sceneKey: 'tunnel-invaders',
+    thumbnailSrc: tunnelInvadersThumbnail,
+    thumbnailAlt: 'Tunnel Invaders screenshot',
     controllerOptions: [
       {
         id: 'tunnel-solo-default',

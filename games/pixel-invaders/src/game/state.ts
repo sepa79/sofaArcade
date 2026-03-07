@@ -62,7 +62,8 @@ function createPlayers(playerCount: number): ReadonlyArray<PlayerState> {
     pushbackVelocityX: 0,
     score: 0,
     hitStreak: 0,
-    scoreMultiplier: 1
+    scoreMultiplier: 1,
+    activePowerups: []
   }));
 }
 
@@ -77,6 +78,8 @@ export function createInitialState(seed: number, playerCount: number): GameState
     rngSeed: seed,
     enemies: createEnemyGrid(),
     bullets: [],
+    pickups: [],
+    nextPickupId: 0,
     pendingRowRespawns: []
   };
 }

@@ -19,6 +19,10 @@ export const PLAYER_PUSHBACK_DECAY_PER_SECOND = 760;
 export const PLAYER_PUSHBACK_SPEED_MAX = 280;
 export const PLAYER_FRIENDLY_FIRE_PUSHBACK_DISTANCE = 18;
 export const PLAYER_FRIENDLY_FIRE_PUSHBACK_VELOCITY = 180;
+export const PLAYER_RAPID_FIRE_SHOOT_COOLDOWN = 0.08;
+export const PLAYER_RAPID_FIRE_BULLET_CAPACITY = 3;
+export const POWERUP_SHIELD_DURATION_SEC = 14;
+export const POWERUP_RAPID_FIRE_DURATION_SEC = 10;
 
 export const ENEMY_WIDTH = 44;
 export const ENEMY_HEIGHT = 30;
@@ -49,6 +53,8 @@ export const BULLET_WIDTH = 4;
 export const BULLET_HEIGHT = 14;
 export const PLAYER_ACTIVE_WIDTH = 38;
 export const PLAYER_ACTIVE_HEIGHT = 18;
+export const PICKUP_SIZE = 18;
+export const PICKUP_FALL_SPEED = 120;
 
 export const PLAYER_LIVES = 3;
 

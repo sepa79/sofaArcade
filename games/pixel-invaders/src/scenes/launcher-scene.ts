@@ -75,7 +75,7 @@ interface LauncherDom {
   readonly gameTitle: HTMLDivElement;
   readonly gameDescription: HTMLDivElement;
   readonly startButton: HTMLButtonElement;
-  readonly previewLabel: HTMLDivElement;
+  readonly previewImage: HTMLImageElement;
   readonly settingsPanel: HTMLElement;
   readonly joystickButton: HTMLButtonElement;
   readonly speakerButton: HTMLButtonElement;
@@ -194,18 +194,6 @@ function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
 }
 
-function previewLabel(game: GameOption): string {
-  if (game.id === 'pixel-invaders') {
-    return 'PIXEL SKYLINE';
-  }
-
-  if (game.id === 'tunnel-invaders') {
-    return 'TUNNEL VECTOR';
-  }
-
-  return 'RETRO PREVIEW';
-}
-
 function gameDescription(game: GameOption, language: LauncherLanguage): string {
   if (language === 'pl') {
     if (game.id === 'pixel-invaders') {
@@ -231,11 +219,17 @@ function controllerDescription(option: ControllerOption, language: LauncherLangu
     return option.description;
   }
 
-  if (option.id === 'pixel-solo-hybrid') {
-    return 'One player: keyboard + mouse + first gamepad as a shared local input set.';
+  if (option.id === 'pixel-solo-keyboard') {
+    return 'One player on a dedicated keyboard slot.';
+  }
+  if (option.id === 'pixel-solo-mouse') {
+    return 'One player on a dedicated mouse slot with X and lane control on pointer move.';
+  }
+  if (option.id === 'pixel-coop-kb-mouse') {
+    return 'Two local slots: keyboard for P1 and mouse for P2.';
   }
   if (option.id === 'pixel-coop-kb-pad') {
-    return 'Two local slots: keyboard/mouse for P1 and gamepad 1 for P2.';
+    return 'Two local slots: keyboard for P1 and gamepad 1 for P2.';
   }
   if (option.id === 'pixel-coop-two-pads') {
     return 'Two gamepads on separate local slots. Best couch setup without keyboard.';
@@ -629,8 +623,9 @@ export class LauncherScene extends Phaser.Scene {
     startButton.className = 'launcher-start-button';
     startButton.type = 'button';
 
-    const previewLabel = document.createElement('div');
-    previewLabel.className = 'launcher-preview-label';
+    const previewImage = document.createElement('img');
+    previewImage.className = 'launcher-preview-image';
+    previewImage.alt = '';
 
     const leftColumn = document.createElement('div');
     leftColumn.className = 'launcher-game-left';
@@ -638,7 +633,7 @@ export class LauncherScene extends Phaser.Scene {
 
     const rightColumn = document.createElement('div');
     rightColumn.className = 'launcher-game-right';
-    rightColumn.append(previewLabel);
+    rightColumn.append(previewImage);
 
     gameCard.append(leftColumn, rightColumn);
     gamePanel.append(arrowLeftButton, gameCard, arrowRightButton);
@@ -773,7 +768,7 @@ export class LauncherScene extends Phaser.Scene {
       gameTitle,
       gameDescription,
       startButton,
-      previewLabel,
+      previewImage,
       settingsPanel,
       joystickButton,
       speakerButton,
@@ -1054,7 +1049,8 @@ export class LauncherScene extends Phaser.Scene {
     this.dom.gameTitle.textContent = `${this.state.cursorIndex === MENU_ROW_GAME ? '>' : ''} ${gameOption.label}`;
     this.dom.gameDescription.textContent = gameDescription(gameOption, this.language);
     this.dom.startButton.textContent = copy.start;
-    this.dom.previewLabel.textContent = previewLabel(gameOption);
+    this.dom.previewImage.src = gameOption.thumbnailSrc;
+    this.dom.previewImage.alt = gameOption.thumbnailAlt;
     this.dom.languageEnButton.classList.toggle('is-active', this.language === 'en');
     this.dom.languagePlButton.classList.toggle('is-active', this.language === 'pl');
     this.dom.helpModal.classList.toggle('is-visible', this.helpVisible);

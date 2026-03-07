@@ -7,6 +7,7 @@ import {
   createInputSourceFrame,
   loadInputProfile,
   type LocalInputBinding,
+  type LocalInputDevice,
   type PhoneLinkInputBinding,
   type InputSlotBinding,
   type InputProfile,
@@ -14,16 +15,16 @@ import {
   type MatchInput
 } from '@light80/core';
 
-import hybridProfileJson from '../profiles/pixel-invaders.hybrid.input-profile.json';
+import keyboardOnlyProfileJson from '../profiles/pixel-invaders.keyboard-only.input-profile.json';
 import keyboardGamepadProfileJson from '../profiles/pixel-invaders.keyboard-gamepad.input-profile.json';
 import mousePaddleProfileJson from '../profiles/pixel-invaders.mouse-paddle.input-profile.json';
 import type { MultiplayerGameLaunchPlayerSlot } from '../launch-contract';
 import { nextPhoneControllerFrame } from '../phone/host-link';
-import type { FrameInput } from './types';
+import type { FrameInput, PlayerLane } from './types';
 
 const ACTION_MOVE_X_RELATIVE = 'MOVE_X_RELATIVE';
 const ACTION_MOVE_X_ABSOLUTE = 'MOVE_X_ABSOLUTE';
-const ACTION_MOVE_X_ABSOLUTE_ACTIVE = 'MOVE_X_ABSOLUTE_ACTIVE';
+const ACTION_MOVE_LANE_SELECT = 'MOVE_LANE_SELECT';
 const ACTION_MOVE_LANE_UP = 'MOVE_LANE_UP';
 const ACTION_MOVE_LANE_DOWN = 'MOVE_LANE_DOWN';
 const ACTION_FIRE_PRIMARY = 'FIRE_PRIMARY';
@@ -32,7 +33,7 @@ const ACTION_RESTART = 'RESTART';
 const SOURCE_KEYBOARD_MOVE_X = 'keyboard.move_x';
 const SOURCE_GAMEPAD_MOVE_X = 'gamepad.move_x';
 const SOURCE_POINTER_X_BYTE = 'pointer.x.byte';
-const SOURCE_POINTER_PRIMARY_DOWN = 'pointer.primary_down';
+const SOURCE_POINTER_Y_BYTE = 'pointer.y.byte';
 const SOURCE_POINTER_FIRE = 'pointer.fire';
 const SOURCE_KEYBOARD_FIRE = 'keyboard.fire';
 const SOURCE_GAMEPAD_FIRE = 'gamepad.fire';
@@ -57,8 +58,10 @@ const GAME_ACTION_CATALOG = createActionCatalog([
     domain: 'byte'
   },
   {
-    id: ACTION_MOVE_X_ABSOLUTE_ACTIVE,
-    type: 'digital'
+    id: ACTION_MOVE_LANE_SELECT,
+    type: 'axis_1d',
+    space: 'absolute',
+    domain: 'byte'
   },
   {
     id: ACTION_MOVE_LANE_UP,
@@ -79,9 +82,9 @@ const GAME_ACTION_CATALOG = createActionCatalog([
 ]);
 
 const GAME_INPUT_PROFILES = [
+  loadInputProfile(GAME_ACTION_CATALOG, keyboardOnlyProfileJson),
   loadInputProfile(GAME_ACTION_CATALOG, keyboardGamepadProfileJson),
-  loadInputProfile(GAME_ACTION_CATALOG, mousePaddleProfileJson),
-  loadInputProfile(GAME_ACTION_CATALOG, hybridProfileJson)
+  loadInputProfile(GAME_ACTION_CATALOG, mousePaddleProfileJson)
 ] as const;
 
 const GAME_INPUT_PROFILE_BY_ID = new Map<string, InputProfile>(
@@ -109,6 +112,8 @@ export interface InputContext {
 export interface PointerRange {
   readonly minX: number;
   readonly maxX: number;
+  readonly minY: number;
+  readonly maxY: number;
 }
 
 export interface LocalPlayerInputContext {
@@ -148,6 +153,14 @@ function requireProfile(profileId: string): InputProfile {
   }
 
   return profile;
+}
+
+function profileHasBinding(profile: InputProfile, actionId: string): boolean {
+  return profile.bindings.some((binding) => binding.actionId === actionId);
+}
+
+function localDeviceUsesMouse(device: LocalInputDevice): boolean {
+  return device.kind === 'mouse' || device.kind === 'shared_local';
 }
 
 function clampSigned(value: number): number {
@@ -211,11 +224,27 @@ function readPhoneFrameInput(phoneControllerId: string): FrameInput {
   return {
     moveAxisSigned: frame.connected ? frame.moveX : 0,
     moveAbsoluteUnit: null,
+    moveLaneTarget: null,
     moveLaneUpPressed: false,
     moveLaneDownPressed: false,
     firePressed: frame.fire,
     restartPressed: frame.start
   };
+}
+
+function pointerByteToLane(pointerYByte: number): PlayerLane {
+  if (!Number.isFinite(pointerYByte) || pointerYByte < 0 || pointerYByte > 255) {
+    throw new Error(`pointerYByte must be in [0, 255], got ${pointerYByte}.`);
+  }
+
+  if (pointerYByte < 85) {
+    return 'high';
+  }
+  if (pointerYByte < 170) {
+    return 'mid';
+  }
+
+  return 'low';
 }
 
 function createLocalSourceFrame(
@@ -231,15 +260,17 @@ function createLocalSourceFrame(
   const pointer = scene.input.activePointer;
   const pointerMinX = pointerRange?.minX ?? 0;
   const pointerMaxX = pointerRange?.maxX ?? scene.scale.width;
+  const pointerMinY = pointerRange?.minY ?? 0;
+  const pointerMaxY = pointerRange?.maxY ?? scene.scale.height;
 
   let keyboardAxis = 0;
   let keyboardFire = false;
   let keyboardLaneUp = false;
   let keyboardLaneDown = false;
   let keyboardRestart = false;
-  let pointerPrimaryDown = false;
   let pointerFire = false;
   const pointerXByte = toByteRange(pointer.x, pointerMinX, pointerMaxX);
+  const pointerYByte = toByteRange(pointer.y, pointerMinY, pointerMaxY);
   let gamepad: Gamepad | null = null;
 
   if (binding.device.kind === 'shared_local') {
@@ -248,16 +279,15 @@ function createLocalSourceFrame(
     keyboardLaneUp = keys.up.isDown || keys.altUp.isDown;
     keyboardLaneDown = keys.down.isDown || keys.altDown.isDown;
     keyboardRestart = keys.restart.isDown;
-    pointerPrimaryDown = pointer.isDown;
     pointerFire = pointer.isDown;
     gamepad = firstConnectedGamepad();
-  } else if (binding.device.kind === 'keyboard_mouse') {
+  } else if (binding.device.kind === 'keyboard') {
     keyboardAxis = readKeyboardAxis(keys);
     keyboardFire = keys.fire.isDown;
     keyboardLaneUp = keys.up.isDown || keys.altUp.isDown;
     keyboardLaneDown = keys.down.isDown || keys.altDown.isDown;
     keyboardRestart = keys.restart.isDown;
-    pointerPrimaryDown = pointer.isDown;
+  } else if (binding.device.kind === 'mouse') {
     pointerFire = pointer.isDown;
   } else if (binding.device.kind === 'gamepad') {
     gamepad = connectedGamepad(binding.device.gamepadIndex);
@@ -267,7 +297,6 @@ function createLocalSourceFrame(
 
   return createInputSourceFrame({
     digital: {
-      [SOURCE_POINTER_PRIMARY_DOWN]: pointerPrimaryDown,
       [SOURCE_POINTER_FIRE]: pointerFire,
       [SOURCE_KEYBOARD_FIRE]: keyboardFire,
       [SOURCE_GAMEPAD_FIRE]: buttonPressed(gamepad, 0),
@@ -281,7 +310,8 @@ function createLocalSourceFrame(
     axis: {
       [SOURCE_KEYBOARD_MOVE_X]: keyboardAxis,
       [SOURCE_GAMEPAD_MOVE_X]: readGamepadAxis(gamepad),
-      [SOURCE_POINTER_X_BYTE]: pointerXByte
+      [SOURCE_POINTER_X_BYTE]: pointerXByte,
+      [SOURCE_POINTER_Y_BYTE]: pointerYByte
     }
   });
 }
@@ -304,17 +334,30 @@ function readPlayerFrameInput(
     pointerRange
   );
   applyInputProfile(localPlayerInputContext.runtime, localPlayerInputContext.profile, sourceFrame);
+  const absoluteMoveBound = profileHasBinding(localPlayerInputContext.profile, ACTION_MOVE_X_ABSOLUTE);
+  const laneSelectBound = profileHasBinding(localPlayerInputContext.profile, ACTION_MOVE_LANE_SELECT);
+  const laneTarget = laneSelectBound
+    ? pointerByteToLane(localPlayerInputContext.runtime.readAxisRaw(ACTION_MOVE_LANE_SELECT))
+    : null;
 
   return {
     moveAxisSigned: localPlayerInputContext.runtime.readAxisSigned(ACTION_MOVE_X_RELATIVE),
-    moveAbsoluteUnit: localPlayerInputContext.runtime.isPressed(ACTION_MOVE_X_ABSOLUTE_ACTIVE)
+    moveAbsoluteUnit: absoluteMoveBound
       ? localPlayerInputContext.runtime.readAxisUnit(ACTION_MOVE_X_ABSOLUTE)
       : null,
+    moveLaneTarget: laneTarget,
     moveLaneUpPressed: localPlayerInputContext.runtime.wasPressed(ACTION_MOVE_LANE_UP),
     moveLaneDownPressed: localPlayerInputContext.runtime.wasPressed(ACTION_MOVE_LANE_DOWN),
     firePressed: localPlayerInputContext.runtime.isPressed(ACTION_FIRE_PRIMARY),
     restartPressed: localPlayerInputContext.runtime.wasPressed(ACTION_RESTART)
   };
+}
+
+export function inputContextUsesMouseControl(inputContext: InputContext): boolean {
+  return inputContext.playerSlots.some(
+    (playerSlot) =>
+      !isPhonePlayerInputContext(playerSlot) && localDeviceUsesMouse(playerSlot.binding.device)
+  );
 }
 
 export function describeInputContext(inputContext: InputContext): string {
@@ -340,23 +383,31 @@ export function createInputContext(
       fire: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE),
       restart: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER)
     },
-    playerSlots: playerSlots.map((playerSlot) => ({
-      ...(playerSlot.binding.transport === 'phone_link'
-        ? {
-            slotId: playerSlot.slotId,
-            playerIndex: playerSlot.playerIndex,
-            controllerLabel: playerSlot.controllerLabel,
-            binding: playerSlot.binding
-          }
-        : {
-            slotId: playerSlot.slotId,
-            playerIndex: playerSlot.playerIndex,
-            controllerLabel: playerSlot.controllerLabel,
-            binding: playerSlot.binding,
-            runtime: createInputRuntime(GAME_ACTION_CATALOG),
-            profile: requireProfile(playerSlot.profileId)
-          })
-    }))
+    playerSlots: playerSlots.map((playerSlot) => {
+      if (playerSlot.binding.transport === 'phone_link') {
+        return {
+          slotId: playerSlot.slotId,
+          playerIndex: playerSlot.playerIndex,
+          controllerLabel: playerSlot.controllerLabel,
+          binding: playerSlot.binding
+        };
+      }
+
+      if (playerSlot.binding.device.kind === 'keyboard_mouse') {
+        throw new Error(
+          `Pixel Invaders does not support keyboard_mouse device on slot "${playerSlot.slotId}". Use separate keyboard and mouse slots.`
+        );
+      }
+
+      return {
+        slotId: playerSlot.slotId,
+        playerIndex: playerSlot.playerIndex,
+        controllerLabel: playerSlot.controllerLabel,
+        binding: playerSlot.binding,
+        runtime: createInputRuntime(GAME_ACTION_CATALOG),
+        profile: requireProfile(playerSlot.profileId)
+      };
+    })
   };
 }
 

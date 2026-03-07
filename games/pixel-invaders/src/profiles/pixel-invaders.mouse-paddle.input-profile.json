@@ -14,49 +14,15 @@
       "invert": false
     },
     {
-      "id": "move-pointer-active",
-      "actionId": "MOVE_X_ABSOLUTE_ACTIVE",
-      "type": "digital",
+      "id": "move-pointer-lane-select",
+      "actionId": "MOVE_LANE_SELECT",
+      "type": "axis_1d",
       "source": {
-        "kind": "mouse_button",
-        "code": "pointer.primary_down"
-      }
-    },
-    {
-      "id": "lane-up-keyboard",
-      "actionId": "MOVE_LANE_UP",
-      "type": "digital",
-      "source": {
-        "kind": "keyboard_key",
-        "code": "keyboard.lane_up"
-      }
-    },
-    {
-      "id": "lane-up-gamepad",
-      "actionId": "MOVE_LANE_UP",
-      "type": "digital",
-      "source": {
-        "kind": "gamepad_button",
-        "code": "gamepad.lane_up"
-      }
-    },
-    {
-      "id": "lane-down-keyboard",
-      "actionId": "MOVE_LANE_DOWN",
-      "type": "digital",
-      "source": {
-        "kind": "keyboard_key",
-        "code": "keyboard.lane_down"
-      }
-    },
-    {
-      "id": "lane-down-gamepad",
-      "actionId": "MOVE_LANE_DOWN",
-      "type": "digital",
-      "source": {
-        "kind": "gamepad_button",
-        "code": "gamepad.lane_down"
-      }
+        "kind": "mouse_position_y",
+        "code": "pointer.y.byte"
+      },
+      "scale": 1,
+      "invert": false
     },
     {
       "id": "fire-pointer",
@@ -65,24 +31,6 @@
       "source": {
         "kind": "mouse_button",
         "code": "pointer.fire"
-      }
-    },
-    {
-      "id": "restart-keyboard",
-      "actionId": "RESTART",
-      "type": "digital",
-      "source": {
-        "kind": "keyboard_key",
-        "code": "keyboard.restart"
-      }
-    },
-    {
-      "id": "restart-gamepad",
-      "actionId": "RESTART",
-      "type": "digital",
-      "source": {
-        "kind": "gamepad_button",
-        "code": "gamepad.restart"
       }
     }
   ]

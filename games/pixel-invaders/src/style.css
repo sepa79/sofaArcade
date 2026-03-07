@@ -233,13 +233,15 @@ body {
 .launcher-game-right {
   flex: 0 0 min(34%, 360px);
   min-width: 0;
+  aspect-ratio: 16 / 9;
   border: 2px solid #67dcff;
   border-radius: 12px;
   background: linear-gradient(180deg, rgba(43, 94, 167, 0.95), rgba(33, 69, 128, 0.95));
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 14px;
+  padding: 10px;
+  overflow: hidden;
 }
 
 .launcher-game-title {
@@ -276,12 +278,13 @@ body {
   background: #f08b2b;
 }
 
-.launcher-preview-label {
-  color: #9ef3ff;
-  font-size: clamp(18px, 3.9vh, 54px);
-  line-height: 1.08;
-  text-align: center;
-  word-break: break-word;
+.launcher-preview-image {
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+  object-fit: cover;
+  object-position: center;
+  display: block;
 }
 
 .launcher-settings-panel {

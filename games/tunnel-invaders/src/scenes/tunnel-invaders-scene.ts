@@ -20,7 +20,7 @@ import {
 } from '../game/constants';
 import backgroundMusicTrack from '../../../shared-assets/src/game-bgm.mp3';
 import { enemyHitArc, enemyHitDepthWindow, playerHitArc, playerHitDepthWindow } from '../game/hitbox';
-import { createInputContext, readFrameInput } from '../game/input';
+import { createInputContext, inputContextUsesMouseControl, readFrameInput } from '../game/input';
 import { stepGame } from '../game/logic';
 import { createInitialState } from '../game/state';
 import explosionSrc1Image from '../../../shared-assets/src/explosion_src_1.png';
@@ -708,10 +708,12 @@ export class TunnelInvadersScene extends Phaser.Scene {
     this.debugText.setVisible(this.debugOverlayVisible);
 
     this.inputContext = createInputContext(this, this.launchData.controllerProfileId);
+    this.input.setDefaultCursor(inputContextUsesMouseControl(this.inputContext) ? 'none' : 'default');
     this.cameras.main.setBackgroundColor('#000000');
     this.refreshCrtOverlay();
     this.initializeBackgroundMusic();
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.input.setDefaultCursor('default');
       this.stopBackgroundMusic();
       this.sfx.shutdown();
     });

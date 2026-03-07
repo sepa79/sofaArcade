@@ -16,7 +16,8 @@ const BASE_PLAYERS: ReadonlyArray<PlayerState> = [
     pushbackVelocityX: 0,
     score: 0,
     hitStreak: 0,
-    scoreMultiplier: 1
+    scoreMultiplier: 1,
+    activePowerups: []
   },
   {
     playerIndex: 1,
@@ -29,7 +30,8 @@ const BASE_PLAYERS: ReadonlyArray<PlayerState> = [
     pushbackVelocityX: 0,
     score: 0,
     hitStreak: 0,
-    scoreMultiplier: 1
+    scoreMultiplier: 1,
+    activePowerups: []
   }
 ];
 

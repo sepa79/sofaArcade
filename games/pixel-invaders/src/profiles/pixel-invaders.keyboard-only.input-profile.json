@@ -1,0 +1,53 @@
+{
+  "id": "pixel-invaders-keyboard-only",
+  "playerIndex": 0,
+  "bindings": [
+    {
+      "id": "move-keyboard-axis",
+      "actionId": "MOVE_X_RELATIVE",
+      "type": "axis_1d",
+      "source": {
+        "kind": "keyboard_axis",
+        "code": "keyboard.move_x"
+      },
+      "scale": 1,
+      "invert": false
+    },
+    {
+      "id": "lane-up-keyboard",
+      "actionId": "MOVE_LANE_UP",
+      "type": "digital",
+      "source": {
+        "kind": "keyboard_key",
+        "code": "keyboard.lane_up"
+      }
+    },
+    {
+      "id": "lane-down-keyboard",
+      "actionId": "MOVE_LANE_DOWN",
+      "type": "digital",
+      "source": {
+        "kind": "keyboard_key",
+        "code": "keyboard.lane_down"
+      }
+    },
+    {
+      "id": "fire-keyboard",
+      "actionId": "FIRE_PRIMARY",
+      "type": "digital",
+      "source": {
+        "kind": "keyboard_key",
+        "code": "keyboard.fire"
+      }
+    },
+    {
+      "id": "restart-keyboard",
+      "actionId": "RESTART",
+      "type": "digital",
+      "source": {
+        "kind": "keyboard_key",
+        "code": "keyboard.restart"
+      }
+    }
+  ]
+}

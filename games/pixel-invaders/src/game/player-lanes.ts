@@ -35,6 +35,10 @@ export function playerLaneLabel(lane: PlayerLane): string {
 }
 
 export function applyLaneInput(lane: PlayerLane, input: FrameInput): PlayerLane {
+  if (input.moveLaneTarget !== null) {
+    return input.moveLaneTarget;
+  }
+
   const laneOffset = (input.moveLaneUpPressed ? 1 : 0) - (input.moveLaneDownPressed ? 1 : 0);
   if (laneOffset === 0) {
     return lane;

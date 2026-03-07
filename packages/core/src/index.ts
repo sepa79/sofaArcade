@@ -25,9 +25,11 @@ export {
   type InputSessionPlan,
   type InputSessionSlot,
   type InputSlotBinding,
+  type KeyboardInputDevice,
   type KeyboardMouseInputDevice,
   type LocalInputBinding,
   type LocalInputDevice,
+  type MouseInputDevice,
   type PhoneLinkInputBinding,
   type SharedLocalInputDevice
 } from './input/session';

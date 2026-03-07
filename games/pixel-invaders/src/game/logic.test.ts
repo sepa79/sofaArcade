@@ -13,6 +13,7 @@ import {
   ENEMY_UFO_HIT_POINTS,
   ENEMY_UFO_SCORE,
   FIXED_TIMESTEP,
+  PLAYER_RAPID_FIRE_SHOOT_COOLDOWN,
   PLAYER_ACTIVE_HEIGHT,
   PLAYER_ACTIVE_WIDTH,
   PLAYER_COLLISION_WIDTH
@@ -42,6 +43,7 @@ function emptyInput(): FrameInput {
   return {
     moveAxisSigned: 0,
     moveAbsoluteUnit: null,
+    moveLaneTarget: null,
     moveLaneUpPressed: false,
     moveLaneDownPressed: false,
     firePressed: false,
@@ -167,6 +169,43 @@ describe('stepGame', () => {
     expect(next.players[0]?.lives).toBe(2);
   });
 
+  it('consumes shield instead of life on enemy bullet hit', () => {
+    const state = createInitialState(13, 1);
+    const player = state.players[0];
+
+    const customState: GameState = {
+      ...state,
+      phase: 'playing',
+      players: state.players.map((currentPlayer) =>
+        currentPlayer.playerIndex === player.playerIndex
+          ? {
+              ...currentPlayer,
+              activePowerups: [
+                {
+                  kind: 'shield',
+                  remainingSec: 10
+                }
+              ]
+            }
+          : currentPlayer
+      ),
+      bullets: [
+        {
+          owner: 'enemy',
+          playerIndex: null,
+          x: player.x,
+          y: playerLaneWorldY(player.lane),
+          vy: 0
+        }
+      ]
+    };
+
+    const next = stepState(customState);
+
+    expect(next.players[0]?.lives).toBe(player.lives);
+    expect(next.players[0]?.activePowerups).toHaveLength(0);
+  });
+
   it('drops enemies when formation reaches boundary', () => {
     const state = createInitialState(3, 1);
 
@@ -203,6 +242,48 @@ describe('stepGame', () => {
     );
 
     expect(next.players[0].x).toBeGreaterThan(player.x);
+  });
+
+  it('lets rapid fire exceed the normal single-bullet limit', () => {
+    const state = createInitialState(24, 1);
+    const player = state.players[0];
+
+    const customState: GameState = {
+      ...state,
+      phase: 'playing',
+      players: state.players.map((currentPlayer) =>
+        currentPlayer.playerIndex === player.playerIndex
+          ? {
+              ...currentPlayer,
+              activePowerups: [
+                {
+                  kind: 'rapid-fire',
+                  remainingSec: 10
+                }
+              ]
+            }
+          : currentPlayer
+      ),
+      bullets: [
+        {
+          owner: 'player',
+          playerIndex: player.playerIndex,
+          x: player.x,
+          y: playerLaneWorldY(player.lane) - 100,
+          vy: -200
+        }
+      ]
+    };
+
+    const next = stepState(customState, [
+      {
+        ...emptyInput(),
+        firePressed: true
+      }
+    ]);
+
+    expect(next.bullets.filter((bullet) => bullet.owner === 'player')).toHaveLength(2);
+    expect(next.players[0]?.shootTimer).toBe(PLAYER_RAPID_FIRE_SHOOT_COOLDOWN);
   });
 
   it('increases bonus multiplier with consecutive hits', () => {
@@ -432,6 +513,41 @@ describe('stepGame', () => {
     expect(totalPlayerScore(afterThirdHit.players)).toBe(ENEMY_UFO_SCORE);
   });
 
+  it('spawns a pickup when ufo is destroyed', () => {
+    const state = createInitialState(62, 1);
+    const target = state.enemies[0];
+    const player = state.players[0];
+
+    const customState: GameState = {
+      ...state,
+      phase: 'playing',
+      enemies: state.enemies.map((enemy) =>
+        enemy.id === target.id
+          ? {
+              ...enemy,
+              kind: 'ufo',
+              scoreValue: ENEMY_UFO_SCORE,
+              hitPoints: 1
+            }
+          : enemy
+      ),
+      bullets: [
+        {
+          owner: 'player',
+          playerIndex: player.playerIndex,
+          x: target.x,
+          y: target.y,
+          vy: 0
+        }
+      ]
+    };
+
+    const next = stepState(customState);
+
+    expect(next.pickups).toHaveLength(1);
+    expect(next.nextPickupId).toBe(1);
+  });
+
   it('starts gameplay when any player presses fire in explicit ready phase', () => {
     const state: GameState = {
       ...createInitialState(23, 2),
@@ -654,5 +770,44 @@ describe('stepGame', () => {
 
     expect(next.players[0]?.pushbackVelocityX).toBe(0);
     expect(next.bullets).toHaveLength(1);
+  });
+
+  it('does not trigger game over while enemies are only at a higher occupied lane', () => {
+    const state = createInitialState(50, 2);
+    const highLaneFrontline = playerLaneWorldY('high') - PLAYER_ACTIVE_HEIGHT;
+    const lowLaneFrontline = playerLaneWorldY('low') - PLAYER_ACTIVE_HEIGHT;
+
+    const customState: GameState = {
+      ...state,
+      phase: 'playing',
+      players: [
+        {
+          ...state.players[0],
+          lane: 'high'
+        },
+        {
+          ...state.players[1],
+          lane: 'low'
+        }
+      ],
+      enemies: state.enemies.map((enemy, index) =>
+        index === 0
+          ? {
+              ...enemy,
+              y: highLaneFrontline - ENEMY_STANDARD_ACTIVE_HEIGHT / 2 + 2
+            }
+          : enemy
+      )
+    };
+
+    const next = stepState(customState, [emptyInput(), emptyInput()]);
+
+    expect(
+      next.enemies[0].y + ENEMY_STANDARD_ACTIVE_HEIGHT / 2
+    ).toBeGreaterThanOrEqual(highLaneFrontline);
+    expect(
+      next.enemies[0].y + ENEMY_STANDARD_ACTIVE_HEIGHT / 2
+    ).toBeLessThan(lowLaneFrontline);
+    expect(next.phase).toBe('playing');
   });
 });

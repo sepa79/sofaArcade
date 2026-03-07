@@ -10,6 +10,7 @@ export type AxisSourceKind =
   | 'keyboard_axis'
   | 'mouse_delta_x'
   | 'mouse_position_x'
+  | 'mouse_position_y'
   | 'gamepad_axis'
   | 'hid_axis';
 
