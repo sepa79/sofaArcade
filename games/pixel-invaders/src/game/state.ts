@@ -1,41 +1,7 @@
-import {
-  ENEMY_COLS,
-  ENEMY_FIRE_INTERVAL,
-  ENEMY_GAP_X,
-  ENEMY_GAP_Y,
-  ENEMY_ROWS,
-  ENEMY_SPEED_START,
-  ENEMY_START_X,
-  ENEMY_START_Y,
-  PLAYER_LIVES,
-  SCORE_PER_ENEMY,
-  PLAYER_WIDTH,
-  WORLD_WIDTH
-} from './constants';
+import { PLAYER_LIVES, PLAYER_WIDTH, WORLD_WIDTH } from './constants';
 import { defaultPlayerLaneForIndex } from './player-lanes';
-import type { Enemy, GameState, PlayerState } from './types';
-
-function createEnemyGrid(): ReadonlyArray<Enemy> {
-  const enemies: Enemy[] = [];
-  let id = 0;
-
-  for (let row = 0; row < ENEMY_ROWS; row += 1) {
-    for (let col = 0; col < ENEMY_COLS; col += 1) {
-      enemies.push({
-        id,
-        x: ENEMY_START_X + col * ENEMY_GAP_X,
-        y: ENEMY_START_Y + row * ENEMY_GAP_Y,
-        alive: true,
-        kind: 'normal',
-        scoreValue: SCORE_PER_ENEMY,
-        hitPoints: 1
-      });
-      id += 1;
-    }
-  }
-
-  return enemies;
-}
+import type { GameState, PlayerState } from './types';
+import { createInitialCampaignState, enemyBaseSpeedForCampaign, enemyFireIntervalForCampaign, spawnInitialClassicFormation } from './waves';
 
 function createPlayers(playerCount: number): ReadonlyArray<PlayerState> {
   if (!Number.isInteger(playerCount) || playerCount <= 0) {
@@ -68,15 +34,20 @@ function createPlayers(playerCount: number): ReadonlyArray<PlayerState> {
 }
 
 export function createInitialState(seed: number, playerCount: number): GameState {
+  const campaign = createInitialCampaignState();
+  const initialFormation = spawnInitialClassicFormation(seed);
+
   return {
     phase: 'ready',
     elapsedTimeSec: 0,
+    campaign,
     players: createPlayers(playerCount),
     enemyDirection: 1,
-    enemySpeed: ENEMY_SPEED_START,
-    enemyFireTimer: ENEMY_FIRE_INTERVAL,
-    rngSeed: seed,
-    enemies: createEnemyGrid(),
+    enemySpeed: enemyBaseSpeedForCampaign(campaign),
+    enemyFireTimer: enemyFireIntervalForCampaign(campaign),
+    enemyDiveTimer: Number.POSITIVE_INFINITY,
+    rngSeed: initialFormation.rngSeed,
+    enemies: initialFormation.enemies,
     bullets: [],
     pickups: [],
     nextPickupId: 0,

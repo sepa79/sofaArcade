@@ -53,7 +53,13 @@ export function spawnPickupsFromDefeatedUfos(
       continue;
     }
 
-    const nextKind = randomPickupKind(nextSeed);
+    const nextKind =
+      enemy.guaranteedPickupKind === null
+        ? randomPickupKind(nextSeed)
+        : {
+            kind: enemy.guaranteedPickupKind,
+            seed: nextSeed
+          };
     nextSeed = nextKind.seed;
     spawned.push({
       id: mutablePickupId,

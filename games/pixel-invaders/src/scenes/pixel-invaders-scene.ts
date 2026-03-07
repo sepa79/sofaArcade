@@ -49,12 +49,14 @@ import {
   type CollisionDebugFrame,
   type CollisionRuntime
 } from '../game/collision';
+import { finalizeDebugModeState, prepareDebugModeState } from '../game/debug-mode';
 import { createInputContext, describeInputContext, inputContextUsesMouseControl, readMatchInput } from '../game/input';
 import { stepGame } from '../game/logic';
 import { playerLaneWorldY } from '../game/player-lanes';
 import { hasActivePowerup, powerupHudLabel } from '../game/powerups';
 import { highestPlayerMultiplier, totalPlayerScore } from '../game/score';
 import { createInitialState } from '../game/state';
+import { stageLabel } from '../game/waves';
 import {
   createMultiplayerGameLaunchData,
   type MultiplayerGameLaunchData
@@ -101,8 +103,6 @@ const EXPLOSION_ANIMATION_RATE = 28;
 const EXPLOSION_SPRITE_SCALE = 1.5;
 const EXPLOSION_DURATION_MS = 260;
 const EXPLOSION_RADIUS_PX = 44;
-const ROW_RESPAWN_FLASH_DURATION_MS = 420;
-const ROW_RESPAWN_FLASH_HALF_HEIGHT_PX = 42;
 const PLAYER_DEATH_CLUSTER_BURST_COUNT = 3;
 const PLAYER_DEATH_CLUSTER_BURST_TOTAL = 7;
 const PLAYER_DEATH_CLUSTER_BURST_INTERVAL_MS = 62;
@@ -190,11 +190,6 @@ interface ExplosionFx {
   readonly startAtMs: number;
 }
 
-interface RowRespawnFlashFx {
-  readonly y: number;
-  readonly startAtMs: number;
-}
-
 interface PixelStar {
   readonly x: number;
   readonly y: number;
@@ -230,6 +225,8 @@ interface DebugKeys {
   readonly guideToggle: Phaser.Input.Keyboard.Key;
   readonly bottomToggle: Phaser.Input.Keyboard.Key;
   readonly backgroundFlashToggle: Phaser.Input.Keyboard.Key;
+  readonly collisionBroadToggle: Phaser.Input.Keyboard.Key;
+  readonly collisionNarrowToggle: Phaser.Input.Keyboard.Key;
 }
 
 interface RuntimeHotkeys {
@@ -390,6 +387,50 @@ function activePowerupSignature(player: PlayerState): string {
   return player.activePowerups.map((powerup) => powerup.kind).join('|');
 }
 
+function waveHudText(state: GameState): string {
+  if (state.campaign.phase === 'boss') {
+    return 'BOSS NEXT';
+  }
+
+  if (state.campaign.phase === 'classic-endless') {
+    return `${stageLabel(state.campaign.phase)}\nROWS ${state.campaign.rowsCleared}/${state.campaign.rowsTarget}\nLEFT ${state.campaign.rowsTarget - state.campaign.rowsCleared}`;
+  }
+
+  return `${stageLabel(state.campaign.phase)}\nROW ${state.campaign.currentRowNumber}/${state.campaign.rowsTarget}\nLEFT ${state.campaign.rowsTarget - state.campaign.rowsCleared}`;
+}
+
+function transitionBannerText(state: GameState): string {
+  if (state.phase === 'boss-ready') {
+    return 'BOSS INCOMING\nPRESS FIRE';
+  }
+
+  if (state.phase === 'lost') {
+    return 'GAME OVER\nPRESS ENTER';
+  }
+
+  if (state.phase === 'ready') {
+    if (state.campaign.phase === 'classic-endless') {
+      return `PRESS FIRE TO START\n${stageLabel(state.campaign.phase)} ${state.campaign.rowsTarget} ROWS`;
+    }
+
+    return `PRESS FIRE TO START\n${stageLabel(state.campaign.phase)}`;
+  }
+
+  if (state.campaign.transitionTimerSec > 0) {
+    if (state.campaign.phase === 'boss') {
+      return 'BOSS INCOMING';
+    }
+
+    if (state.campaign.phase === 'classic-endless') {
+      return `${stageLabel(state.campaign.phase)} CLEAR`;
+    }
+
+    return `${stageLabel(state.campaign.phase)} ROW ${state.campaign.currentRowNumber}/${state.campaign.rowsTarget}`;
+  }
+
+  return '';
+}
+
 function averageLivingPlayerX(players: ReadonlyArray<PlayerState>): number {
   const livingPlayers = players.filter((player) => player.lives > 0);
   if (livingPlayers.length === 0) {
@@ -449,6 +490,7 @@ export class PixelInvadersScene extends Phaser.Scene {
   private enemySprites = new Map<number, Phaser.GameObjects.Image>();
   private scoreText!: Phaser.GameObjects.Text;
   private highScoreText!: Phaser.GameObjects.Text;
+  private waveText!: Phaser.GameObjects.Text;
   private livesText!: Phaser.GameObjects.Text;
   private controllerText!: Phaser.GameObjects.Text;
   private bonusText!: Phaser.GameObjects.Text;
@@ -466,7 +508,6 @@ export class PixelInvadersScene extends Phaser.Scene {
   private musicPausedByUser = false;
   private sfxEnabled = true;
   private explosions: ReadonlyArray<ExplosionFx> = [];
-  private rowRespawnFlashes: ReadonlyArray<RowRespawnFlashFx> = [];
   private inputContext: InputContext | null = null;
   private collisionRuntime!: CollisionRuntime;
   private collisionDebugFrame: CollisionDebugFrame = createEmptyCollisionDebugFrame();
@@ -480,6 +521,8 @@ export class PixelInvadersScene extends Phaser.Scene {
   private debugMusicLaneGuidesEnabled = true;
   private debugBottomVisualsEnabled = true;
   private debugBackgroundFlashEnabled = false;
+  private debugCollisionBroadEnabled = true;
+  private debugCollisionNarrowEnabled = true;
   private enemyReactiveBursts = new Map<number, EnemyReactiveBurst>();
   private lastHighReactiveEnemyId: number | null = null;
   private lastMidReactiveEnemyId: number | null = null;
@@ -551,7 +594,9 @@ export class PixelInvadersScene extends Phaser.Scene {
       pulseToggle: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F7),
       guideToggle: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F8),
       bottomToggle: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F9),
-      backgroundFlashToggle: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F10)
+      backgroundFlashToggle: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F10),
+      collisionBroadToggle: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.B),
+      collisionNarrowToggle: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.N)
     };
     this.runtimeHotkeys = {
       debugToggle: keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F6),
@@ -601,6 +646,10 @@ export class PixelInvadersScene extends Phaser.Scene {
     this.highScoreText = this.add.text(this.scale.width / 2, 18, '');
     this.highScoreText.setOrigin(0.5, 0);
     this.highScoreText.setDepth(HUD_DEPTH);
+
+    this.waveText = this.add.text(this.scale.width - 20, this.scale.height - 18, '');
+    this.waveText.setOrigin(1, 1);
+    this.waveText.setDepth(HUD_DEPTH);
 
     this.bonusText = this.add.text(this.scale.width / 2, 52, '');
     this.bonusText.setOrigin(0.5, 0);
@@ -656,7 +705,6 @@ export class PixelInvadersScene extends Phaser.Scene {
     let lost = false;
     let maxMoveSpeedUnit = 0;
     const destroyedEnemies: Enemy[] = [];
-    const respawnedRows = new Set<number>();
     let frameCollisionDebug: CollisionDebugFrame | null = null;
 
     while (this.accumulator >= FIXED_TIMESTEP) {
@@ -674,12 +722,13 @@ export class PixelInvadersScene extends Phaser.Scene {
         this.sfx.unlock();
       }
 
-      const previous = this.state;
-      const step = stepGame(this.state, input, FIXED_TIMESTEP, {
+      const steppingState = this.debugModeEnabled ? prepareDebugModeState(this.state) : this.state;
+      const previous = steppingState;
+      const step = stepGame(steppingState, input, FIXED_TIMESTEP, {
         collisionRuntime: this.collisionRuntime,
         captureCollisionDebug: this.debugModeEnabled
       });
-      const next = step.state;
+      const next = this.debugModeEnabled ? finalizeDebugModeState(step.state) : step.state;
       frameCollisionDebug = step.collisionDebug;
 
       const previousPlayerBulletCounts = new Map<number, number>();
@@ -746,21 +795,8 @@ export class PixelInvadersScene extends Phaser.Scene {
       }
       for (const previousEnemy of previous.enemies) {
         const nextEnemy = next.enemies.find((enemy) => enemy.id === previousEnemy.id);
-        if (previousEnemy.alive && nextEnemy !== undefined && !nextEnemy.alive) {
+        if (previousEnemy.alive && (nextEnemy === undefined || !nextEnemy.alive)) {
           destroyedEnemies.push(previousEnemy);
-        }
-      }
-      const previousEnemyById = new Map<number, Enemy>();
-      for (const previousEnemy of previous.enemies) {
-        previousEnemyById.set(previousEnemy.id, previousEnemy);
-      }
-      for (const nextEnemy of next.enemies) {
-        const previousEnemy = previousEnemyById.get(nextEnemy.id);
-        if (previousEnemy === undefined) {
-          throw new Error(`Missing previous enemy state for id ${nextEnemy.id}.`);
-        }
-        if (!previousEnemy.alive && nextEnemy.alive) {
-          respawnedRows.add(Math.floor(nextEnemy.id / ENEMY_COLS));
         }
       }
       for (const previousPlayer of previous.players) {
@@ -815,9 +851,6 @@ export class PixelInvadersScene extends Phaser.Scene {
       this.accumulator -= FIXED_TIMESTEP;
     }
     this.collisionDebugFrame = frameCollisionDebug ?? createEmptyCollisionDebugFrame();
-    for (const row of respawnedRows) {
-      this.spawnRowRespawnFlash(row);
-    }
 
     this.stars = this.stars.map((star) => {
       let nextY = star.y + star.speed * deltaSeconds;
@@ -892,7 +925,6 @@ export class PixelInvadersScene extends Phaser.Scene {
     graphics.clear();
 
     this.drawBackground(graphics);
-    this.drawRowRespawnFlashes(graphics);
     this.syncPlayerSprites();
     this.syncEnemySprites();
     this.drawPlayers(graphics);
@@ -1026,14 +1058,15 @@ export class PixelInvadersScene extends Phaser.Scene {
       spriteY += bumpOffsetY;
       let rotation = ENEMY_SPRITE_ROTATION;
       const baseTint = enemy.kind === 'ufo' ? ufoDamageTint(enemy.hitPoints) : null;
+      const allowReactiveBurst = enemy.motion.kind === 'formation';
 
-      if (burst.spinTimerSec > 0 && burst.spinDurationSec > 0) {
+      if (allowReactiveBurst && burst.spinTimerSec > 0 && burst.spinDurationSec > 0) {
         const progress = 1 - burst.spinTimerSec / burst.spinDurationSec;
         const easedProgress = 1 - Math.pow(1 - clamp01(progress), 3);
         rotation += burst.spinDirection * burst.spinTurns * Math.PI * 2 * easedProgress;
       }
 
-      if (burst.swayTimerSec > 0 && burst.swayDurationSec > 0) {
+      if (allowReactiveBurst && burst.swayTimerSec > 0 && burst.swayDurationSec > 0) {
         const progress = 1 - burst.swayTimerSec / burst.swayDurationSec;
         const envelope = 1 - clamp01(progress);
         const wave = Math.sin(progress * Math.PI * 4);
@@ -1206,7 +1239,7 @@ export class PixelInvadersScene extends Phaser.Scene {
     }
 
     const broad = this.collisionDebugFrame.broadPhaseEnvelopes;
-    if (broad.length > 0) {
+    if (this.debugCollisionBroadEnabled && broad.length > 0) {
       for (const envelope of broad) {
         const color = envelope.owner === 'player' ? 0x65f2ff : 0xffa65b;
         graphics.lineStyle(1, color, 0.62);
@@ -1220,14 +1253,16 @@ export class PixelInvadersScene extends Phaser.Scene {
     }
 
     const narrow = this.collisionDebugFrame.narrowPhaseMarkers;
-    for (const marker of narrow) {
-      const color = marker.owner === 'player' ? 0xc9ffff : 0xffd1b0;
-      const x = this.worldToScreenX(marker.x);
-      const y = this.worldToScreenY(marker.y);
-      graphics.fillStyle(color, 0.95);
-      graphics.fillCircle(x, y, Math.max(2, Math.round(this.visualScale() * 2.8)));
-      graphics.lineStyle(1, 0xffffff, 0.5);
-      graphics.strokeCircle(x, y, Math.max(3, Math.round(this.visualScale() * 4.8)));
+    if (this.debugCollisionNarrowEnabled) {
+      for (const marker of narrow) {
+        const color = marker.owner === 'player' ? 0xc9ffff : 0xffd1b0;
+        const x = this.worldToScreenX(marker.x);
+        const y = this.worldToScreenY(marker.y);
+        graphics.fillStyle(color, 0.95);
+        graphics.fillCircle(x, y, Math.max(2, Math.round(this.visualScale() * 2.8)));
+        graphics.lineStyle(1, 0xffffff, 0.5);
+        graphics.strokeCircle(x, y, Math.max(3, Math.round(this.visualScale() * 4.8)));
+      }
     }
   }
 
@@ -1247,6 +1282,10 @@ export class PixelInvadersScene extends Phaser.Scene {
       snapUiPixel(this.playfieldOffsetX + this.playfieldWidth * 0.5),
       snapUiPixel(this.playfieldOffsetY + 18)
     );
+    this.waveText.setPosition(
+      snapUiPixel(this.playfieldOffsetX + this.playfieldWidth - 20),
+      snapUiPixel(this.playfieldOffsetY + this.playfieldHeight - 18)
+    );
     this.livesText.setPosition(
       snapUiPixel(this.playfieldOffsetX + this.playfieldWidth - 20),
       snapUiPixel(this.playfieldOffsetY + 18)
@@ -1261,6 +1300,7 @@ export class PixelInvadersScene extends Phaser.Scene {
         : playerScoreLines
     );
     this.highScoreText.setText(`TOTAL ${totalScore.toString().padStart(6, '0')}\nHI ${this.highScore.toString().padStart(6, '0')}`);
+    this.waveText.setText(waveHudText(this.state));
     if (this.state.players.length === 1) {
       const singlePlayer = this.state.players[0];
       if (singlePlayer === undefined) {
@@ -1321,6 +1361,7 @@ export class PixelInvadersScene extends Phaser.Scene {
     const multiplierAlpha = 0.82 + multiplierPulse * 0.18;
     this.scoreText.setTint(scoreColor);
     this.highScoreText.setTint(highScoreColor);
+    this.waveText.setTint(controllerColor);
     this.livesText.setTint(scoreColor);
     this.controllerText.setTint(controllerColor);
     this.bonusText.setTint(bonusColor);
@@ -1328,6 +1369,7 @@ export class PixelInvadersScene extends Phaser.Scene {
     this.bonusText.setScale(multiplierScale);
     this.scoreText.setAlpha(1);
     this.bonusText.setAlpha(multiplierAlpha);
+    this.waveText.setAlpha(this.state.phase === 'playing' ? 0.94 : 0.72 + infoPulse * 0.22);
     this.controllerText.setAlpha(this.state.phase === 'playing' ? 0.94 : 0.72 + infoPulse * 0.28);
     if (!this.debugModeEnabled) {
       this.debugText.setText('');
@@ -1339,7 +1381,7 @@ export class PixelInvadersScene extends Phaser.Scene {
       snapUiPixel(this.playfieldOffsetY + this.playfieldHeight - 16)
     );
     this.debugText.setText(
-      `DEBUG MODE [F6]\nPULSES [F7]: ${this.debugMusicLanePulsesEnabled ? 'ON' : 'OFF'}\nLANES [F8]: ${this.debugMusicLaneGuidesEnabled ? 'ON' : 'OFF'}\nBOTTOM [F9]: ${this.debugBottomVisualsEnabled ? 'ON' : 'OFF'}\nBG FLASH [F10]: ${this.debugBackgroundFlashEnabled ? 'ON' : 'OFF'}\nCOLLISION B/N: ${this.collisionDebugFrame.broadPhaseEnvelopes.length}/${this.collisionDebugFrame.narrowPhaseMarkers.length}`
+      `DEBUG MODE [F6]\nCHEATS: FAST FIRE + UNL. LIVES\nPULSES [F7]: ${this.debugMusicLanePulsesEnabled ? 'ON' : 'OFF'}\nLANES [F8]: ${this.debugMusicLaneGuidesEnabled ? 'ON' : 'OFF'}\nBOTTOM [F9]: ${this.debugBottomVisualsEnabled ? 'ON' : 'OFF'}\nBG FLASH [F10]: ${this.debugBackgroundFlashEnabled ? 'ON' : 'OFF'}\nCOLLISION [B]: ${this.debugCollisionBroadEnabled ? 'BROAD ON' : 'BROAD OFF'} ${this.collisionDebugFrame.broadPhaseEnvelopes.length}\nCOLLISION [N]: ${this.debugCollisionNarrowEnabled ? 'NARROW ON' : 'NARROW OFF'} ${this.collisionDebugFrame.narrowPhaseMarkers.length}`
     );
   }
 
@@ -1375,21 +1417,22 @@ export class PixelInvadersScene extends Phaser.Scene {
     const pulse = informationPulse(this.time.now);
 
     if (this.state.phase === 'playing') {
-      this.bannerText.setText('');
-      this.bannerText.setAlpha(1);
-      this.bannerText.setScale(1);
-      return;
-    }
+      const text = transitionBannerText(this.state);
+      if (text.length === 0) {
+        this.bannerText.setText('');
+        this.bannerText.setAlpha(1);
+        this.bannerText.setScale(1);
+        return;
+      }
 
-    if (this.state.phase === 'ready') {
-      this.bannerText.setText('PRESS FIRE TO START');
-      this.bannerText.setAlpha(0.74 + pulse * 0.26);
+      this.bannerText.setText(text);
+      this.bannerText.setAlpha(0.72 + pulse * 0.18);
       this.bannerText.setTint(mixColor(0xffd9a8, 0xffffff, pulse));
-      this.bannerText.setScale(1.55);
+      this.bannerText.setScale(1.4);
       return;
     }
 
-    this.bannerText.setText('GAME OVER\nPRESS ENTER');
+    this.bannerText.setText(transitionBannerText(this.state));
     this.bannerText.setAlpha(0.76 + pulse * 0.24);
     this.bannerText.setTint(mixColor(0xffc4a1, 0xfff7df, pulse));
     this.bannerText.setScale(1.75);
@@ -1419,12 +1462,14 @@ export class PixelInvadersScene extends Phaser.Scene {
     const uiScale = this.visualScale();
     applyTypographyToken(this.scoreText, HUD_LABEL_TOKEN, uiScale);
     applyTypographyToken(this.highScoreText, HUD_LABEL_TOKEN, uiScale);
+    applyTypographyToken(this.waveText, HINT_TOKEN, uiScale);
     applyTypographyToken(this.bonusText, HUD_LABEL_TOKEN, uiScale);
     applyTypographyToken(this.livesText, HUD_LABEL_TOKEN, uiScale);
     applyTypographyToken(this.controllerText, HINT_TOKEN, uiScale);
     applyTypographyToken(this.debugText, HINT_TOKEN, uiScale);
     applyTypographyToken(this.bannerText, PROMPT_TOKEN, uiScale);
     this.highScoreText.setAlign('center');
+    this.waveText.setAlign('right');
     this.bonusText.setAlign('left');
     this.livesText.setAlign('right');
     this.debugText.setAlign('left');
@@ -2114,7 +2159,7 @@ export class PixelInvadersScene extends Phaser.Scene {
   private updateHotkeys(): void {
     if (Phaser.Input.Keyboard.JustDown(this.runtimeHotkeys.debugToggle)) {
       this.debugModeEnabled = toggleGlobalDebugMode();
-      this.showSongBanner(this.debugModeEnabled ? 'DEBUG MODE ON' : 'DEBUG MODE OFF');
+      this.showSongBanner(this.debugModeEnabled ? 'DEBUG MODE ON\nFAST FIRE + UNL. LIVES' : 'DEBUG MODE OFF');
     }
     if (this.debugModeEnabled) {
       this.updateDebugHotkeys();
@@ -2139,6 +2184,12 @@ export class PixelInvadersScene extends Phaser.Scene {
     }
     if (Phaser.Input.Keyboard.JustDown(debugKeys.backgroundFlashToggle)) {
       this.debugBackgroundFlashEnabled = !this.debugBackgroundFlashEnabled;
+    }
+    if (Phaser.Input.Keyboard.JustDown(debugKeys.collisionBroadToggle)) {
+      this.debugCollisionBroadEnabled = !this.debugCollisionBroadEnabled;
+    }
+    if (Phaser.Input.Keyboard.JustDown(debugKeys.collisionNarrowToggle)) {
+      this.debugCollisionNarrowEnabled = !this.debugCollisionNarrowEnabled;
     }
   }
 
@@ -2283,7 +2334,9 @@ export class PixelInvadersScene extends Phaser.Scene {
   }
 
   private pickReactiveEnemyId(lastEnemyId: number | null): number | null {
-    const aliveEnemyIds = this.state.enemies.filter((enemy) => enemy.alive).map((enemy) => enemy.id);
+    const aliveEnemyIds = this.state.enemies
+      .filter((enemy) => enemy.alive && enemy.motion.kind === 'formation')
+      .map((enemy) => enemy.id);
     if (aliveEnemyIds.length === 0) {
       return null;
     }
@@ -2401,33 +2454,6 @@ export class PixelInvadersScene extends Phaser.Scene {
     }
   }
 
-  private spawnRowRespawnFlash(row: number): void {
-    const rowEnemies = this.state.enemies.filter(
-      (enemy) => enemy.alive && Math.floor(enemy.id / ENEMY_COLS) === row
-    );
-    if (rowEnemies.length === 0) {
-      throw new Error(`Cannot create row respawn flash for empty row ${row}.`);
-    }
-
-    this.rowRespawnFlashes = this.rowRespawnFlashes.concat({
-      y: rowEnemies[0].y,
-      startAtMs: this.time.now
-    });
-
-    let rowCenterX = 0;
-    for (const enemy of rowEnemies) {
-      rowCenterX += enemy.x;
-      if (enemy.id % 3 !== 0) {
-        continue;
-      }
-      this.spawnExplosion(enemy.x, enemy.y);
-    }
-    rowCenterX /= rowEnemies.length;
-    if (this.sfxEnabled) {
-      this.sfx.playExplosion({ pan: xToStereoPan(rowCenterX), depth: 0, large: true });
-    }
-  }
-
   private worldToScreenX(worldX: number): number {
     return this.playfieldOffsetX + worldX * this.playfieldScaleX;
   }
@@ -2443,9 +2469,6 @@ export class PixelInvadersScene extends Phaser.Scene {
   private updateExplosions(): void {
     const now = this.time.now;
     this.explosions = this.explosions.filter((explosion) => now - explosion.startAtMs < EXPLOSION_DURATION_MS);
-    this.rowRespawnFlashes = this.rowRespawnFlashes.filter(
-      (flash) => now - flash.startAtMs < ROW_RESPAWN_FLASH_DURATION_MS
-    );
   }
 
   private drawExplosions(graphics: Phaser.GameObjects.Graphics): void {
@@ -2462,39 +2485,6 @@ export class PixelInvadersScene extends Phaser.Scene {
       graphics.fillCircle(screenX, screenY, outerRadius);
       graphics.fillStyle(0xfff3b0, 0.84 * alpha);
       graphics.fillCircle(screenX, screenY, innerRadius);
-    }
-  }
-
-  private drawRowRespawnFlashes(graphics: Phaser.GameObjects.Graphics): void {
-    for (const flash of this.rowRespawnFlashes) {
-      const progress = clamp01((this.time.now - flash.startAtMs) / ROW_RESPAWN_FLASH_DURATION_MS);
-      if (progress >= 1) {
-        continue;
-      }
-      const fade = 1 - progress;
-      const reactiveEnergy = clamp01(this.musicReactive.beatPulse * 0.34 + this.musicReactive.barPulse * 0.42);
-      const color = mixColor(0x70e6ff, 0xff7ad8, progress * 0.58 + reactiveEnergy * 0.16);
-      const centerY = this.worldToScreenY(flash.y);
-      const halfHeight = Math.max(
-        4,
-        Math.round((6 + ROW_RESPAWN_FLASH_HALF_HEIGHT_PX * progress) * this.visualScale())
-      );
-      const top = Math.round(centerY - halfHeight);
-      const bandHeight = Math.max(1, halfHeight * 2);
-
-      graphics.fillStyle(color, clamp01(0.03 + fade * 0.24));
-      graphics.fillRect(this.playfieldOffsetX, top, this.playfieldWidth, bandHeight);
-      graphics.lineStyle(
-        Math.max(1, Math.round(this.visualScale() * 2)),
-        color,
-        clamp01(0.06 + fade * 0.5 + reactiveEnergy * 0.2)
-      );
-      graphics.beginPath();
-      graphics.moveTo(this.playfieldOffsetX, top);
-      graphics.lineTo(this.playfieldOffsetX + this.playfieldWidth, top);
-      graphics.moveTo(this.playfieldOffsetX, top + bandHeight);
-      graphics.lineTo(this.playfieldOffsetX + this.playfieldWidth, top + bandHeight);
-      graphics.strokePath();
     }
   }
 

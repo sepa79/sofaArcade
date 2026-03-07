@@ -228,6 +228,7 @@ function readPhoneFrameInput(phoneControllerId: string): FrameInput {
     moveLaneUpPressed: false,
     moveLaneDownPressed: false,
     firePressed: frame.fire,
+    fireJustPressed: frame.fire,
     restartPressed: frame.start
   };
 }
@@ -349,6 +350,7 @@ function readPlayerFrameInput(
     moveLaneUpPressed: localPlayerInputContext.runtime.wasPressed(ACTION_MOVE_LANE_UP),
     moveLaneDownPressed: localPlayerInputContext.runtime.wasPressed(ACTION_MOVE_LANE_DOWN),
     firePressed: localPlayerInputContext.runtime.isPressed(ACTION_FIRE_PRIMARY),
+    fireJustPressed: localPlayerInputContext.runtime.wasPressed(ACTION_FIRE_PRIMARY),
     restartPressed: localPlayerInputContext.runtime.wasPressed(ACTION_RESTART)
   };
 }

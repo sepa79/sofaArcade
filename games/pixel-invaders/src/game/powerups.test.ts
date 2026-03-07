@@ -1,8 +1,19 @@
 import { describe, expect, it } from 'vitest';
 
-import { PLAYER_RAPID_FIRE_BULLET_CAPACITY, PLAYER_RAPID_FIRE_SHOOT_COOLDOWN, PLAYER_SHOOT_COOLDOWN } from './constants';
+import {
+  PLAYER_RAPID_FIRE_SHOOT_COOLDOWN,
+  PLAYER_RAPID_FIRE_TAP_SHOOT_COOLDOWN,
+  PLAYER_SHOOT_COOLDOWN,
+  PLAYER_TAP_SHOOT_COOLDOWN
+} from './constants';
 import { defaultPlayerLaneForIndex } from './player-lanes';
-import { applyPowerup, consumeShield, playerBulletCapacity, playerShootCooldown, tickPlayerPowerups } from './powerups';
+import {
+  applyPowerup,
+  consumeShield,
+  playerShootCooldown,
+  playerTapShootCooldown,
+  tickPlayerPowerups
+} from './powerups';
 import type { PlayerState } from './types';
 
 function createPlayer(): PlayerState {
@@ -39,12 +50,13 @@ describe('powerups', () => {
     expect(consumed.player.activePowerups).toHaveLength(0);
   });
 
-  it('rapid fire changes cooldown and bullet capacity', () => {
+  it('rapid fire changes hold and tap cooldowns', () => {
     const player = applyPowerup(createPlayer(), 'rapid-fire');
 
     expect(playerShootCooldown(createPlayer())).toBe(PLAYER_SHOOT_COOLDOWN);
+    expect(playerTapShootCooldown(createPlayer())).toBe(PLAYER_TAP_SHOOT_COOLDOWN);
     expect(playerShootCooldown(player)).toBe(PLAYER_RAPID_FIRE_SHOOT_COOLDOWN);
-    expect(playerBulletCapacity(player)).toBe(PLAYER_RAPID_FIRE_BULLET_CAPACITY);
+    expect(playerTapShootCooldown(player)).toBe(PLAYER_RAPID_FIRE_TAP_SHOOT_COOLDOWN);
   });
 
   it('expires timed powerups', () => {

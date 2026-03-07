@@ -30,7 +30,11 @@ function createUfo(): Enemy {
     alive: false,
     kind: 'ufo',
     scoreValue: 10,
-    hitPoints: 0
+    hitPoints: 0,
+    motion: {
+      kind: 'formation'
+    },
+    guaranteedPickupKind: null
   };
 }
 

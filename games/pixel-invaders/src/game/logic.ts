@@ -4,11 +4,6 @@ import {
   BULLET_HEIGHT,
   BULLET_WIDTH,
   ENEMY_BULLET_SPEED,
-  ENEMY_DESCEND_STEP,
-  ENEMY_DRIFT_DOWN_SPEED,
-  ENEMY_FIRE_INTERVAL,
-  ENEMY_SPEED_STEP,
-  ENEMY_WIDTH,
   PLAYER_HEIGHT,
   PLAYER_RESPAWN_INVULNERABILITY,
   PLAYER_SHOT_SPEED,
@@ -29,14 +24,22 @@ import {
   type CollisionRuntime,
   type MutableCollisionDebugFrame
 } from './collision';
+import { stepEnemies } from './enemy-motion';
 import { resolveFriendlyFire } from './friendly-fire';
 import { applyLaneInput, playerLaneWorldY } from './player-lanes';
 import { spawnPickupsFromDefeatedUfos, stepPickups } from './pickups';
 import { clampPlayerX, decayPushbackVelocity, resolvePlayerSeparation, updateRecentMovementMomentum } from './player-separation';
-import { consumeShield, playerBulletCapacity, playerShootCooldown, tickPlayersPowerups } from './powerups';
-import { drainRowRespawnQueue, enqueueDefeatedRows } from './row-respawn';
+import { consumeShield, playerShootCooldown, playerTapShootCooldown, tickPlayersPowerups } from './powerups';
+import { detectNewlyDefeatedRowIndices, drainRowRespawnQueue, enqueueDefeatedRows } from './row-respawn';
 import { createInitialState } from './state';
 import type { Bullet, Enemy, FrameInput, GameState, PlayerState } from './types';
+import {
+  advanceCampaignState,
+  enemyBaseSpeedForCampaign,
+  enemyDiveCooldownForCampaign,
+  enemyFireIntervalForCampaign,
+  spawnGalagaRow
+} from './waves';
 
 interface RandomValue {
   readonly seed: number;
@@ -173,48 +176,6 @@ function updatePlayers(
   });
 }
 
-function moveEnemies(
-  enemies: ReadonlyArray<Enemy>,
-  direction: -1 | 1,
-  speed: number,
-  dt: number
-): {
-  readonly enemies: ReadonlyArray<Enemy>;
-  readonly direction: -1 | 1;
-  readonly speed: number;
-} {
-  const moved = enemies.map((enemy) => ({
-    ...enemy,
-    x: enemy.x + direction * speed * dt,
-    y: enemy.y + ENEMY_DRIFT_DOWN_SPEED * dt
-  }));
-
-  const touchedBoundary = moved.some(
-    (enemy) => enemy.alive && (enemy.x <= ENEMY_WIDTH / 2 || enemy.x >= WORLD_WIDTH - ENEMY_WIDTH / 2)
-  );
-
-  if (!touchedBoundary) {
-    return {
-      enemies: moved,
-      direction,
-      speed
-    };
-  }
-
-  return {
-    enemies: moved.map((enemy) =>
-      enemy.alive
-        ? {
-            ...enemy,
-            y: enemy.y + ENEMY_DESCEND_STEP
-          }
-        : enemy
-    ),
-    direction: direction === 1 ? -1 : 1,
-    speed: speed + ENEMY_SPEED_STEP
-  };
-}
-
 function spawnEnemyBullet(
   livingEnemies: ReadonlyArray<Enemy>,
   rngSeed: number,
@@ -237,6 +198,12 @@ function spawnEnemyBullet(
       vy: ENEMY_BULLET_SPEED
     })
   };
+}
+
+function enemiesAbleToFire(enemies: ReadonlyArray<Enemy>): ReadonlyArray<Enemy> {
+  return enemies.filter(
+    (enemy) => enemy.alive && (enemy.motion.kind === 'formation' || (enemy.motion.kind === 'path' && enemy.motion.path === 'attack'))
+  );
 }
 
 function moveBullets(bullets: ReadonlyArray<Bullet>, dt: number): ReadonlyArray<Bullet> {
@@ -297,14 +264,8 @@ function spawnPlayerShots(
       return player;
     }
 
-    const activePlayerBulletCount = nextBullets.filter(
-      (bullet) => bullet.owner === 'player' && bullet.playerIndex === player.playerIndex
-    ).length;
-    if (
-      !input.firePressed ||
-      player.shootTimer !== 0 ||
-      activePlayerBulletCount >= playerBulletCapacity(player)
-    ) {
+    const wantsToFire = input.firePressed || input.fireJustPressed;
+    if (!wantsToFire || player.shootTimer !== 0) {
       return player;
     }
 
@@ -318,7 +279,7 @@ function spawnPlayerShots(
 
     return {
       ...player,
-      shootTimer: playerShootCooldown(player)
+      shootTimer: input.fireJustPressed ? playerTapShootCooldown(player) : playerShootCooldown(player)
     };
   });
 
@@ -550,21 +511,26 @@ function resolveEnemyShots(
   };
 }
 
-function livingPlayerFrontlineY(players: ReadonlyArray<PlayerState>): number {
-  const livingPlayers = players.filter((player) => player.lives > 0);
-  if (livingPlayers.length === 0) {
-    return playerLaneWorldY('low');
-  }
-
-  return Math.max(...livingPlayers.map((player) => playerLaneWorldY(player.lane)));
-}
-
 function enemiesReachedPlayer(
   enemies: ReadonlyArray<Enemy>,
   players: ReadonlyArray<PlayerState>
 ): boolean {
-  const frontlineY = livingPlayerFrontlineY(players);
-  return enemies.some((enemy) => enemy.alive && enemy.y + enemyActiveHeight(enemy.kind) / 2 >= frontlineY - playerActiveHeight());
+  const livingPlayers = players.filter((player) => player.lives > 0);
+  if (livingPlayers.length === 0) {
+    throw new Error('enemiesReachedPlayer requires at least one living player.');
+  }
+
+  const defenseLineY = playerLaneWorldY('low') - playerActiveHeight();
+  return enemies.some(
+    (enemy) =>
+      enemy.alive &&
+      enemy.motion.kind === 'formation' &&
+      enemy.y + enemyActiveHeight(enemy.kind) / 2 >= defenseLineY
+  );
+}
+
+function hasLivingFormationEnemies(enemies: ReadonlyArray<Enemy>): boolean {
+  return enemies.some((enemy) => enemy.alive && enemy.motion.kind === 'formation');
 }
 
 function applyMissPenalties(
@@ -618,6 +584,16 @@ export function stepGame(
     };
   }
 
+  if (state.phase === 'boss-ready') {
+    return {
+      state:
+        anyFirePressed(matchInput) || anyRestartPressed(matchInput)
+          ? createInitialState(state.rngSeed + 1, state.players.length)
+          : state,
+      collisionDebug: createEmptyCollisionDebugFrame()
+    };
+  }
+
   if (state.phase !== 'playing') {
     return {
       state: anyRestartPressed(matchInput) ? createInitialState(state.rngSeed + 1, state.players.length) : state,
@@ -627,25 +603,120 @@ export function stepGame(
 
   const elapsedTimeSec = state.elapsedTimeSec + dt;
   let players = tickPlayersPowerups(resolvePlayerSeparation(updatePlayers(state.players, inputByPlayerIndex, dt)), dt);
-  let bullets = moveBullets(state.bullets, dt);
+  let bullets = state.campaign.transitionTimerSec > 0 ? [] : moveBullets(state.bullets, dt);
   const steppedPickups = stepPickups(players, state.pickups, dt);
   players = steppedPickups.players;
-  let pickups = steppedPickups.pickups;
+  let pickups = state.campaign.transitionTimerSec > 0 ? [] : steppedPickups.pickups;
+  let enemyDirection = state.enemyDirection;
+  let enemySpeed = state.enemySpeed;
+  let enemyFireTimer = state.enemyFireTimer;
+  let enemyDiveTimer = state.enemyDiveTimer;
+  let rngSeed = state.rngSeed;
+
+  if (state.campaign.transitionTimerSec > 0) {
+    const nextTransitionTimerSec = Math.max(0, state.campaign.transitionTimerSec - dt);
+    if (nextTransitionTimerSec > 0) {
+      return {
+        state: {
+          ...state,
+          elapsedTimeSec,
+          players,
+          bullets: [],
+          pickups: [],
+          campaign: {
+            ...state.campaign,
+            transitionTimerSec: nextTransitionTimerSec
+          }
+        },
+        collisionDebug: createEmptyCollisionDebugFrame()
+      };
+    }
+
+    if (state.campaign.phase === 'boss') {
+      return {
+        state: {
+          ...state,
+          phase: 'boss-ready',
+          elapsedTimeSec,
+          players,
+          bullets: [],
+          pickups: [],
+          enemies: [],
+          enemyFireTimer: Number.POSITIVE_INFINITY,
+          enemyDiveTimer: Number.POSITIVE_INFINITY,
+          campaign: {
+            ...state.campaign,
+            transitionTimerSec: 0
+          }
+        },
+        collisionDebug: createEmptyCollisionDebugFrame()
+      };
+    }
+
+    if (state.campaign.phase === 'classic-endless') {
+      throw new Error('Classic endless campaign should not enter phase transition spawn path.');
+    }
+
+    const nextCampaign = {
+      ...state.campaign,
+      transitionTimerSec: 0
+    };
+    const spawnedWave = spawnGalagaRow(nextCampaign, true);
+    bullets = [];
+    pickups = [];
+    enemyDirection = 1;
+    enemySpeed = spawnedWave.enemySpeed;
+    enemyFireTimer = spawnedWave.enemyFireTimer;
+    enemyDiveTimer = spawnedWave.enemyDiveTimer;
+
+    return {
+      state: {
+        ...state,
+        elapsedTimeSec,
+        players,
+        enemyDirection,
+        enemySpeed,
+        enemyFireTimer,
+        enemyDiveTimer,
+        enemies: spawnedWave.enemies,
+        bullets,
+        pickups,
+        pendingRowRespawns: [],
+        campaign: {
+          ...state.campaign,
+          transitionTimerSec: 0
+        }
+      },
+      collisionDebug: createEmptyCollisionDebugFrame()
+    };
+  }
 
   const spawnedShots = spawnPlayerShots(players, bullets, inputByPlayerIndex);
   players = spawnedShots.players;
   bullets = spawnedShots.bullets;
 
-  const movedEnemies = moveEnemies(state.enemies, state.enemyDirection, state.enemySpeed, dt);
-  let enemyFireTimer = state.enemyFireTimer - dt;
-  let rngSeed = state.rngSeed;
+  const movedEnemies = stepEnemies(
+    state.enemies,
+    players,
+    state.campaign,
+    state.enemyDirection,
+    state.enemySpeed,
+    state.enemyDiveTimer,
+    dt,
+    rngSeed
+  );
+  enemyDirection = movedEnemies.direction;
+  enemySpeed = movedEnemies.speed;
+  enemyDiveTimer = movedEnemies.diveTimer;
+  rngSeed = movedEnemies.rngSeed;
+  enemyFireTimer -= dt;
 
-  const livingEnemies = movedEnemies.enemies.filter((enemy) => enemy.alive);
+  const livingEnemies = enemiesAbleToFire(movedEnemies.enemies);
   if (enemyFireTimer <= 0 && livingEnemies.length > 0) {
     const shot = spawnEnemyBullet(livingEnemies, rngSeed, bullets);
     rngSeed = shot.rngSeed;
     bullets = shot.bullets;
-    enemyFireTimer = ENEMY_FIRE_INTERVAL;
+    enemyFireTimer = enemyFireIntervalForCampaign(state.campaign);
   }
 
   const friendlyFire = resolveFriendlyFire(players, bullets, dt, options.collisionRuntime, collisionDebug);
@@ -677,35 +748,133 @@ export function stepGame(
   );
   const filteredBullets = filterBulletsAndCountPlayerMisses(resolvedEnemyShots.bullets);
   const playersAfterMisses = applyMissPenalties(resolvedEnemyShots.players, filteredBullets.playerMisses);
-  const pendingRowRespawns = enqueueDefeatedRows(
-    state.pendingRowRespawns,
-    movedEnemies.enemies,
-    resolvedPlayerShots.enemies,
-    elapsedTimeSec
-  );
-  const respawnResult = drainRowRespawnQueue(
-    pendingRowRespawns,
-    resolvedPlayerShots.enemies,
-    rngSeed,
-    elapsedTimeSec
-  );
+  let campaign = state.campaign;
+  let enemies = resolvedPlayerShots.enemies;
+  let pendingRowRespawns = state.pendingRowRespawns;
+  if (campaign.phase === 'classic-endless') {
+    const classicFormationWasEmpty = !hasLivingFormationEnemies(enemies);
+    const defeatedRows = detectNewlyDefeatedRowIndices(movedEnemies.enemies, resolvedPlayerShots.enemies);
+    if (defeatedRows.length > 0) {
+      campaign = {
+        ...campaign,
+        rowsCleared: Math.min(campaign.rowsTarget, campaign.rowsCleared + defeatedRows.length)
+      };
+    }
 
-  const phase = enemiesReachedPlayer(respawnResult.enemies, playersAfterMisses) ? 'lost' : resolvedEnemyShots.phase;
+    const maxAdditionalTickets = Math.max(0, campaign.rowsTarget - campaign.rowsSpawned - pendingRowRespawns.length);
+    pendingRowRespawns = enqueueDefeatedRows(
+      pendingRowRespawns,
+      defeatedRows,
+      elapsedTimeSec,
+      maxAdditionalTickets
+    );
+
+    const nextClassicRowNumber = campaign.rowsSpawned < campaign.rowsTarget ? campaign.rowsSpawned + 1 : null;
+    const respawnResult = drainRowRespawnQueue(
+      pendingRowRespawns,
+      enemies,
+      rngSeed,
+      elapsedTimeSec,
+      nextClassicRowNumber
+    );
+    pendingRowRespawns = respawnResult.pendingRowRespawns;
+    enemies = respawnResult.enemies;
+    rngSeed = respawnResult.rngSeed;
+    if (respawnResult.respawnedRow) {
+      if (classicFormationWasEmpty) {
+        enemyDirection = 1;
+        enemySpeed = enemyBaseSpeedForCampaign(campaign);
+        enemyFireTimer = enemyFireIntervalForCampaign(campaign);
+      }
+      campaign = {
+        ...campaign,
+        rowsSpawned: campaign.rowsSpawned + 1
+      };
+    }
+  }
+
+  const phase =
+    resolvedEnemyShots.phase === 'lost'
+      ? 'lost'
+      : enemiesReachedPlayer(enemies, playersAfterMisses)
+        ? 'lost'
+        : 'playing';
+  if (phase === 'lost') {
+    return {
+      state: {
+        phase,
+        elapsedTimeSec,
+        campaign,
+        players: playersAfterMisses,
+        enemyDirection,
+        enemySpeed,
+        enemyFireTimer,
+        enemyDiveTimer,
+        rngSeed,
+        enemies,
+        bullets: filteredBullets.bullets,
+        pickups,
+        nextPickupId: spawnedPickups.nextPickupId,
+        pendingRowRespawns
+      },
+      collisionDebug: freezeCollisionDebugFrame(collisionDebug)
+    };
+  }
+
+  const survivingEnemies = enemies.filter((enemy) => enemy.alive);
+  const classicStageComplete =
+    campaign.phase === 'classic-endless' &&
+    campaign.rowsCleared >= campaign.rowsTarget &&
+    survivingEnemies.length === 0 &&
+    pendingRowRespawns.length === 0;
+  const galagaRowCleared = campaign.phase === 'galaga-rows' && survivingEnemies.length === 0;
+
+  if (classicStageComplete || galagaRowCleared) {
+    const progressedCampaign =
+      campaign.phase === 'galaga-rows'
+        ? {
+            ...campaign,
+            rowsCleared: campaign.rowsCleared + 1
+          }
+        : campaign;
+    const nextCampaign = advanceCampaignState(progressedCampaign);
+    return {
+      state: {
+        phase: nextCampaign.phase === 'boss' ? 'boss-ready' : 'playing',
+        elapsedTimeSec,
+        campaign: nextCampaign,
+        players: playersAfterMisses,
+        enemyDirection: 1,
+        enemySpeed: enemyBaseSpeedForCampaign(nextCampaign),
+        enemyFireTimer: enemyFireIntervalForCampaign(nextCampaign),
+        enemyDiveTimer: enemyDiveCooldownForCampaign(nextCampaign),
+        rngSeed,
+        enemies: [],
+        bullets: [],
+        pickups: [],
+        nextPickupId: spawnedPickups.nextPickupId,
+        pendingRowRespawns: []
+      },
+      collisionDebug: freezeCollisionDebugFrame(collisionDebug)
+    };
+  }
 
   return {
     state: {
       phase,
       elapsedTimeSec,
+      campaign,
       players: playersAfterMisses,
-      enemyDirection: movedEnemies.direction,
-      enemySpeed: movedEnemies.speed,
+      enemyDirection,
+      enemySpeed,
       enemyFireTimer,
-      rngSeed: respawnResult.rngSeed,
-      enemies: respawnResult.enemies,
+      enemyDiveTimer,
+      rngSeed,
+      enemies,
       bullets: filteredBullets.bullets,
       pickups,
       nextPickupId: spawnedPickups.nextPickupId,
-      pendingRowRespawns: respawnResult.pendingRowRespawns
+      pendingRowRespawns
     },
     collisionDebug: freezeCollisionDebugFrame(collisionDebug)
   };

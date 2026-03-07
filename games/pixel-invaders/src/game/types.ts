@@ -1,5 +1,6 @@
 export type PlayerLane = 'low' | 'mid' | 'high';
 export type PowerupKind = 'shield' | 'rapid-fire';
+export type EnemyWavePhase = 'classic-endless' | 'galaga-rows' | 'boss';
 
 export interface ActivePowerup {
   readonly kind: PowerupKind;
@@ -21,6 +22,26 @@ export interface PlayerState {
   readonly activePowerups: ReadonlyArray<ActivePowerup>;
 }
 
+export interface EnemyFormationMotion {
+  readonly kind: 'formation';
+}
+
+export interface EnemyPathMotion {
+  readonly kind: 'path';
+  readonly path: 'entry' | 'attack';
+  readonly elapsedSec: number;
+  readonly durationSec: number;
+  readonly startX: number;
+  readonly startY: number;
+  readonly targetX: number;
+  readonly targetY: number;
+  readonly swayAmplitudeX: number;
+  readonly swayCycles: number;
+  readonly loopDepthY: number;
+}
+
+export type EnemyMotion = EnemyFormationMotion | EnemyPathMotion;
+
 export interface Enemy {
   readonly id: number;
   readonly x: number;
@@ -29,6 +50,8 @@ export interface Enemy {
   readonly kind: 'normal' | 'ufo';
   readonly scoreValue: number;
   readonly hitPoints: number;
+  readonly motion: EnemyMotion;
+  readonly guaranteedPickupKind: PowerupKind | null;
 }
 
 export interface Bullet {
@@ -54,10 +77,35 @@ export interface FrameInput {
   readonly moveLaneUpPressed: boolean;
   readonly moveLaneDownPressed: boolean;
   readonly firePressed: boolean;
+  readonly fireJustPressed: boolean;
   readonly restartPressed: boolean;
 }
 
-export type GamePhase = 'ready' | 'playing' | 'lost';
+export type GamePhase = 'ready' | 'playing' | 'boss-ready' | 'lost';
+
+export interface ClassicEndlessCampaignState {
+  readonly phase: 'classic-endless';
+  readonly rowsCleared: number;
+  readonly rowsSpawned: number;
+  readonly rowsTarget: number;
+  readonly startRows: number;
+  readonly transitionTimerSec: number;
+}
+
+export interface GalagaRowsCampaignState {
+  readonly phase: 'galaga-rows';
+  readonly rowsCleared: number;
+  readonly currentRowNumber: number;
+  readonly rowsTarget: number;
+  readonly transitionTimerSec: number;
+}
+
+export interface BossCampaignState {
+  readonly phase: 'boss';
+  readonly transitionTimerSec: number;
+}
+
+export type CampaignState = ClassicEndlessCampaignState | GalagaRowsCampaignState | BossCampaignState;
 
 export interface RowRespawnTicket {
   readonly rowIndex: number;
@@ -68,10 +116,12 @@ export interface RowRespawnTicket {
 export interface GameState {
   readonly phase: GamePhase;
   readonly elapsedTimeSec: number;
+  readonly campaign: CampaignState;
   readonly players: ReadonlyArray<PlayerState>;
   readonly enemyDirection: -1 | 1;
   readonly enemySpeed: number;
   readonly enemyFireTimer: number;
+  readonly enemyDiveTimer: number;
   readonly rngSeed: number;
   readonly enemies: ReadonlyArray<Enemy>;
   readonly bullets: ReadonlyArray<Bullet>;

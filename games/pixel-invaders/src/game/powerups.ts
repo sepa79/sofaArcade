@@ -1,7 +1,8 @@
 import {
-  PLAYER_RAPID_FIRE_BULLET_CAPACITY,
   PLAYER_RAPID_FIRE_SHOOT_COOLDOWN,
+  PLAYER_RAPID_FIRE_TAP_SHOOT_COOLDOWN,
   PLAYER_SHOOT_COOLDOWN,
+  PLAYER_TAP_SHOOT_COOLDOWN,
   POWERUP_RAPID_FIRE_DURATION_SEC,
   POWERUP_SHIELD_DURATION_SEC
 } from './constants';
@@ -106,8 +107,10 @@ export function playerShootCooldown(player: PlayerState): number {
   return hasActivePowerup(player, 'rapid-fire') ? PLAYER_RAPID_FIRE_SHOOT_COOLDOWN : PLAYER_SHOOT_COOLDOWN;
 }
 
-export function playerBulletCapacity(player: PlayerState): number {
-  return hasActivePowerup(player, 'rapid-fire') ? PLAYER_RAPID_FIRE_BULLET_CAPACITY : 1;
+export function playerTapShootCooldown(player: PlayerState): number {
+  return hasActivePowerup(player, 'rapid-fire')
+    ? PLAYER_RAPID_FIRE_TAP_SHOOT_COOLDOWN
+    : PLAYER_TAP_SHOOT_COOLDOWN;
 }
 
 export function powerupHudLabel(kind: PowerupKind): string {

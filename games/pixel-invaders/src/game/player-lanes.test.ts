@@ -11,6 +11,7 @@ function emptyInput(): FrameInput {
     moveLaneUpPressed: false,
     moveLaneDownPressed: false,
     firePressed: false,
+    fireJustPressed: false,
     restartPressed: false
   };
 }
