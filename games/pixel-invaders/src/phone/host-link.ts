@@ -82,12 +82,35 @@ function requireSignalHttpUrl(): string {
   return value;
 }
 
+function readOptionalPhoneSignalHttpUrl(): string | null {
+  const valueUnknown: unknown = import.meta.env['VITE_PHONE_SIGNAL_HTTP_URL'];
+  const value = typeof valueUnknown === 'string' ? valueUnknown.trim() : '';
+  return value.length === 0 ? null : value;
+}
+
+function readOptionalPhoneControllerOrigin(): string | null {
+  const valueUnknown: unknown = import.meta.env['VITE_PHONE_CONTROLLER_ORIGIN'];
+  const value = typeof valueUnknown === 'string' ? valueUnknown.trim() : '';
+  return value.length === 0 ? null : value;
+}
+
 function currentBaseUrl(): URL {
   return new URL(window.location.href);
 }
 
 function buildControllerBaseUrl(): URL {
-  const url = currentBaseUrl();
+  const overrideOrigin = readOptionalPhoneControllerOrigin();
+  const currentUrl = currentBaseUrl();
+  if (overrideOrigin === null) {
+    currentUrl.search = '';
+    currentUrl.hash = '';
+    return currentUrl;
+  }
+
+  const url = new URL(currentUrl.pathname, overrideOrigin);
+  if (isLocalHostname(url.hostname)) {
+    url.hostname = currentUrl.hostname;
+  }
   url.search = '';
   url.hash = '';
   return url;
@@ -243,7 +266,7 @@ export async function startPhoneHostSession(controllerId: string): Promise<Phone
   sessionState.channel = activeChannel;
 
   const controllerBaseUrl = buildControllerBaseUrl();
-  const phoneSignalUrl = normalizeSignalUrlForPhone(signalHttpUrl, controllerBaseUrl);
+  const phoneSignalUrl = normalizeSignalUrlForPhone(readOptionalPhoneSignalHttpUrl() ?? signalHttpUrl, controllerBaseUrl);
   const controllerUrl = new URL(controllerBaseUrl.toString());
   controllerUrl.searchParams.set('controller', '1');
   controllerUrl.searchParams.set('sessionId', session.sessionId);

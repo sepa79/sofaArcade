@@ -1,4 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { createServer as createHttpsServer } from 'node:https';
+import { readFileSync } from 'node:fs';
 
 import { loadSignalConfig } from './config';
 import {
@@ -269,7 +271,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   sendJson(res, 404, { error: 'not_found' });
 }
 
-const server = createServer((req, res) => {
+const requestListener = (req: IncomingMessage, res: ServerResponse): void => {
   void (async () => {
     try {
       await handleRequest(req, res);
@@ -297,7 +299,9 @@ const server = createServer((req, res) => {
       sendJson(res, 500, { error: 'Unknown server error.' });
     }
   })();
-});
+};
+
+const server = createServer(requestListener);
 
 setInterval(() => {
   sessionStore.pruneExpired(nowMs());
@@ -306,3 +310,17 @@ setInterval(() => {
 server.listen(config.port, () => {
   console.log(`signal-server listening on :${config.port}`);
 });
+
+if (config.httpsPort !== null) {
+  const httpsServer = createHttpsServer(
+    {
+      pfx: readFileSync(config.httpsPfxPath as string),
+      passphrase: config.httpsPfxPassword as string
+    },
+    requestListener
+  );
+
+  httpsServer.listen(config.httpsPort, () => {
+    console.log(`signal-server https listening on :${config.httpsPort}`);
+  });
+}

@@ -1,4 +1,4 @@
-import { PLAYER_LIVES, PLAYER_WIDTH, WORLD_WIDTH } from './constants';
+import { LOST_RESTART_DELAY_SEC, PLAYER_LIVES, PLAYER_WIDTH, WORLD_WIDTH } from './constants';
 import { defaultPlayerLaneForIndex } from './player-lanes';
 import type { GameState, PlayerState } from './types';
 import { createInitialCampaignState, enemyBaseSpeedForCampaign, enemyFireIntervalForCampaign, spawnInitialClassicFormation } from './waves';
@@ -40,6 +40,7 @@ export function createInitialState(seed: number, playerCount: number): GameState
   return {
     phase: 'ready',
     elapsedTimeSec: 0,
+    lostRestartDelaySec: LOST_RESTART_DELAY_SEC,
     campaign,
     players: createPlayers(playerCount),
     enemyDirection: 1,

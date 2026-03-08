@@ -86,14 +86,14 @@ function pathTargetPosition(
   }
   if (formationOffset === null) {
     return {
-      x: enemy.motion.targetX,
+      x: ENEMY_START_X + enemy.id * ENEMY_GAP_X,
       y: enemy.motion.targetY
     };
   }
 
   return {
-    x: enemy.motion.targetX + formationOffset.x,
-    y: enemy.motion.targetY + formationOffset.y
+    x: ENEMY_START_X + enemy.id * ENEMY_GAP_X + formationOffset.x,
+    y: enemy.motion.targetY
   };
 }
 
@@ -172,6 +172,7 @@ function translateFormationEnemies(
 function stepFormationEnemies(
   previousEnemies: ReadonlyArray<Enemy>,
   updatedEnemies: ReadonlyArray<Enemy>,
+  campaign: CampaignState,
   direction: -1 | 1,
   speed: number,
   dt: number
@@ -189,7 +190,7 @@ function stepFormationEnemies(
   const leftBoundaryX = ENEMY_WIDTH / 2;
   const rightBoundaryX = WORLD_WIDTH - ENEMY_WIDTH / 2;
   const horizontalStep = direction * speed * dt;
-  const topLevelDriftY = ENEMY_DRIFT_DOWN_SPEED * dt;
+  const topLevelDriftY = campaign.phase === 'classic-endless' ? ENEMY_DRIFT_DOWN_SPEED * dt : 0;
   const leftmostX = Math.min(...formation.map((enemy) => enemy.x));
   const rightmostX = Math.max(...formation.map((enemy) => enemy.x));
 
@@ -211,9 +212,14 @@ function stepFormationEnemies(
   }
 
   return {
-    enemies: translateFormationEnemies(moved, movableIds, 0, ENEMY_DESCEND_STEP),
+    enemies: translateFormationEnemies(
+      moved,
+      movableIds,
+      0,
+      campaign.phase === 'classic-endless' ? ENEMY_DESCEND_STEP : 0
+    ),
     direction: direction === 1 ? -1 : 1,
-    speed: speed + ENEMY_SPEED_STEP
+    speed: campaign.phase === 'classic-endless' ? speed + ENEMY_SPEED_STEP : speed
   };
 }
 
@@ -309,7 +315,7 @@ export function stepEnemies(
   dt: number,
   rngSeed: number
 ): EnemyStepResult {
-  const formationStep = stepFormationEnemies(enemies, enemies, direction, speed, dt);
+  const formationStep = stepFormationEnemies(enemies, enemies, campaign, direction, speed, dt);
   const formationOffset = campaign.phase === 'galaga-rows' ? galagaFormationOffset(formationStep.enemies) : null;
   const pathUpdatedEnemies = formationStep.enemies.map((enemy) =>
     updatePathEnemy(enemy, dt, campaign, formationOffset)

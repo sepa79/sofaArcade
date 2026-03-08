@@ -4,6 +4,7 @@ import {
   BULLET_HEIGHT,
   BULLET_WIDTH,
   ENEMY_BULLET_SPEED,
+  LOST_RESTART_DELAY_SEC,
   PLAYER_HEIGHT,
   PLAYER_RESPAWN_INVULNERABILITY,
   PLAYER_SHOT_SPEED,
@@ -132,6 +133,14 @@ function anyFirePressed(matchInput: MatchInput<FrameInput>): boolean {
 
 function anyRestartPressed(matchInput: MatchInput<FrameInput>): boolean {
   return matchInput.players.some((player) => player.input.restartPressed);
+}
+
+function anyFireJustPressed(matchInput: MatchInput<FrameInput>): boolean {
+  return matchInput.players.some((player) => player.input.fireJustPressed);
+}
+
+function anyRestartRequested(matchInput: MatchInput<FrameInput>): boolean {
+  return anyRestartPressed(matchInput) || anyFireJustPressed(matchInput);
 }
 
 function updatePlayers(
@@ -587,7 +596,7 @@ export function stepGame(
   if (state.phase === 'boss-ready') {
     return {
       state:
-        anyFirePressed(matchInput) || anyRestartPressed(matchInput)
+        anyRestartRequested(matchInput) || anyFirePressed(matchInput)
           ? createInitialState(state.rngSeed + 1, state.players.length)
           : state,
       collisionDebug: createEmptyCollisionDebugFrame()
@@ -595,8 +604,15 @@ export function stepGame(
   }
 
   if (state.phase !== 'playing') {
+    const nextLostRestartDelaySec = Math.max(0, state.lostRestartDelaySec - dt);
     return {
-      state: anyRestartPressed(matchInput) ? createInitialState(state.rngSeed + 1, state.players.length) : state,
+      state:
+        nextLostRestartDelaySec === 0 && anyRestartRequested(matchInput)
+          ? createInitialState(state.rngSeed + 1, state.players.length)
+          : {
+              ...state,
+              lostRestartDelaySec: nextLostRestartDelaySec
+            },
       collisionDebug: createEmptyCollisionDebugFrame()
     };
   }
@@ -804,6 +820,7 @@ export function stepGame(
       state: {
         phase,
         elapsedTimeSec,
+        lostRestartDelaySec: LOST_RESTART_DELAY_SEC,
         campaign,
         players: playersAfterMisses,
         enemyDirection,
@@ -842,6 +859,7 @@ export function stepGame(
       state: {
         phase: nextCampaign.phase === 'boss' ? 'boss-ready' : 'playing',
         elapsedTimeSec,
+        lostRestartDelaySec: state.lostRestartDelaySec,
         campaign: nextCampaign,
         players: playersAfterMisses,
         enemyDirection: 1,
@@ -863,6 +881,7 @@ export function stepGame(
     state: {
       phase,
       elapsedTimeSec,
+      lostRestartDelaySec: state.lostRestartDelaySec,
       campaign,
       players: playersAfterMisses,
       enemyDirection,

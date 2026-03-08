@@ -167,6 +167,42 @@ describe('enemy motion', () => {
     expect(next.diveTimer).toBeGreaterThan(0);
   });
 
+  it('keeps galaga formation on a stable row height while it moves horizontally', () => {
+    const campaign = advanceCampaignState({
+      phase: 'classic-endless',
+      rowsCleared: CLASSIC_TOTAL_ROWS,
+      rowsSpawned: CLASSIC_TOTAL_ROWS,
+      rowsTarget: CLASSIC_TOTAL_ROWS,
+      startRows: 4,
+      transitionTimerSec: 0
+    });
+    if (campaign.phase !== 'galaga-rows') {
+      throw new Error('Expected galaga-rows campaign state.');
+    }
+
+    const spawned = spawnGalagaRow(
+      {
+        ...campaign,
+        transitionTimerSec: 0
+      },
+      false
+    );
+
+    const next = stepEnemies(
+      spawned.enemies,
+      [createPlayer()],
+      campaign,
+      1,
+      spawned.enemySpeed,
+      spawned.enemyDiveTimer,
+      FIXED_TIMESTEP,
+      10
+    );
+
+    expect(next.enemies[0]?.x).toBeGreaterThan(spawned.enemies[0]?.x ?? 0);
+    expect(next.enemies[0]?.y).toBe(spawned.enemies[0]?.y);
+  });
+
   it('keeps galaga attack return smooth near the end of the path', () => {
     const campaign = advanceCampaignState({
       phase: 'classic-endless',
@@ -234,5 +270,60 @@ describe('enemy motion', () => {
     expect(Math.abs((returningAttacker.x ?? 0) - settledAttacker.x)).toBeLessThan(10);
     expect(Math.abs((returningAttacker.y ?? 0) - settledAttacker.y)).toBeLessThan(10);
     expect(settledAttacker.motion.kind).toBe('formation');
+  });
+
+  it('returns a galaga attacker to its own formation column', () => {
+    const campaign = advanceCampaignState({
+      phase: 'classic-endless',
+      rowsCleared: CLASSIC_TOTAL_ROWS,
+      rowsSpawned: CLASSIC_TOTAL_ROWS,
+      rowsTarget: CLASSIC_TOTAL_ROWS,
+      startRows: 4,
+      transitionTimerSec: 0
+    });
+    if (campaign.phase !== 'galaga-rows') {
+      throw new Error('Expected galaga-rows campaign state.');
+    }
+
+    const spawned = spawnGalagaRow(
+      {
+        ...campaign,
+        transitionTimerSec: 0
+      },
+      false
+    );
+    const launched = stepEnemies(
+      spawned.enemies,
+      [createPlayer()],
+      campaign,
+      1,
+      spawned.enemySpeed,
+      FIXED_TIMESTEP,
+      FIXED_TIMESTEP,
+      11
+    );
+    const attacker = launched.enemies.find((enemy) => enemy.motion.kind === 'path' && enemy.motion.path === 'attack');
+    if (attacker === undefined || attacker.motion.kind !== 'path') {
+      throw new Error('Expected a launched attack path.');
+    }
+
+    const settled = stepEnemies(
+      launched.enemies,
+      [createPlayer()],
+      campaign,
+      launched.direction,
+      launched.speed,
+      Number.POSITIVE_INFINITY,
+      attacker.motion.durationSec + FIXED_TIMESTEP,
+      launched.rngSeed
+    );
+    const returnedAttacker = settled.enemies.find((enemy) => enemy.id === attacker.id);
+    const neighbor = settled.enemies.find((enemy) => enemy.id !== attacker.id && enemy.alive);
+    if (returnedAttacker === undefined || neighbor === undefined) {
+      throw new Error('Expected settled galaga formation enemies.');
+    }
+
+    expect(returnedAttacker.motion.kind).toBe('formation');
+    expect(Math.abs(returnedAttacker.x - neighbor.x)).toBeGreaterThan(ENEMY_WIDTH);
   });
 });

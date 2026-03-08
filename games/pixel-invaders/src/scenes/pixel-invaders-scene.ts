@@ -405,7 +405,7 @@ function transitionBannerText(state: GameState): string {
   }
 
   if (state.phase === 'lost') {
-    return 'GAME OVER\nPRESS ENTER';
+    return state.lostRestartDelaySec === 0 ? 'GAME OVER\nPRESS FIRE' : 'GAME OVER';
   }
 
   if (state.phase === 'ready') {

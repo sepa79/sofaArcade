@@ -10,10 +10,7 @@ import {
   updateShake,
   updateTilt
 } from './signal';
-
-interface MotionPermissionRequester {
-  requestPermission?: () => Promise<'granted' | 'denied'>;
-}
+import { readOrientationAngle, resolveMoveGamma } from './orientation';
 
 function requireParam(params: URLSearchParams, name: string): string {
   const value = params.get(name);
@@ -36,60 +33,39 @@ function magnitude3d(x: number, y: number, z: number): number {
   return Math.sqrt(x * x + y * y + z * z);
 }
 
-function readScreenOrientationAngle(): number {
-  const screenOrientation = window.screen.orientation;
-  if (screenOrientation === undefined) {
-    throw new Error('screen.orientation API is required for controller orientation mapping.');
-  }
-
-  if (!Number.isInteger(screenOrientation.angle)) {
-    throw new Error('screen.orientation.angle must be an integer.');
-  }
-
-  const normalized = ((screenOrientation.angle % 360) + 360) % 360;
-  if (normalized === 0 || normalized === 90 || normalized === 180 || normalized === 270) {
-    return normalized;
-  }
-
-  throw new Error(`Unsupported screen orientation angle: ${screenOrientation.angle}.`);
+interface MotionPermissionRequester {
+  requestPermission?: () => Promise<'granted' | 'denied'>;
 }
 
-function resolveMoveGamma(event: DeviceOrientationEvent): number {
-  if (event.gamma === null) {
-    throw new Error('DeviceOrientationEvent gamma is null.');
+function readMotionPermissionRequester(globalName: 'DeviceOrientationEvent' | 'DeviceMotionEvent'): MotionPermissionRequester | null {
+  const value = (globalThis as Record<string, unknown>)[globalName];
+  if (value === undefined) {
+    return null;
   }
 
-  if (event.beta === null) {
-    throw new Error('DeviceOrientationEvent beta is null.');
-  }
-
-  const angle = readScreenOrientationAngle();
-  if (angle === 90) {
-    return -event.beta;
-  }
-
-  if (angle === 270) {
-    return event.beta;
-  }
-
-  if (angle === 180) {
-    return -event.gamma;
-  }
-
-  return event.gamma;
+  return value as MotionPermissionRequester;
 }
 
 async function requestMotionPermission(): Promise<void> {
-  const orientationPermissionEvent = DeviceOrientationEvent as unknown as MotionPermissionRequester;
-  if (typeof orientationPermissionEvent.requestPermission === 'function') {
+  const orientationPermissionEvent = readMotionPermissionRequester('DeviceOrientationEvent');
+  const motionPermissionEvent = readMotionPermissionRequester('DeviceMotionEvent');
+
+  if (orientationPermissionEvent === null && motionPermissionEvent === null) {
+    if (!window.isSecureContext) {
+      throw new Error('Motion sensors are unavailable here. Open the phone controller over HTTPS on iPhone/iPad.');
+    }
+
+    throw new Error('This browser does not expose DeviceOrientation/DeviceMotion APIs.');
+  }
+
+  if (typeof orientationPermissionEvent?.requestPermission === 'function') {
     const result = await orientationPermissionEvent.requestPermission();
     if (result !== 'granted') {
       throw new Error('DeviceOrientation permission denied.');
     }
   }
 
-  const motionPermissionEvent = DeviceMotionEvent as unknown as MotionPermissionRequester;
-  if (typeof motionPermissionEvent.requestPermission === 'function') {
+  if (typeof motionPermissionEvent?.requestPermission === 'function') {
     const result = await motionPermissionEvent.requestPermission();
     if (result !== 'granted') {
       throw new Error('DeviceMotion permission denied.');
@@ -145,61 +121,119 @@ export function mountControllerMode(root: HTMLElement): void {
 
   root.id = 'controller-root';
   root.innerHTML = `
-    <div class="panel">
-      <div class="value">Light80 Phone Controller</div>
-      <div class="label">Session ${sessionId}</div>
-      <div id="controller-status" class="label status-warn">connecting...</div>
-      <div id="wake-status" class="label status-warn">Wake lock: not acquired</div>
+    <div id="controller-control-chrome" class="controller-control-chrome">
+      <button id="start-btn" class="controller-mini-btn">START</button>
+      <div id="home-drag-track" class="controller-home-drag-track">
+        <div id="home-drag-thumb" class="controller-home-drag-thumb">HOME</div>
+      </div>
     </div>
 
-    <div class="panel">
-      <div class="controller-row">
-        <button id="enable-motion-btn" class="controller-btn">Enable Motion</button>
+    <div id="screen-home" class="controller-screen controller-screen-home">
+      <div class="controller-card controller-card-home-status">
+        <div class="controller-heading">SofaArcade</div>
+        <div class="controller-session">Session ${sessionId}</div>
+        <div id="controller-status" class="controller-meta status-warn">connecting...</div>
+        <div id="wake-status" class="controller-meta status-warn">Wake lock: not acquired</div>
       </div>
-      <div class="controller-row two" style="margin-top:10px">
-        <button id="mode-tilt" class="secondary">Tilt</button>
-        <button id="mode-slider" class="secondary">Slider</button>
+
+      <div class="controller-card controller-card-home-nav">
+        <div class="controller-section-label">Choose Layout</div>
+        <div class="controller-home-grid">
+          <button id="go-tilt-btn" class="controller-home-btn">TILT</button>
+          <button id="go-slider-btn" class="controller-home-btn">SLIDER</button>
+          <button id="go-joypad-btn" class="controller-home-btn">JOYPAD</button>
+        </div>
       </div>
-      <div class="controller-row">
-        <input id="slider-movex" type="range" min="-1" max="1" step="0.01" value="0" />
+
+      <div class="controller-card controller-card-home-tools">
+        <div class="controller-section-label">Motion</div>
+        <div class="controller-tools-row">
+          <button id="enable-motion-btn" class="controller-tool-btn">Enable Motion</button>
+          <button id="recenter-btn" class="controller-tool-btn controller-tool-btn-secondary">Recenter</button>
+        </div>
+        <div class="controller-meta" id="sensor-debug">tap Enable Motion to allow gyro</div>
       </div>
-      <div class="label" id="move-debug">MOVE_X: 0.000</div>
+
+      <div class="controller-card controller-card-home-debug">
+        <div class="controller-section-label">Status</div>
+        <div id="debug-summary" class="controller-meta controller-debug-summary">waiting for controller telemetry...</div>
+        <div id="debug-log" class="controller-debug-log"></div>
+      </div>
     </div>
 
-    <div class="panel">
-      <div class="controller-row two">
-        <button id="fire-btn" class="controller-btn">FIRE</button>
-        <button id="start-btn" class="controller-btn">START</button>
-      </div>
-      <div class="controller-row">
-        <button id="recenter-btn" class="controller-btn secondary">RECENTER</button>
-      </div>
-      <div class="label" id="sensor-debug">motion disabled</div>
+    <div id="screen-tilt" class="controller-screen controller-screen-tilt">
+      <button id="tilt-fire-left-btn" class="controller-action-btn controller-action-btn-round controller-action-fire">FIRE</button>
+      <div class="controller-tilt-spacer"></div>
+      <button id="tilt-fire-right-btn" class="controller-action-btn controller-action-btn-round controller-action-fire">FIRE</button>
     </div>
+
+    <div id="screen-slider" class="controller-screen controller-screen-slider">
+      <button id="slider-fire-btn" class="controller-action-btn controller-action-fire controller-action-btn-wide">FIRE</button>
+      <div class="controller-card controller-slider-panel">
+        <div id="slider-shell" class="controller-slider-shell">
+          <input id="slider-movex" type="range" min="-1" max="1" step="0.01" value="0" />
+        </div>
+      </div>
+    </div>
+
+    <div id="screen-joypad" class="controller-screen controller-screen-joypad">
+      <div class="controller-card controller-joystick-panel">
+        <div id="joystick-pad" class="controller-joystick-pad">
+          <div id="joystick-thumb" class="controller-joystick-thumb"></div>
+        </div>
+      </div>
+      <div class="controller-joypad-actions">
+        <button id="joy-fire-primary-btn" class="controller-action-btn controller-action-fire">A</button>
+        <button id="joy-fire-secondary-btn" class="controller-action-btn controller-action-secondary">B</button>
+      </div>
+    </div>
+
   `;
 
+  const controlChrome = requireElement(root.querySelector<HTMLElement>('#controller-control-chrome'), '#controller-control-chrome');
   const statusEl = requireElement(root.querySelector<HTMLElement>('#controller-status'), '#controller-status');
   const wakeStatusEl = requireElement(root.querySelector<HTMLElement>('#wake-status'), '#wake-status');
-  const modeTiltBtn = requireElement(root.querySelector<HTMLButtonElement>('#mode-tilt'), '#mode-tilt');
-  const modeSliderBtn = requireElement(root.querySelector<HTMLButtonElement>('#mode-slider'), '#mode-slider');
+  const startBtn = requireElement(root.querySelector<HTMLButtonElement>('#start-btn'), '#start-btn');
+  const homeDragTrack = requireElement(root.querySelector<HTMLElement>('#home-drag-track'), '#home-drag-track');
+  const homeDragThumb = requireElement(root.querySelector<HTMLElement>('#home-drag-thumb'), '#home-drag-thumb');
+  const goTiltBtn = requireElement(root.querySelector<HTMLButtonElement>('#go-tilt-btn'), '#go-tilt-btn');
+  const goSliderBtn = requireElement(root.querySelector<HTMLButtonElement>('#go-slider-btn'), '#go-slider-btn');
+  const goJoypadBtn = requireElement(root.querySelector<HTMLButtonElement>('#go-joypad-btn'), '#go-joypad-btn');
+  const screenHome = requireElement(root.querySelector<HTMLElement>('#screen-home'), '#screen-home');
+  const screenTilt = requireElement(root.querySelector<HTMLElement>('#screen-tilt'), '#screen-tilt');
+  const screenSlider = requireElement(root.querySelector<HTMLElement>('#screen-slider'), '#screen-slider');
+  const screenJoypad = requireElement(root.querySelector<HTMLElement>('#screen-joypad'), '#screen-joypad');
+  const sliderShell = requireElement(root.querySelector<HTMLElement>('#slider-shell'), '#slider-shell');
   const slider = requireElement(root.querySelector<HTMLInputElement>('#slider-movex'), '#slider-movex');
-  const moveDebug = requireElement(root.querySelector<HTMLElement>('#move-debug'), '#move-debug');
+  const joystickPad = requireElement(root.querySelector<HTMLElement>('#joystick-pad'), '#joystick-pad');
+  const joystickThumb = requireElement(root.querySelector<HTMLElement>('#joystick-thumb'), '#joystick-thumb');
+  const debugSummary = requireElement(root.querySelector<HTMLElement>('#debug-summary'), '#debug-summary');
+  const debugLog = requireElement(root.querySelector<HTMLElement>('#debug-log'), '#debug-log');
   const sensorDebug = requireElement(root.querySelector<HTMLElement>('#sensor-debug'), '#sensor-debug');
   const enableMotionBtn = requireElement(
     root.querySelector<HTMLButtonElement>('#enable-motion-btn'),
     '#enable-motion-btn'
   );
-  const fireBtn = requireElement(root.querySelector<HTMLButtonElement>('#fire-btn'), '#fire-btn');
-  const startBtn = requireElement(root.querySelector<HTMLButtonElement>('#start-btn'), '#start-btn');
   const recenterBtn = requireElement(root.querySelector<HTMLButtonElement>('#recenter-btn'), '#recenter-btn');
+  const tiltFireLeftBtn = requireElement(root.querySelector<HTMLButtonElement>('#tilt-fire-left-btn'), '#tilt-fire-left-btn');
+  const tiltFireRightBtn = requireElement(root.querySelector<HTMLButtonElement>('#tilt-fire-right-btn'), '#tilt-fire-right-btn');
+  const sliderFireBtn = requireElement(root.querySelector<HTMLButtonElement>('#slider-fire-btn'), '#slider-fire-btn');
+  const joyFirePrimaryBtn = requireElement(root.querySelector<HTMLButtonElement>('#joy-fire-primary-btn'), '#joy-fire-primary-btn');
+  const joyFireSecondaryBtn = requireElement(root.querySelector<HTMLButtonElement>('#joy-fire-secondary-btn'), '#joy-fire-secondary-btn');
 
-  let mode: 'tilt' | 'slider' = 'tilt';
+  let screen: 'home' | 'tilt' | 'slider' | 'joypad' = 'home';
   let motionEnabled = false;
   let seq = 0;
   let sliderMoveX = 0;
+  let joystickMoveX = 0;
+  let joystickMoveY = 0;
+  let joystickPointerId: number | null = null;
+  let homeDragPointerId: number | null = null;
+  let homeDragProgress = 0;
   let fireHeld = false;
   let firePulsePending = false;
   let startHeld = false;
+  let specialHeld = false;
   let recenterPulsePending = false;
   let specialPulsePending = false;
   let latestGamma = 0;
@@ -210,23 +244,41 @@ export function mountControllerMode(root: HTMLElement): void {
   let peer: RTCPeerConnection | null = null;
   let channel: RTCDataChannel | null = null;
   let pendingRemoteCandidates: RTCIceCandidateInit[] = [];
+  let debugEntries: ReadonlyArray<string> = [];
+
+  function appendDebugLog(message: string): void {
+    const entry = `[${new Date().toLocaleTimeString()}] ${message}`;
+    debugEntries = [entry, ...debugEntries].slice(0, 10);
+    debugLog.innerHTML = debugEntries.map((line) => `<div class="controller-debug-line">${line}</div>`).join('');
+  }
+
+  function renderDebugSummary(): void {
+    debugSummary.textContent =
+      `screen=${screen} move=${computeMoveX().toFixed(3)} joy=(${joystickMoveX.toFixed(2)}, ${joystickMoveY.toFixed(2)}) ` +
+      `motion=${motionEnabled ? 'on' : 'off'} channel=${channel?.readyState ?? 'closed'} ` +
+      `fire=${fireHeld ? 'held' : 'idle'} special=${specialHeld ? 'held' : 'idle'} start=${startHeld ? 'held' : 'idle'}`;
+  }
 
   function setStatus(text: string, ok: boolean): void {
     statusEl.textContent = text;
-    statusEl.className = ok ? 'label status-ok' : 'label status-warn';
+    statusEl.className = ok ? 'controller-meta status-ok' : 'controller-meta status-warn';
+    appendDebugLog(`status: ${text}`);
+    renderDebugSummary();
   }
 
   async function acquireWakeLock(): Promise<void> {
     const wakeLockApi = (navigator as Navigator & { wakeLock?: WakeLock }).wakeLock;
     if (wakeLockApi === undefined) {
       wakeStatusEl.textContent = 'Wake lock unsupported. Keep screen on manually.';
-      wakeStatusEl.className = 'label status-warn';
+      wakeStatusEl.className = 'controller-meta status-warn';
+      appendDebugLog('wake lock unsupported');
       return;
     }
 
     await wakeLockApi.request('screen');
     wakeStatusEl.textContent = 'Wake lock active';
-    wakeStatusEl.className = 'label status-ok';
+    wakeStatusEl.className = 'controller-meta status-ok';
+    appendDebugLog('wake lock active');
   }
 
   function errorMessage(error: unknown): string {
@@ -237,19 +289,50 @@ export function mountControllerMode(root: HTMLElement): void {
     return 'unknown controller error';
   }
 
-  function setMode(nextMode: 'tilt' | 'slider'): void {
-    mode = nextMode;
-    modeTiltBtn.className = nextMode === 'tilt' ? '' : 'secondary';
-    modeSliderBtn.className = nextMode === 'slider' ? '' : 'secondary';
-    slider.disabled = nextMode !== 'slider';
+  function setHomeDragProgress(nextProgress: number): void {
+    homeDragProgress = Math.max(0, Math.min(1, nextProgress));
+    const maxOffset = Math.max(0, homeDragTrack.clientWidth - homeDragThumb.clientWidth - 4);
+    homeDragThumb.style.transform = `translateX(${Math.round(maxOffset * homeDragProgress)}px)`;
+  }
+
+  function navigateHome(): void {
+    screen = 'home';
+    setHomeDragProgress(0);
+    renderScreen();
+  }
+
+  function renderScreen(): void {
+    goTiltBtn.className = screen === 'tilt' ? 'controller-home-btn is-active' : 'controller-home-btn';
+    goSliderBtn.className = screen === 'slider' ? 'controller-home-btn is-active' : 'controller-home-btn';
+    goJoypadBtn.className = screen === 'joypad' ? 'controller-home-btn is-active' : 'controller-home-btn';
+    controlChrome.style.display = screen === 'home' ? 'none' : 'grid';
+    screenHome.style.display = screen === 'home' ? 'grid' : 'none';
+    screenTilt.style.display = screen === 'tilt' ? 'grid' : 'none';
+    screenSlider.style.display = screen === 'slider' ? 'grid' : 'none';
+    screenJoypad.style.display = screen === 'joypad' ? 'grid' : 'none';
+    slider.disabled = screen !== 'slider';
+    sliderShell.classList.toggle('is-disabled', screen !== 'slider');
+    renderDebugSummary();
   }
 
   function computeMoveX(): number {
-    if (mode === 'slider') {
+    if (screen === 'slider') {
       return sliderMoveX;
     }
 
+    if (screen === 'joypad') {
+      return joystickMoveX;
+    }
+
+    if (screen !== 'tilt') {
+      return 0;
+    }
+
     return tiltState.smoothedMoveX;
+  }
+
+  function updateMoveDebugs(): void {
+    renderDebugSummary();
   }
 
   function sendInputFrame(): void {
@@ -262,7 +345,7 @@ export function mountControllerMode(root: HTMLElement): void {
       fire: fireHeld || firePulsePending ? 1 : 0,
       start: startHeld ? 1 : 0,
       recenter: recenterPulsePending ? 1 : 0,
-      special: specialPulsePending ? 1 : 0
+      special: specialHeld || specialPulsePending ? 1 : 0
     });
 
     channel.send(JSON.stringify(message));
@@ -272,14 +355,17 @@ export function mountControllerMode(root: HTMLElement): void {
     recenterPulsePending = false;
     specialPulsePending = false;
 
-    moveDebug.textContent = `MOVE_X: ${message.axes.moveX.toFixed(3)}`;
+    updateMoveDebugs();
+    renderDebugSummary();
   }
 
   function onOrientation(event: DeviceOrientationEvent): void {
-    const moveGamma = resolveMoveGamma(event);
+    const moveGamma = resolveMoveGamma(event, readOrientationAngle(window));
     latestGamma = moveGamma;
     tiltState = updateTilt(tiltState, moveGamma, DEFAULT_TILT_CONFIG);
     sensorDebug.textContent = `gamma=${moveGamma.toFixed(2)} baseline=${tiltState.baselineGamma.toFixed(2)}`;
+    updateMoveDebugs();
+    renderDebugSummary();
   }
 
   function onMotion(event: DeviceMotionEvent): void {
@@ -303,27 +389,124 @@ export function mountControllerMode(root: HTMLElement): void {
     if (shake.special) {
       specialPulsePending = true;
     }
+    renderDebugSummary();
+  }
+
+  function updateJoystickThumb(): void {
+    const radiusPx = Math.max(0, (joystickPad.clientWidth - joystickThumb.clientWidth) / 2 - 8);
+    joystickThumb.style.transform = `translate(${Math.round(joystickMoveX * radiusPx)}px, ${Math.round(joystickMoveY * radiusPx)}px)`;
+    updateMoveDebugs();
+    renderDebugSummary();
+  }
+
+  function resetJoystick(): void {
+    joystickMoveX = 0;
+    joystickMoveY = 0;
+    joystickPointerId = null;
+    updateJoystickThumb();
+  }
+
+  function updateJoystickFromPointer(clientX: number, clientY: number): void {
+    const rect = joystickPad.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const radius = Math.max(1, Math.min(rect.width, rect.height) * 0.34);
+    const deltaX = (clientX - centerX) / radius;
+    const deltaY = (clientY - centerY) / radius;
+    const magnitude = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+    const normalizedScale = magnitude > 1 ? 1 / magnitude : 1;
+    joystickMoveX = Math.max(-1, Math.min(1, deltaX * normalizedScale));
+    joystickMoveY = Math.max(-1, Math.min(1, deltaY * normalizedScale));
+    updateJoystickThumb();
   }
 
   function bindHoldButton(button: HTMLButtonElement, onChange: (pressed: boolean) => void): void {
     button.addEventListener('pointerdown', (event) => {
       event.preventDefault();
+      button.classList.add('is-held');
       onChange(true);
     });
 
     button.addEventListener('pointerup', (event) => {
       event.preventDefault();
+      button.classList.remove('is-held');
       onChange(false);
     });
 
     button.addEventListener('pointercancel', (event) => {
       event.preventDefault();
+      button.classList.remove('is-held');
       onChange(false);
     });
 
     button.addEventListener('pointerleave', (event) => {
       event.preventDefault();
+      button.classList.remove('is-held');
       onChange(false);
+    });
+  }
+
+  function bindHomeDrag(): void {
+    homeDragTrack.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      homeDragPointerId = event.pointerId;
+      homeDragTrack.setPointerCapture(event.pointerId);
+      const rect = homeDragTrack.getBoundingClientRect();
+      setHomeDragProgress((event.clientX - rect.left) / rect.width);
+    });
+
+    homeDragTrack.addEventListener('pointermove', (event) => {
+      if (homeDragPointerId !== event.pointerId) {
+        return;
+      }
+      const rect = homeDragTrack.getBoundingClientRect();
+      setHomeDragProgress((event.clientX - rect.left) / rect.width);
+    });
+
+    const finishHomeDrag = (event: PointerEvent): void => {
+      if (homeDragPointerId !== event.pointerId) {
+        return;
+      }
+      const shouldGoHome = homeDragProgress >= 0.66;
+      homeDragPointerId = null;
+      setHomeDragProgress(0);
+      if (shouldGoHome) {
+        appendDebugLog('navigated to home');
+        navigateHome();
+      }
+    };
+
+    homeDragTrack.addEventListener('pointerup', finishHomeDrag);
+    homeDragTrack.addEventListener('pointercancel', finishHomeDrag);
+  }
+
+  function bindJoystick(): void {
+    joystickPad.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      joystickPointerId = event.pointerId;
+      joystickPad.setPointerCapture(event.pointerId);
+      updateJoystickFromPointer(event.clientX, event.clientY);
+    });
+
+    joystickPad.addEventListener('pointermove', (event) => {
+      if (joystickPointerId !== event.pointerId) {
+        return;
+      }
+      updateJoystickFromPointer(event.clientX, event.clientY);
+    });
+
+    joystickPad.addEventListener('pointerup', (event) => {
+      if (joystickPointerId !== event.pointerId) {
+        return;
+      }
+      resetJoystick();
+    });
+
+    joystickPad.addEventListener('pointercancel', (event) => {
+      if (joystickPointerId !== event.pointerId) {
+        return;
+      }
+      resetJoystick();
     });
   }
 
@@ -422,6 +605,7 @@ export function mountControllerMode(root: HTMLElement): void {
         }
 
         setStatus('connected (p2p)', true);
+        appendDebugLog('data channel open');
       });
 
       channel.addEventListener('close', () => {
@@ -430,6 +614,7 @@ export function mountControllerMode(root: HTMLElement): void {
         }
 
         setStatus('disconnected', false);
+        appendDebugLog('data channel closed');
       });
     });
 
@@ -465,7 +650,8 @@ export function mountControllerMode(root: HTMLElement): void {
         motionEnabled = true;
         window.addEventListener('deviceorientation', onOrientation);
         window.addEventListener('devicemotion', onMotion);
-        sensorDebug.textContent = 'motion enabled';
+        sensorDebug.textContent = 'motion enabled, tilt phone to steer';
+        appendDebugLog('motion enabled');
       } catch (error) {
         const message = errorMessage(error);
         setStatus(`motion error: ${message}`, false);
@@ -474,27 +660,51 @@ export function mountControllerMode(root: HTMLElement): void {
     })();
   });
 
-  modeTiltBtn.addEventListener('click', () => {
-    setMode('tilt');
+  goTiltBtn.addEventListener('click', () => {
+    screen = 'tilt';
+    renderScreen();
+    appendDebugLog('screen: tilt');
   });
 
-  modeSliderBtn.addEventListener('click', () => {
-    setMode('slider');
+  goSliderBtn.addEventListener('click', () => {
+    screen = 'slider';
+    renderScreen();
+    appendDebugLog('screen: slider');
+  });
+
+  goJoypadBtn.addEventListener('click', () => {
+    screen = 'joypad';
+    renderScreen();
+    appendDebugLog('screen: joypad');
   });
 
   slider.addEventListener('input', () => {
     sliderMoveX = Number.parseFloat(slider.value);
+    updateMoveDebugs();
+    renderDebugSummary();
   });
 
-  bindHoldButton(fireBtn, (pressed) => {
-    fireHeld = pressed;
-    if (pressed) {
-      firePulsePending = true;
-    }
-  });
+  const fireButtons = [tiltFireLeftBtn, tiltFireRightBtn, sliderFireBtn, joyFirePrimaryBtn];
+  for (const button of fireButtons) {
+    bindHoldButton(button, (pressed) => {
+      fireHeld = pressed;
+      if (pressed) {
+        firePulsePending = true;
+      }
+    });
+  }
 
   bindHoldButton(startBtn, (pressed) => {
     startHeld = pressed;
+    renderDebugSummary();
+  });
+
+  bindHoldButton(joyFireSecondaryBtn, (pressed) => {
+    specialHeld = pressed;
+    if (pressed) {
+      specialPulsePending = true;
+    }
+    renderDebugSummary();
   });
 
   recenterBtn.addEventListener('click', () => {
@@ -507,6 +717,8 @@ export function mountControllerMode(root: HTMLElement): void {
         tiltState = recenterTilt(tiltState, latestGamma);
         recenterPulsePending = true;
         await acquireWakeLock();
+        appendDebugLog('tilt recentered');
+        updateMoveDebugs();
       } catch (error) {
         const message = errorMessage(error);
         setStatus(`recenter error: ${message}`, false);
@@ -515,7 +727,12 @@ export function mountControllerMode(root: HTMLElement): void {
     })();
   });
 
-  setMode('tilt');
+  bindHomeDrag();
+  bindJoystick();
+  updateMoveDebugs();
+  setHomeDragProgress(0);
+  appendDebugLog(`controller mounted for session ${sessionId}`);
+  renderScreen();
   void (async () => {
     try {
       await startPeer();

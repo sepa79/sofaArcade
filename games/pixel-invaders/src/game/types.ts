@@ -116,6 +116,7 @@ export interface RowRespawnTicket {
 export interface GameState {
   readonly phase: GamePhase;
   readonly elapsedTimeSec: number;
+  readonly lostRestartDelaySec: number;
   readonly campaign: CampaignState;
   readonly players: ReadonlyArray<PlayerState>;
   readonly enemyDirection: -1 | 1;

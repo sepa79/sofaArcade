@@ -12,6 +12,7 @@ import {
   ENEMY_UFO_SCORE,
   ENEMY_WIDTH,
   FIXED_TIMESTEP,
+  LOST_RESTART_DELAY_SEC,
   PLAYER_RAPID_FIRE_TAP_SHOOT_COOLDOWN,
   PLAYER_ACTIVE_HEIGHT,
   PLAYER_ACTIVE_WIDTH,
@@ -1152,6 +1153,46 @@ describe('stepGame', () => {
     const next = stepState(customState);
 
     expect(next.phase).toBe('playing');
+  });
+
+  it('does not restart immediately after game over when fire is pressed', () => {
+    const state = createInitialState(55, 1);
+    const lostState: GameState = {
+      ...state,
+      phase: 'lost',
+      lostRestartDelaySec: LOST_RESTART_DELAY_SEC
+    };
+
+    const next = stepState(lostState, [
+      {
+        ...emptyInput(),
+        firePressed: true,
+        fireJustPressed: true
+      }
+    ]);
+
+    expect(next.phase).toBe('lost');
+    expect(next.lostRestartDelaySec).toBeLessThan(LOST_RESTART_DELAY_SEC);
+  });
+
+  it('restarts from game over when fire is pressed after the restart delay', () => {
+    const state = createInitialState(56, 1);
+    const lostState: GameState = {
+      ...state,
+      phase: 'lost',
+      lostRestartDelaySec: 0
+    };
+
+    const next = stepState(lostState, [
+      {
+        ...emptyInput(),
+        firePressed: true,
+        fireJustPressed: true
+      }
+    ]);
+
+    expect(next.phase).toBe('ready');
+    expect(next.lostRestartDelaySec).toBe(LOST_RESTART_DELAY_SEC);
   });
 
   it('respawns a cleared classic row from a safe formation anchor after an empty screen', () => {

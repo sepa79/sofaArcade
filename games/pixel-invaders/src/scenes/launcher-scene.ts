@@ -106,6 +106,7 @@ interface LauncherCopy {
   readonly phoneConnectLabel: string;
   readonly phoneConnectStart: string;
   readonly phoneSetupTitle: string;
+  readonly phoneSetupRecreate: string;
   readonly phoneSetupOpenLink: string;
   readonly phoneSetupClose: string;
   readonly audioTitle: string;
@@ -258,6 +259,7 @@ const LAUNCHER_COPY: Readonly<Record<LauncherLanguage, LauncherCopy>> = {
     phoneConnectLabel: 'PHONE LINK',
     phoneConnectStart: 'PHONE SETUP',
     phoneSetupTitle: 'PHONE LINK SETUP',
+    phoneSetupRecreate: 'RECREATE',
     phoneSetupOpenLink: 'OPEN CONTROLLER URL',
     phoneSetupClose: 'CLOSE',
     audioTitle: 'AUDIO',
@@ -296,6 +298,7 @@ const LAUNCHER_COPY: Readonly<Record<LauncherLanguage, LauncherCopy>> = {
     phoneConnectLabel: 'LINK TELEFONU',
     phoneConnectStart: 'USTAW TELEFON',
     phoneSetupTitle: 'KONFIGURACJA TELEFONU',
+    phoneSetupRecreate: 'ODTWORZ KOD',
     phoneSetupOpenLink: 'OTWORZ URL KONTROLERA',
     phoneSetupClose: 'ZAMKNIJ',
     audioTitle: 'AUDIO',
@@ -896,6 +899,7 @@ export class LauncherScene extends Phaser.Scene {
       this.sfx.playUiMove();
       this.phoneSetupVisible = true;
       this.renderDom();
+      void this.ensurePhoneSetupSession();
     });
 
     phoneSetupConnectButton.addEventListener('click', () => {
@@ -962,6 +966,15 @@ export class LauncherScene extends Phaser.Scene {
     this.phoneQrValue = '';
   }
 
+  private phoneStatusSummaryText(): string {
+    const snapshot = currentPhoneHostSnapshot(PIXEL_PHONE_LINK_CONTROLLER_ID);
+    if (snapshot.sessionId === null) {
+      return snapshot.message;
+    }
+
+    return `CODE ${snapshot.sessionId} | ${snapshot.message}`;
+  }
+
   private phoneStatusText(): string {
     const snapshot = currentPhoneHostSnapshot(PIXEL_PHONE_LINK_CONTROLLER_ID);
     if (snapshot.controllerUrl === null || snapshot.sessionId === null) {
@@ -1019,6 +1032,15 @@ export class LauncherScene extends Phaser.Scene {
       this.phoneConnectInFlight = false;
       this.renderDom();
     }
+  }
+
+  private async ensurePhoneSetupSession(): Promise<void> {
+    const snapshot = currentPhoneHostSnapshot(PIXEL_PHONE_LINK_CONTROLLER_ID);
+    if (snapshot.controllerUrl !== null && snapshot.sessionId !== null) {
+      return;
+    }
+
+    await this.connectPhoneController();
   }
 
   private applyUiState(nextState: LauncherState, playMove: boolean): void {
@@ -1085,7 +1107,7 @@ export class LauncherScene extends Phaser.Scene {
       this.dom.phoneConnectStatus.style.display = phoneProfileActive ? 'block' : 'none';
       this.dom.phoneConnectButton.textContent = copy.phoneConnectStart;
       this.dom.phoneConnectButton.disabled = this.phoneConnectInFlight;
-      this.dom.phoneConnectStatus.textContent = this.phoneStatusText();
+      this.dom.phoneConnectStatus.textContent = this.phoneStatusSummaryText();
       this.dom.audioMixButton.style.display = 'none';
       this.dom.audioLoopButton.style.display = 'none';
       this.renderControllerChips(gameOption);
@@ -1112,7 +1134,7 @@ export class LauncherScene extends Phaser.Scene {
     this.dom.phoneSetupStatus.textContent = this.phoneStatusText();
     this.dom.phoneSetupConnectButton.textContent = this.phoneConnectInFlight
       ? `${copy.phoneConnectLabel}: ...`
-      : copy.phoneConnectStart;
+      : copy.phoneSetupRecreate;
     this.dom.phoneSetupConnectButton.disabled = this.phoneConnectInFlight;
     if (phoneSnapshot.controllerUrl === null) {
       this.dom.phoneSetupOpenLink.style.display = 'none';

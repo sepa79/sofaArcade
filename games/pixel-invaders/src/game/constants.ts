@@ -50,6 +50,7 @@ export const ROW_RESPAWN_QUEUE_DELAY_SEC = 0.28;
 export const ROW_RESPAWN_MIN_VERTICAL_GAP = ENEMY_GAP_Y;
 export const ENEMY_ROW_UFO_CHANCE = 0.38;
 export const CAMPAIGN_TRANSITION_DURATION_SEC = 0.72;
+export const LOST_RESTART_DELAY_SEC = 2.4;
 
 export const BULLET_WIDTH = 4;
 export const BULLET_HEIGHT = 14;
