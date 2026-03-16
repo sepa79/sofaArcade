@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MSX Sync MVP</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <h1>MSX Sync MVP</h1>
+      <p class="subline">Upload MP3, backend kompiluje sync, od razu odsłuch i retro wizualizacja.</p>
+
+      <form id="upload-form" class="panel">
+        <label class="field">
+          <span>Plik audio (MP3/WAV/FLAC)</span>
+          <input id="track-input" name="track" type="file" accept="audio/*" required />
+        </label>
+        <button id="compile-btn" type="submit">Kompiluj Sync</button>
+      </form>
+
+      <section class="panel status-panel">
+        <div id="status">Status: idle</div>
+        <div id="meta"></div>
+        <div class="result-actions">
+          <a id="download-sync" class="action-link disabled" href="#" aria-disabled="true">Pobierz track.sync.json</a>
+          <a id="download-audio" class="action-link disabled" href="#" aria-disabled="true">Pobierz audio źródłowe</a>
+        </div>
+      </section>
+
+      <section class="panel">
+        <audio id="player" controls preload="metadata"></audio>
+        <div class="controls-grid">
+          <label class="slider">
+            <span>LOW Gain</span>
+            <input id="low-gain" type="range" min="0" max="2" step="0.01" value="1" />
+            <output id="low-gain-value">1.00</output>
+          </label>
+          <label class="slider">
+            <span>MID Gain</span>
+            <input id="mid-gain" type="range" min="0" max="2" step="0.01" value="1" />
+            <output id="mid-gain-value">1.00</output>
+          </label>
+          <label class="slider">
+            <span>HIGH Gain</span>
+            <input id="high-gain" type="range" min="0" max="2" step="0.01" value="1" />
+            <output id="high-gain-value">1.00</output>
+          </label>
+          <label class="slider">
+            <span>Beat Boost</span>
+            <input id="beat-gain" type="range" min="0" max="2" step="0.01" value="1" />
+            <output id="beat-gain-value">1.00</output>
+          </label>
+          <label class="slider">
+            <span>MID Chaos</span>
+            <input id="mid-chaos" type="range" min="0" max="2" step="0.01" value="1" />
+            <output id="mid-chaos-value">1.00</output>
+          </label>
+          <label class="slider">
+            <span>MID Speed</span>
+            <input id="mid-speed" type="range" min="0" max="2.5" step="0.01" value="1" />
+            <output id="mid-speed-value">1.00</output>
+          </label>
+        </div>
+        <label class="legacy-toggle">
+          <input id="show-classic" type="checkbox" checked />
+          <span>Pokaż klasyczny podgląd pod sceną</span>
+        </label>
+        <div class="visual-stack">
+          <canvas id="preview" width="1280" height="720"></canvas>
+          <canvas id="classic-preview" width="1280" height="180"></canvas>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="/main.js"></script>
+  </body>
+</html>

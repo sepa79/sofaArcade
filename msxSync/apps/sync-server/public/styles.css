@@ -1,0 +1,154 @@
+:root {
+  color-scheme: light;
+  --bg: #101013;
+  --bg2: #1d1f2b;
+  --panel: #121827;
+  --text: #f2f4ff;
+  --dim: #a4acc7;
+  --accent: #62d4ff;
+  --hot: #ff8f5e;
+  --ok: #4ee5b2;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: radial-gradient(circle at 15% 20%, #1d2d46 0%, var(--bg) 52%);
+  color: var(--text);
+}
+
+.shell {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 20px;
+  display: grid;
+  gap: 16px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 2rem;
+}
+
+.subline {
+  margin: 0;
+  color: var(--dim);
+}
+
+.panel {
+  border: 1px solid #2a3557;
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(26, 33, 56, 0.95) 0%, rgba(16, 20, 35, 0.95) 100%);
+  padding: 14px;
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+button {
+  appearance: none;
+  border: none;
+  background: linear-gradient(90deg, var(--accent), #87f0d3);
+  color: #001018;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.status-panel {
+  display: grid;
+  gap: 8px;
+}
+
+#status {
+  font-weight: 700;
+}
+
+#meta {
+  color: var(--dim);
+}
+
+.result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.action-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  padding: 8px 12px;
+  text-decoration: none;
+  font-weight: 700;
+  background: linear-gradient(90deg, #65d7ff, #8af0da);
+  color: #04111f;
+}
+
+.action-link.disabled {
+  pointer-events: none;
+  opacity: 0.45;
+}
+
+audio {
+  width: 100%;
+  margin-bottom: 12px;
+}
+
+.controls-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.slider {
+  display: grid;
+  gap: 4px;
+  font-size: 0.9rem;
+  color: #d8e6ff;
+}
+
+.slider output {
+  font-variant-numeric: tabular-nums;
+  color: #9fe9ff;
+}
+
+.legacy-toggle {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--dim);
+  margin-bottom: 10px;
+}
+
+.visual-stack {
+  display: grid;
+  gap: 8px;
+}
+
+canvas {
+  width: 100%;
+  height: auto;
+  border-radius: 10px;
+  border: 1px solid #355386;
+  background: linear-gradient(180deg, var(--bg2), #0d111f);
+}
+
+#classic-preview.hidden {
+  display: none;
+}

@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 
-export type PlayableSceneKey = 'pixel-invaders' | 'tunnel-invaders';
+export type PlayableSceneKey = 'pixel-invaders' | 'artillery-duel' | 'tunnel-invaders';
 
 export interface LazySceneLoader {
   ensureLoaded(sceneKey: PlayableSceneKey): Promise<void>;
@@ -27,6 +27,18 @@ async function loadSceneDefinition(sceneKey: PlayableSceneKey): Promise<SceneDef
     return {
       key: sceneModule.PIXEL_INVADERS_SCENE_KEY,
       sceneClass: sceneModule.PixelInvadersScene
+    };
+  }
+
+  if (sceneKey === 'artillery-duel') {
+    const sceneModule = await import('artillery-duel');
+    if (sceneModule.ARTILLERY_DUEL_SCENE_KEY !== 'artillery-duel') {
+      throw new Error('Artillery Duel scene key mismatch: expected "artillery-duel".');
+    }
+
+    return {
+      key: sceneModule.ARTILLERY_DUEL_SCENE_KEY,
+      sceneClass: sceneModule.ArtilleryDuelScene
     };
   }
 

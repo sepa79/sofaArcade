@@ -184,7 +184,7 @@ function requireAudioMixProfileId(index: number): AudioMixProfileId {
 }
 
 function requirePlayableSceneKey(sceneKey: string): PlayableSceneKey {
-  if (sceneKey === 'pixel-invaders' || sceneKey === 'tunnel-invaders') {
+  if (sceneKey === 'pixel-invaders' || sceneKey === 'artillery-duel' || sceneKey === 'tunnel-invaders') {
     return sceneKey;
   }
 
@@ -200,6 +200,9 @@ function gameDescription(game: GameOption, language: LauncherLanguage): string {
     if (game.id === 'pixel-invaders') {
       return 'Klasyczny test loop: ruch, strzal, fala przeciwnikow.';
     }
+    if (game.id === 'artillery-duel') {
+      return 'Generowany teren, balistyka i klasyczny pojedynek dzialek.';
+    }
     if (game.id === 'tunnel-invaders') {
       return 'Pseudo-3D tunel: przeciwnicy nadlatuja z glebi na krawedz.';
     }
@@ -208,6 +211,9 @@ function gameDescription(game: GameOption, language: LauncherLanguage): string {
 
   if (game.id === 'pixel-invaders') {
     return 'Classic gameplay loop: movement, shots, and enemy waves.';
+  }
+  if (game.id === 'artillery-duel') {
+    return 'Generated terrain, artillery arcs, and a classic duel of cannons.';
   }
   if (game.id === 'tunnel-invaders') {
     return 'Pseudo-3D tunnel: enemies rush from depth to the front edge.';
@@ -240,6 +246,12 @@ function controllerDescription(option: ControllerOption, language: LauncherLangu
   }
   if (option.id === 'pixel-pad-phone') {
     return 'Two slots: local gamepad 1 plus one phone through phone link.';
+  }
+  if (option.id === 'artillery-solo-shared') {
+    return 'One player versus CPU with shared couch controls.';
+  }
+  if (option.id === 'artillery-hotseat-shared') {
+    return 'Two players take turns on one shared controller setup.';
   }
   if (option.id === 'tunnel-solo-default') {
     return 'Relative orbit movement with primary fire and phase-jump.';
@@ -1376,7 +1388,8 @@ export class LauncherScene extends Phaser.Scene {
             controllerProfileId: controllerOption.controllerProfileId,
             controllerLabel: controllerOption.label,
             audioMixProfileId,
-            phoneLinkEnabled: controllerOption.phoneLinkEnabled
+            phoneLinkEnabled: controllerOption.phoneLinkEnabled,
+            ...controllerOption.sceneData
           };
 
     try {

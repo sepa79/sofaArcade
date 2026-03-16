@@ -1,0 +1,11 @@
+{
+  "name": "msx-sync",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev:sync-server": "pnpm --filter sync-server dev",
+    "build": "pnpm --filter sync-server build",
+    "lint": "pnpm --filter sync-server lint",
+    "test": "pnpm --filter sync-server test"
+  }
+}

@@ -1,0 +1,86 @@
+{
+  "id": "artillery-duel-shared-keyboard-gamepad",
+  "playerIndex": 0,
+  "bindings": [
+    {
+      "id": "aim-keyboard",
+      "actionId": "AIM_X",
+      "type": "axis_1d",
+      "source": {
+        "kind": "keyboard_axis",
+        "code": "keyboard.aim_x"
+      },
+      "scale": 1,
+      "invert": false
+    },
+    {
+      "id": "aim-gamepad",
+      "actionId": "AIM_X",
+      "type": "axis_1d",
+      "source": {
+        "kind": "gamepad_axis",
+        "code": "gamepad.aim_x"
+      },
+      "scale": 1,
+      "invert": false
+    },
+    {
+      "id": "power-keyboard",
+      "actionId": "POWER_Y",
+      "type": "axis_1d",
+      "source": {
+        "kind": "keyboard_axis",
+        "code": "keyboard.power_y"
+      },
+      "scale": 1,
+      "invert": false
+    },
+    {
+      "id": "power-gamepad",
+      "actionId": "POWER_Y",
+      "type": "axis_1d",
+      "source": {
+        "kind": "gamepad_axis",
+        "code": "gamepad.power_y"
+      },
+      "scale": 1,
+      "invert": false
+    },
+    {
+      "id": "fire-keyboard",
+      "actionId": "FIRE",
+      "type": "digital",
+      "source": {
+        "kind": "keyboard_key",
+        "code": "keyboard.fire"
+      }
+    },
+    {
+      "id": "fire-gamepad",
+      "actionId": "FIRE",
+      "type": "digital",
+      "source": {
+        "kind": "gamepad_button",
+        "code": "gamepad.fire"
+      }
+    },
+    {
+      "id": "start-keyboard",
+      "actionId": "START",
+      "type": "digital",
+      "source": {
+        "kind": "keyboard_key",
+        "code": "keyboard.start"
+      }
+    },
+    {
+      "id": "start-gamepad",
+      "actionId": "START",
+      "type": "digital",
+      "source": {
+        "kind": "gamepad_button",
+        "code": "gamepad.start"
+      }
+    }
+  ]
+}

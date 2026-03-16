@@ -1,4 +1,5 @@
 import pixelInvadersThumbnail from '../../screenshots/start-screen-1080p.png';
+import artilleryDuelThumbnail from '../../../artillery-duel/src/assets/launcher-thumbnail.svg';
 import tunnelInvadersThumbnail from '../../../tunnel-invaders/screenshots/launcher-thumbnail.png';
 import type { MultiplayerGameLaunchPlayerSlot } from '../launch-contract';
 import { PIXEL_PHONE_LINK_CONTROLLER_ID } from '../launch-contract';
@@ -20,6 +21,7 @@ export interface LegacyControllerOption {
   readonly launchMode: 'legacy_single';
   readonly controllerProfileId: string;
   readonly phoneLinkEnabled: boolean;
+  readonly sceneData?: Readonly<Record<string, unknown>>;
 }
 
 export interface MultiplayerControllerOption {
@@ -175,6 +177,38 @@ export const GAME_OPTIONS: ReadonlyArray<GameOption> = [
           }),
           createPixelPhoneSlot('player-2', 1, 'Phone Link')
         ]
+      }
+    ]
+  },
+  {
+    id: 'artillery-duel',
+    label: 'Artillery Duel',
+    description: 'Generowany teren, balistyka i klasyczny pojedynek dzialek.',
+    sceneKey: 'artillery-duel',
+    thumbnailSrc: artilleryDuelThumbnail,
+    thumbnailAlt: 'Artillery Duel thumbnail',
+    controllerOptions: [
+      {
+        id: 'artillery-solo-shared',
+        label: 'Solo vs CPU',
+        description: 'Jeden gracz przeciw CPU na wspolnym sterowaniu kanapowym.',
+        launchMode: 'legacy_single',
+        controllerProfileId: 'artillery-duel-shared-keyboard-gamepad',
+        phoneLinkEnabled: false,
+        sceneData: {
+          matchMode: 'solo-ai'
+        }
+      },
+      {
+        id: 'artillery-hotseat-shared',
+        label: '2P Hotseat',
+        description: 'Dwaj gracze na zmiane na jednym zestawie sterowania.',
+        launchMode: 'legacy_single',
+        controllerProfileId: 'artillery-duel-shared-keyboard-gamepad',
+        phoneLinkEnabled: false,
+        sceneData: {
+          matchMode: 'hotseat-2p'
+        }
       }
     ]
   },
