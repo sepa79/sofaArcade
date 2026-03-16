@@ -1,0 +1,33 @@
+@font-face {
+  font-family: "Orbitron HUD";
+  src: url("../../pixel-invaders/src/assets/fonts/Orbitron[wght].ttf") format("truetype");
+  font-display: swap;
+}
+
+:root {
+  color: #d7f7ff;
+  background:
+    radial-gradient(circle at top, rgba(54, 86, 104, 0.2), transparent 36%),
+    linear-gradient(180deg, #06090f 0%, #030508 100%);
+  font-family: "Orbitron HUD", "Trebuchet MS", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+}
+
+#app.fog-of-time-host {
+  position: relative;
+}

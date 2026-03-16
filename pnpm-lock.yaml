@@ -66,6 +66,46 @@ importers:
         specifier: ^3.2.4
         version: 3.2.4(@types/node@20.19.35)(tsx@4.21.0)
 
+  games/fog-of-time-false-horizons:
+    dependencies:
+      '@light80/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@light80/game-sdk':
+        specifier: workspace:*
+        version: link:../../packages/game-sdk
+      phaser:
+        specifier: ^3.90.0
+        version: 3.90.0
+    devDependencies:
+      '@eslint/js':
+        specifier: ^9.39.3
+        version: 9.39.3
+      '@types/node':
+        specifier: ^20.17.57
+        version: 20.19.35
+      '@typescript-eslint/eslint-plugin':
+        specifier: ^8.46.0
+        version: 8.56.1(@typescript-eslint/parser@8.56.1(eslint@9.39.3)(typescript@5.9.3))(eslint@9.39.3)(typescript@5.9.3)
+      '@typescript-eslint/parser':
+        specifier: ^8.46.0
+        version: 8.56.1(eslint@9.39.3)(typescript@5.9.3)
+      eslint:
+        specifier: ^9.37.0
+        version: 9.39.3
+      typescript:
+        specifier: ~5.9.3
+        version: 5.9.3
+      typescript-eslint:
+        specifier: ^8.56.1
+        version: 8.56.1(eslint@9.39.3)(typescript@5.9.3)
+      vite:
+        specifier: ^6.4.1
+        version: 6.4.1(@types/node@20.19.35)(tsx@4.21.0)
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@20.19.35)(tsx@4.21.0)
+
   games/pixel-invaders:
     dependencies:
       '@light80/core':
