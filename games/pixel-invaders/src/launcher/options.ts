@@ -161,5 +161,21 @@ export const GAME_OPTIONS: ReadonlyArray<GameOption> = [
         phoneLinkEnabled: false
       }
     ]
+  },
+  {
+    id: 'statecraft',
+    label: 'Statecraft',
+    description: 'Jednoekranowe zarzadzanie panstwem: mapa, budzety, kontrakty i wybory.',
+    sceneKey: 'statecraft',
+    controllerOptions: [
+      {
+        id: 'statecraft-mouse-hud',
+        label: 'Mouse + HUD',
+        description: 'Sterowanie myszka po mapie i panelach UI. Czas plynie w tle z pauza i speedem.',
+        launchMode: 'legacy_single',
+        controllerProfileId: 'statecraft-mouse-hud',
+        phoneLinkEnabled: false
+      }
+    ]
   }
 ];

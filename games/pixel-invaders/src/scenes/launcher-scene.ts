@@ -183,7 +183,7 @@ function requireAudioMixProfileId(index: number): AudioMixProfileId {
 }
 
 function requirePlayableSceneKey(sceneKey: string): PlayableSceneKey {
-  if (sceneKey === 'pixel-invaders' || sceneKey === 'tunnel-invaders') {
+  if (sceneKey === 'pixel-invaders' || sceneKey === 'tunnel-invaders' || sceneKey === 'statecraft') {
     return sceneKey;
   }
 
@@ -203,6 +203,10 @@ function previewLabel(game: GameOption): string {
     return 'TUNNEL VECTOR';
   }
 
+  if (game.id === 'statecraft') {
+    return 'CABINET MAP';
+  }
+
   return 'RETRO PREVIEW';
 }
 
@@ -214,6 +218,9 @@ function gameDescription(game: GameOption, language: LauncherLanguage): string {
     if (game.id === 'tunnel-invaders') {
       return 'Pseudo-3D tunel: przeciwnicy nadlatuja z glebi na krawedz.';
     }
+    if (game.id === 'statecraft') {
+      return 'Jednoekranowy cabinet sim: mapa, budzety, kontrakty i wybory.';
+    }
     throw new Error(`Missing localized game description for game "${game.id}" and language "${language}".`);
   }
 
@@ -222,6 +229,9 @@ function gameDescription(game: GameOption, language: LauncherLanguage): string {
   }
   if (game.id === 'tunnel-invaders') {
     return 'Pseudo-3D tunnel: enemies rush from depth to the front edge.';
+  }
+  if (game.id === 'statecraft') {
+    return 'Single-screen cabinet sim: map, budgets, contracts, and elections.';
   }
   throw new Error(`Missing localized game description for game "${game.id}" and language "${language}".`);
 }
@@ -248,6 +258,9 @@ function controllerDescription(option: ControllerOption, language: LauncherLangu
   }
   if (option.id === 'tunnel-solo-default') {
     return 'Relative orbit movement with primary fire and phase-jump.';
+  }
+  if (option.id === 'statecraft-mouse-hud') {
+    return 'Mouse-driven map and HUD controls with pause and time speed.';
   }
   throw new Error(
     `Missing localized controller description for option "${option.id}" and language "${language}".`

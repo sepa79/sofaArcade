@@ -1,8 +1,11 @@
 {
-  "name": "pixel-invaders",
+  "name": "statecraft",
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
@@ -11,17 +14,11 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@light80/core": "workspace:*",
-    "@light80/game-sdk": "workspace:*",
-    "phaser": "^3.90.0",
-    "qrcode": "^1.5.4",
-    "statecraft": "workspace:*",
-    "tunnel-invaders": "workspace:*"
+    "phaser": "^3.90.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.3",
     "@types/node": "^20.17.57",
-    "@types/qrcode": "^1.5.5",
     "@typescript-eslint/eslint-plugin": "^8.46.0",
     "@typescript-eslint/parser": "^8.46.0",
     "eslint": "^9.37.0",

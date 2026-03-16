@@ -1,0 +1,146 @@
+{
+  "files": [
+    {
+      "original": "a56978d4-5e67-4e6d-832d-8963b3b49eb4.png",
+      "renamed": "screens/map_oil_in_storage_0.png",
+      "size": [
+        1147,
+        796
+      ]
+    },
+    {
+      "original": "2fa821b1-971f-4b2e-9777-bc7ad0de327e.png",
+      "renamed": "screens/opinion_polls_50_25_25.png",
+      "size": [
+        1205,
+        893
+      ]
+    },
+    {
+      "original": "0e6cdc5b-32af-4899-b40e-3ca80950a00f.png",
+      "renamed": "screens/food_supplies_0_demand_1_2_1.png",
+      "size": [
+        1191,
+        870
+      ]
+    },
+    {
+      "original": "858d10e8-02af-4440-9369-2d54f4ccff77.png",
+      "renamed": "screens/opinion_polls_47_28_25.png",
+      "size": [
+        1188,
+        822
+      ]
+    },
+    {
+      "original": "689cc42a-6e10-4b4d-bed9-a59335d46c26.png",
+      "renamed": "screens/gold_before_purchase.png",
+      "size": [
+        1155,
+        871
+      ]
+    },
+    {
+      "original": "b474e394-94f5-4318-9ce1-b1656b18828e.png",
+      "renamed": "screens/gold_after_purchase.png",
+      "size": [
+        1142,
+        840
+      ]
+    },
+    {
+      "original": "c4089ee9-05db-43d5-87ac-01dfea95814e.png",
+      "renamed": "screens/imports_total_116_bank_9834.png",
+      "size": [
+        1035,
+        832
+      ]
+    },
+    {
+      "original": "f0ec59d6-0f85-48bf-9568-b324742628a8.png",
+      "renamed": "screens/health_before_aid_cost_30.png",
+      "size": [
+        1179,
+        908
+      ]
+    },
+    {
+      "original": "82166c8e-c5e2-41ba-98c8-57c7f8f9c73a.png",
+      "renamed": "screens/health_after_aid_bank_9804.png",
+      "size": [
+        1161,
+        900
+      ]
+    },
+    {
+      "original": "e3a97d37-79c7-4812-b6be-e857fc4c9a58.png",
+      "renamed": "screens/opinion_polls_46_29_25.png",
+      "size": [
+        1166,
+        842
+      ]
+    },
+    {
+      "original": "94e05a60-fba9-4ded-a959-299c7f83d712.png",
+      "renamed": "screens/balance_of_payments_minus_196.png",
+      "size": [
+        1151,
+        818
+      ]
+    },
+    {
+      "original": "c4a45f7d-dc79-4368-b57e-48c1ea2541a8.png",
+      "renamed": "screens/opinion_polls_45_30_25.png",
+      "size": [
+        1150,
+        759
+      ]
+    },
+    {
+      "original": "96df965e-8f51-4f2c-a740-003a4df83783.png",
+      "renamed": "screens/game_score_194.png",
+      "size": [
+        1151,
+        873
+      ]
+    },
+    {
+      "original": "425ee288-3a8b-4c05-9bd1-b4e7c60262bc.png",
+      "renamed": "screens/map_import_new_tank_prompt.png",
+      "size": [
+        1176,
+        857
+      ]
+    },
+    {
+      "original": "president.vsf",
+      "renamed": "snapshots/president.vsf",
+      "size_bytes": 193249
+    },
+    {
+      "original": "president_map_tankBought_surveyMode.vsf",
+      "renamed": "snapshots/president_map_tankBought_surveyMode.vsf",
+      "size_bytes": 193249
+    },
+    {
+      "original": "president_oilProductionBought.vsf",
+      "renamed": "snapshots/president_oilProductionBought.vsf",
+      "size_bytes": 193249
+    },
+    {
+      "original": "president_afterFoodScreen.vsf",
+      "renamed": "snapshots/president_afterFoodScreen.vsf",
+      "size_bytes": 193249
+    },
+    {
+      "original": "president_afterBuyingGold.vsf",
+      "renamed": "snapshots/president_afterBuyingGold.vsf",
+      "size_bytes": 193249
+    },
+    {
+      "original": "president_turn2.vsf",
+      "renamed": "snapshots/president_turn2.vsf",
+      "size_bytes": 193249
+    }
+  ]
+}

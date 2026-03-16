@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 
-export type PlayableSceneKey = 'pixel-invaders' | 'tunnel-invaders';
+export type PlayableSceneKey = 'pixel-invaders' | 'tunnel-invaders' | 'statecraft';
 
 export interface LazySceneLoader {
   ensureLoaded(sceneKey: PlayableSceneKey): Promise<void>;
@@ -39,6 +39,18 @@ async function loadSceneDefinition(sceneKey: PlayableSceneKey): Promise<SceneDef
     return {
       key: sceneModule.TUNNEL_INVADERS_SCENE_KEY,
       sceneClass: sceneModule.TunnelInvadersScene
+    };
+  }
+
+  if (sceneKey === 'statecraft') {
+    const sceneModule = await import('statecraft');
+    if (sceneModule.STATECRAFT_SCENE_KEY !== 'statecraft') {
+      throw new Error('Statecraft scene key mismatch: expected "statecraft".');
+    }
+
+    return {
+      key: sceneModule.STATECRAFT_SCENE_KEY,
+      sceneClass: sceneModule.StatecraftScene
     };
   }
 
