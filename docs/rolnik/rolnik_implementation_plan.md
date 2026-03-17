@@ -5,7 +5,7 @@
 Build a first playable **2–4 player local prototype** with:
 
 - seasonal farm loop
-- walking farmer + building entry
+- section-based farm UI
 - crop planning and harvest
 - simple animal management
 - Summer Trade
@@ -159,7 +159,6 @@ Purpose:
 Purpose:
 
 - menu navigation
-- walking
 - confirm / cancel
 - end-turn confirm
 
@@ -175,7 +174,7 @@ Purpose:
 
 - farm rendering
 - player HUD
-- building entry
+- section menus
 - event overlays
 - central world bar
 
@@ -317,7 +316,7 @@ Deliverables:
 
 - split-screen farm view for 2P first
 - central world bar
-- building entry and simple menus
+- simple section menus
 - end-turn flow
 - event overlays for Summer tenders and land auction
 

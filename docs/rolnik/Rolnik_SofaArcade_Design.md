@@ -600,12 +600,12 @@ Można wykorzystać istniejące assety postaci / facjat z **Kielbasa Empire** ja
 To ma być **gra SofaArcade**, nie HTML demo.  
 Czyli:
 - layout ma być projektowany pod docelowy renderer / scenę gry
-- chodzenie farmerem po obiektach może być dużo przyjemniejsze i czytelniejsze niż w mocku HTML
+- layout z mocków pozostaje referencją split-screen i centralnego world bara, ale `v1` jest menu-driven, bez chodzenia farmerem
 - mock służy tylko jako **referencja kompozycji**, nie gotowy layout 1:1
 
 ### Priorytet implementacyjny
 1. Core economy loop
-2. Layout świata + farmer walking
+2. Layout świata + sekcje UI
 3. Proste budynki i menu
 4. Timer końca tury
 5. Buy orders i rynek

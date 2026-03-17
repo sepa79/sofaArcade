@@ -416,11 +416,18 @@ The high-level section navigation is:
 
 This should stay couch-friendly and minimal.
 
+Layout rule:
+
+- `2P` uses a horizontal split: player 1 on top, player 2 on bottom
+- `4P` compresses into quadrants around a shared central world bar
+- `v1` does not use walking farmer navigation; interaction is section-first and menu-first
+
 ### Input principle
 
 The player should be able to:
 
 - select action group from menu
+- move between section-level actions without avatar walking
 
 ### Input data rule
 
@@ -438,7 +445,7 @@ Fail fast if:
 
 - crop goods are sold outside tenders
 - animals are sold outside Summer Trade
-- a building upgrade consumes a new slot
+- a building upgrade does not consume a new slot
 - more than 5 buildings are placed
 - more than 1 specialization building exists
 - a profile starts without enough stock to play the first year

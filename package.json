@@ -5,13 +5,14 @@
   "scripts": {
     "dev": "pnpm --filter pixel-invaders dev",
     "dev:artillery-duel": "pnpm --filter artillery-duel dev",
+    "dev:rolnik": "pnpm --filter rolnik dev",
     "dev:tunnel-invaders": "pnpm --filter tunnel-invaders dev",
     "dev:web-portal": "pnpm --filter web-portal dev",
     "dev:signal-server": "pnpm --filter signal-server dev",
     "package:distro": "node scripts/package-distro.mjs",
-    "build": "pnpm --filter @light80/core build && pnpm --filter @light80/game-sdk build && pnpm --filter signal-server build && pnpm --filter web-portal build && pnpm --filter pixel-invaders build && pnpm --filter artillery-duel build && pnpm --filter tunnel-invaders build",
-    "lint": "pnpm --filter @light80/core lint && pnpm --filter @light80/game-sdk lint && pnpm --filter signal-server lint && pnpm --filter web-portal lint && pnpm --filter pixel-invaders lint && pnpm --filter artillery-duel lint && pnpm --filter tunnel-invaders lint",
-    "test": "pnpm --filter @light80/core test && pnpm --filter @light80/game-sdk test && pnpm --filter signal-server test && pnpm --filter web-portal test && pnpm --filter pixel-invaders test && pnpm --filter artillery-duel test && pnpm --filter tunnel-invaders test"
+    "build": "pnpm --filter @light80/core build && pnpm --filter @light80/game-sdk build && pnpm --filter signal-server build && pnpm --filter web-portal build && pnpm --filter pixel-invaders build && pnpm --filter artillery-duel build && pnpm --filter tunnel-invaders build && pnpm --filter rolnik build",
+    "lint": "pnpm --filter @light80/core lint && pnpm --filter @light80/game-sdk lint && pnpm --filter signal-server lint && pnpm --filter web-portal lint && pnpm --filter pixel-invaders lint && pnpm --filter artillery-duel lint && pnpm --filter tunnel-invaders lint && pnpm --filter rolnik lint",
+    "test": "pnpm --filter @light80/core test && pnpm --filter @light80/game-sdk test && pnpm --filter signal-server test && pnpm --filter web-portal test && pnpm --filter pixel-invaders test && pnpm --filter artillery-duel test && pnpm --filter tunnel-invaders test && pnpm --filter rolnik test"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2"

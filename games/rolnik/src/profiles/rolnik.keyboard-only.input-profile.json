@@ -1,0 +1,114 @@
+{
+  "id": "rolnik-keyboard-only",
+  "playerIndex": 0,
+  "bindings": [
+    {
+      "id": "menu-left-keyboard",
+      "actionId": "MENU_LEFT",
+      "type": "digital",
+      "source": {
+        "kind": "keyboard_key",
+        "code": "keyboard.menu_left"
+      }
+    },
+    {
+      "id": "menu-left-keyboard-a",
+      "actionId": "MENU_LEFT",
+      "type": "digital",
+      "source": {
+        "kind": "keyboard_key",
+        "code": "keyboard.menu_left_alt"
+      }
+    },
+    {
+      "id": "menu-right-keyboard",
+      "actionId": "MENU_RIGHT",
+      "type": "digital",
+      "source": {
+        "kind": "keyboard_key",
+        "code": "keyboard.menu_right"
+      }
+    },
+    {
+      "id": "menu-right-keyboard-d",
+      "actionId": "MENU_RIGHT",
+      "type": "digital",
+      "source": {
+        "kind": "keyboard_key",
+        "code": "keyboard.menu_right_alt"
+      }
+    },
+    {
+      "id": "submenu-up-keyboard",
+      "actionId": "SUBMENU_UP",
+      "type": "digital",
+      "source": {
+        "kind": "keyboard_key",
+        "code": "keyboard.submenu_up"
+      }
+    },
+    {
+      "id": "submenu-up-keyboard-w",
+      "actionId": "SUBMENU_UP",
+      "type": "digital",
+      "source": {
+        "kind": "keyboard_key",
+        "code": "keyboard.submenu_up_alt"
+      }
+    },
+    {
+      "id": "submenu-down-keyboard",
+      "actionId": "SUBMENU_DOWN",
+      "type": "digital",
+      "source": {
+        "kind": "keyboard_key",
+        "code": "keyboard.submenu_down"
+      }
+    },
+    {
+      "id": "submenu-down-keyboard-s",
+      "actionId": "SUBMENU_DOWN",
+      "type": "digital",
+      "source": {
+        "kind": "keyboard_key",
+        "code": "keyboard.submenu_down_alt"
+      }
+    },
+    {
+      "id": "select-keyboard",
+      "actionId": "SELECT",
+      "type": "digital",
+      "source": {
+        "kind": "keyboard_key",
+        "code": "keyboard.select"
+      }
+    },
+    {
+      "id": "back-keyboard",
+      "actionId": "BACK",
+      "type": "digital",
+      "source": {
+        "kind": "keyboard_key",
+        "code": "keyboard.back"
+      }
+    },
+    {
+      "id": "back-keyboard-backspace",
+      "actionId": "BACK",
+      "type": "digital",
+      "source": {
+        "kind": "keyboard_key",
+        "code": "keyboard.back_alt"
+      }
+    },
+    {
+      "id": "end-turn-keyboard",
+      "actionId": "END_TURN",
+      "type": "digital",
+      "source": {
+        "kind": "keyboard_key",
+        "code": "keyboard.end_turn"
+      }
+    }
+  ]
+}
