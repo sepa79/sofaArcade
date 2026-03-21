@@ -20,6 +20,9 @@ import kosmicznaPodrozTrack from '../../../shared-assets/src/kosmiczna_podroz_fa
 import kosmicznaPodrozSyncRaw from '../../../shared-assets/src/kosmiczna_podroz_fade_out.sync.json';
 import playerShipAltImage from '../../../shared-assets/src/sprite_player_1a.png';
 import playerShipImage from '../../../shared-assets/src/sprite_player_1.png';
+import asteroidShieldImage from '../../../shared-assets/src/sprite_asteroid_1.png';
+import bossClawRightImage from '../assets/sprites/pixel-invaders-boss-claw-right.png';
+import bossSkullImage from '../assets/sprites/pixel-invaders-boss-skull.png';
 import {
   SyncClock,
   createSyncTrackRuntime,
@@ -31,6 +34,10 @@ import { readTrackHeaderMetadata, type TrackHeaderMetadata } from '../audio-meta
 import {
   BULLET_HEIGHT,
   BULLET_WIDTH,
+  BOSS_CLAW_HIT_POINTS,
+  BOSS_CORE_HIT_POINTS,
+  BOSS_SHIELD_SEGMENT_COUNT,
+  BOSS_SHIELD_SEGMENT_SIZE,
   ENEMY_COLS,
   ENEMY_UFO_HIT_POINTS,
   FIXED_TIMESTEP,
@@ -49,6 +56,7 @@ import {
   type CollisionDebugFrame,
   type CollisionRuntime
 } from '../game/collision';
+import { bossCoreIsVulnerable, buildBossVisualState, countLivingShieldSegments } from '../game/boss';
 import { finalizeDebugModeState, prepareDebugModeState } from '../game/debug-mode';
 import { createInputContext, describeInputContext, inputContextUsesMouseControl, readMatchInput } from '../game/input';
 import { stepGame } from '../game/logic';
@@ -82,6 +90,9 @@ const ENEMY_SPRITE_KEYS = [
 ] as const;
 const ENEMY_NORMAL_SPRITE_KEYS = ENEMY_SPRITE_KEYS;
 const ENEMY_UFO_SPRITE_KEY = 'pixel-invaders-enemy-big-1';
+const BOSS_CORE_SPRITE_KEY = 'pixel-invaders-boss-core';
+const BOSS_CLAW_RIGHT_SPRITE_KEY = 'pixel-invaders-boss-claw-right';
+const BOSS_SHIELD_SPRITE_KEY = 'pixel-invaders-boss-shield-segment';
 const EXPLOSION_TEXTURE_KEY_1 = 'pixel-explosion-1';
 const EXPLOSION_TEXTURE_KEY_2 = 'pixel-explosion-2';
 const EXPLOSION_ANIM_KEY_1 = 'pixel-explosion-anim-1';
@@ -103,6 +114,12 @@ const EXPLOSION_ANIMATION_RATE = 28;
 const EXPLOSION_SPRITE_SCALE = 1.5;
 const EXPLOSION_DURATION_MS = 260;
 const EXPLOSION_RADIUS_PX = 44;
+const BOSS_SKULL_MATERIALIZE_DURATION_MS = 180;
+const SKULL_COLLAPSE_DURATION_MS = 220;
+const BOSS_PIXEL_BURST_DURATION_MS = 880;
+const BOSS_CORE_SPRITE_SCALE = 3.2;
+const BOSS_CLAW_SPRITE_SCALE = 2.9;
+const BOSS_SKULL_SPRITE_SCALE = 1.92;
 const PLAYER_DEATH_CLUSTER_BURST_COUNT = 3;
 const PLAYER_DEATH_CLUSTER_BURST_TOTAL = 7;
 const PLAYER_DEATH_CLUSTER_BURST_INTERVAL_MS = 62;
@@ -188,6 +205,23 @@ interface ExplosionFx {
   readonly x: number;
   readonly y: number;
   readonly startAtMs: number;
+}
+
+interface SkullCollapseFx {
+  readonly x: number;
+  readonly y: number;
+  readonly startAtMs: number;
+}
+
+interface BossPixelBurstParticle {
+  readonly x: number;
+  readonly y: number;
+  readonly vx: number;
+  readonly vy: number;
+  readonly size: number;
+  readonly startAtMs: number;
+  readonly ttlMs: number;
+  readonly colorPhase: number;
 }
 
 interface PixelStar {
@@ -307,6 +341,25 @@ function ufoDamageTint(hitPoints: number): number | null {
   throw new Error(`Invalid UFO hit points for tint mapping: ${hitPoints}.`);
 }
 
+function bossDamageTint(hitPoints: number, maxHitPoints: number, fromColor: number, midColor: number, lowColor: number): number {
+  const ratio = clamp01(hitPoints / maxHitPoints);
+  if (ratio > 0.66) {
+    return mixColor(midColor, fromColor, (ratio - 0.66) / 0.34);
+  }
+  if (ratio > 0.33) {
+    return mixColor(lowColor, midColor, (ratio - 0.33) / 0.33);
+  }
+  return mixColor(0xffffff, lowColor, ratio / 0.33);
+}
+
+function bossClawDamageTint(hitPoints: number): number {
+  return bossDamageTint(hitPoints, BOSS_CLAW_HIT_POINTS, 0xc2d2ff, 0xffcb93, 0xff7c74);
+}
+
+function bossCoreDamageTint(hitPoints: number): number {
+  return bossDamageTint(hitPoints, BOSS_CORE_HIT_POINTS, 0xb8c8ff, 0xffd38a, 0xff7e7e);
+}
+
 function decayPulse(value: number, decayPerSecond: number, deltaSeconds: number): number {
   return Math.max(0, value - decayPerSecond * deltaSeconds);
 }
@@ -389,7 +442,15 @@ function activePowerupSignature(player: PlayerState): string {
 
 function waveHudText(state: GameState): string {
   if (state.campaign.phase === 'boss') {
-    return 'BOSS NEXT';
+    if (state.boss === null) {
+      return state.phase === 'won' ? 'BOSS\nDOWN' : 'BOSS';
+    }
+
+    if (bossCoreIsVulnerable(state.boss)) {
+      return `BOSS\nCORE ${state.boss.coreHitPoints}/${buildBossVisualState(state.boss).core.maxHitPoints}`;
+    }
+
+    return `BOSS\nSHLD ${countLivingShieldSegments(state.boss)}\nCLAW ${Math.max(0, state.boss.leftClawHitPoints)}/${Math.max(0, state.boss.rightClawHitPoints)}`;
   }
 
   if (state.campaign.phase === 'classic-endless') {
@@ -402,6 +463,10 @@ function waveHudText(state: GameState): string {
 function transitionBannerText(state: GameState): string {
   if (state.phase === 'boss-ready') {
     return 'BOSS INCOMING\nPRESS FIRE';
+  }
+
+  if (state.phase === 'won') {
+    return 'BOSS DOWN\nPRESS FIRE';
   }
 
   if (state.phase === 'lost') {
@@ -488,6 +553,10 @@ export class PixelInvadersScene extends Phaser.Scene {
   private syncVignette!: Phaser.GameObjects.Image;
   private playerSprites = new Map<number, Phaser.GameObjects.Image>();
   private enemySprites = new Map<number, Phaser.GameObjects.Image>();
+  private bossCoreSprite!: Phaser.GameObjects.Image;
+  private bossClawSprites = new Map<'left' | 'right', Phaser.GameObjects.Image>();
+  private bossShieldSprites = new Map<number, Phaser.GameObjects.Image>();
+  private bossSkullSprites = new Map<number, Phaser.GameObjects.Image>();
   private scoreText!: Phaser.GameObjects.Text;
   private highScoreText!: Phaser.GameObjects.Text;
   private waveText!: Phaser.GameObjects.Text;
@@ -524,6 +593,9 @@ export class PixelInvadersScene extends Phaser.Scene {
   private debugCollisionBroadEnabled = true;
   private debugCollisionNarrowEnabled = true;
   private enemyReactiveBursts = new Map<number, EnemyReactiveBurst>();
+  private bossSkullMaterializeAtById = new Map<number, number>();
+  private bossSkullCollapseFx: ReadonlyArray<SkullCollapseFx> = [];
+  private bossPixelBurstParticles: ReadonlyArray<BossPixelBurstParticle> = [];
   private lastHighReactiveEnemyId: number | null = null;
   private lastMidReactiveEnemyId: number | null = null;
   private syncClock: SyncClock | null = null;
@@ -569,6 +641,9 @@ export class PixelInvadersScene extends Phaser.Scene {
     this.load.image(ENEMY_SPRITE_KEYS[2], enemyShipImage3);
     this.load.image(ENEMY_SPRITE_KEYS[3], enemyShipImage4);
     this.load.image(ENEMY_UFO_SPRITE_KEY, enemyBig1Image);
+    this.load.image(BOSS_CORE_SPRITE_KEY, bossSkullImage);
+    this.load.image(BOSS_CLAW_RIGHT_SPRITE_KEY, bossClawRightImage);
+    this.load.image(BOSS_SHIELD_SPRITE_KEY, asteroidShieldImage);
     this.load.spritesheet(EXPLOSION_TEXTURE_KEY_1, explosionSrc1Image, {
       frameWidth: EXPLOSION_FRAME_WIDTH,
       frameHeight: EXPLOSION_FRAME_HEIGHT,
@@ -637,6 +712,24 @@ export class PixelInvadersScene extends Phaser.Scene {
       sprite.setOrigin(0.5, 0.5);
       sprite.setScale(this.enemySpriteScaleFor(enemy, this.visualScale()));
       this.enemySprites.set(enemy.id, sprite);
+    }
+    this.bossCoreSprite = this.add.image(this.scale.width / 2, this.scale.height / 2, BOSS_CORE_SPRITE_KEY);
+    this.bossCoreSprite.setOrigin(0.5, 0.5);
+    this.bossCoreSprite.setVisible(false);
+    const leftClawSprite = this.add.image(this.scale.width / 2, this.scale.height / 2, BOSS_CLAW_RIGHT_SPRITE_KEY);
+    leftClawSprite.setOrigin(0.5, 0.5);
+    leftClawSprite.setFlipX(true);
+    leftClawSprite.setVisible(false);
+    this.bossClawSprites.set('left', leftClawSprite);
+    const rightClawSprite = this.add.image(this.scale.width / 2, this.scale.height / 2, BOSS_CLAW_RIGHT_SPRITE_KEY);
+    rightClawSprite.setOrigin(0.5, 0.5);
+    rightClawSprite.setVisible(false);
+    this.bossClawSprites.set('right', rightClawSprite);
+    for (let shieldId = 0; shieldId < BOSS_SHIELD_SEGMENT_COUNT; shieldId += 1) {
+      const shieldSprite = this.add.image(this.scale.width / 2, this.scale.height / 2, BOSS_SHIELD_SPRITE_KEY);
+      shieldSprite.setOrigin(0.5, 0.5);
+      shieldSprite.setVisible(false);
+      this.bossShieldSprites.set(shieldId, shieldSprite);
     }
     this.setupExplosionAnimations();
 
@@ -799,6 +892,48 @@ export class PixelInvadersScene extends Phaser.Scene {
           destroyedEnemies.push(previousEnemy);
         }
       }
+      const previousBossSkullIds = new Set(
+        (previous.boss?.projectiles ?? []).flatMap((projectile) => (projectile.kind === 'skull' ? [projectile.id] : []))
+      );
+      const nextBossSkullIds = new Set(
+        (next.boss?.projectiles ?? []).flatMap((projectile) => (projectile.kind === 'skull' ? [projectile.id] : []))
+      );
+      for (const skullId of nextBossSkullIds) {
+        if (previousBossSkullIds.has(skullId)) {
+          continue;
+        }
+        this.bossSkullMaterializeAtById.set(skullId, this.time.now);
+      }
+      for (const previousProjectile of previous.boss?.projectiles ?? []) {
+        if (previousProjectile.kind !== 'skull') {
+          continue;
+        }
+        if (nextBossSkullIds.has(previousProjectile.id) || previousProjectile.y > WORLD_HEIGHT + 8) {
+          continue;
+        }
+        this.spawnBossSkullCollapseFx(previousProjectile.x, previousProjectile.y);
+      }
+      if (previous.boss !== null) {
+        const previousBossVisuals = buildBossVisualState(previous.boss);
+        if (next.boss !== null) {
+          if (previous.boss.leftClawHitPoints > 0 && next.boss.leftClawHitPoints <= 0) {
+            const leftClaw = previousBossVisuals.claws.find((claw) => claw.side === 'left');
+            if (leftClaw === undefined) {
+              throw new Error('Missing left boss claw visual for explosion trigger.');
+            }
+            this.spawnBossClawExplosion(leftClaw.x, leftClaw.y);
+          }
+          if (previous.boss.rightClawHitPoints > 0 && next.boss.rightClawHitPoints <= 0) {
+            const rightClaw = previousBossVisuals.claws.find((claw) => claw.side === 'right');
+            if (rightClaw === undefined) {
+              throw new Error('Missing right boss claw visual for explosion trigger.');
+            }
+            this.spawnBossClawExplosion(rightClaw.x, rightClaw.y);
+          }
+        } else {
+          this.spawnBossDeathFx(previousBossVisuals.core.x, previousBossVisuals.core.y);
+        }
+      }
       for (const previousPlayer of previous.players) {
         const nextPlayer = next.players.find((player) => player.playerIndex === previousPlayer.playerIndex);
         if (nextPlayer === undefined) {
@@ -903,6 +1038,9 @@ export class PixelInvadersScene extends Phaser.Scene {
       active: this.sfxEnabled && this.state.phase === 'playing' && maxMoveSpeedUnit > 0.02
     });
     this.updateExplosions();
+    this.updateBossSkullMaterializeFx();
+    this.updateBossSkullCollapseFx();
+    this.updateBossPixelBurst();
 
     this.renderState();
   }
@@ -929,6 +1067,9 @@ export class PixelInvadersScene extends Phaser.Scene {
     this.syncEnemySprites();
     this.drawPlayers(graphics);
     this.drawEnemies();
+    this.drawBoss(graphics);
+    this.drawBossSkullCollapseFx(graphics);
+    this.drawBossPixelBurst(graphics);
     this.drawPickups(graphics);
     this.drawBullets(graphics);
     this.drawCollisionDebug(graphics);
@@ -1113,6 +1254,197 @@ export class PixelInvadersScene extends Phaser.Scene {
   private enemySpriteScaleFor(enemy: Enemy, visualScale: number): number {
     const multiplier = enemy.kind === 'ufo' ? ENEMY_UFO_SCALE_MULTIPLIER : 1;
     return ENEMY_SPRITE_SCALE * multiplier * visualScale;
+  }
+
+  private drawBoss(graphics: Phaser.GameObjects.Graphics): void {
+    if (this.state.boss === null) {
+      this.bossCoreSprite.setVisible(false);
+      for (const sprite of this.bossClawSprites.values()) {
+        sprite.setVisible(false);
+      }
+      for (const sprite of this.bossShieldSprites.values()) {
+        sprite.setVisible(false);
+      }
+      this.syncBossSkullSprites(new Set<number>());
+      return;
+    }
+
+    const visualScale = this.visualScale();
+    const visuals = buildBossVisualState(this.state.boss);
+    const warningTopY = this.worldToScreenY(96);
+    const warningBottomY = this.worldToScreenY(WORLD_HEIGHT - 90);
+
+    for (const warningLine of visuals.warningLines) {
+      const lineWidth = Math.max(8, Math.round(warningLine.width * this.playfieldScaleX));
+      const lineX = Math.round(this.worldToScreenX(warningLine.x) - lineWidth * 0.5);
+      graphics.fillStyle(0xff8c68, Math.max(0.18, warningLine.alpha));
+      graphics.fillRect(lineX, warningTopY, lineWidth, warningBottomY - warningTopY);
+      graphics.fillStyle(0xfff1c9, 0.3);
+      graphics.fillRect(lineX + Math.max(1, Math.round(lineWidth * 0.25)), warningTopY, Math.max(1, Math.round(lineWidth * 0.5)), warningBottomY - warningTopY);
+    }
+
+    for (const sprite of this.bossShieldSprites.values()) {
+      sprite.setVisible(false);
+    }
+    for (const segment of visuals.shieldSegments) {
+      const sprite = this.bossShieldSprites.get(segment.id);
+      if (sprite === undefined) {
+        throw new Error(`Boss shield sprite is missing for segment ${segment.id}.`);
+      }
+
+      const centerX = this.worldToScreenX(segment.x);
+      const centerY = this.worldToScreenY(segment.y);
+      graphics.fillStyle(0x7dd4ff, 0.12);
+      graphics.fillCircle(Math.round(centerX), Math.round(centerY), Math.max(8, Math.round(BOSS_SHIELD_SEGMENT_SIZE * visualScale * 0.72)));
+      sprite.setVisible(true);
+      sprite.setPosition(centerX, centerY);
+      sprite.setScale(2.1 * visualScale);
+      sprite.setRotation(this.time.now * 0.0012 + segment.id * 0.85);
+      sprite.setTint(segment.hitPoints > 1 ? 0xe7eef9 : 0xffd3a3);
+      sprite.setAlpha(0.96);
+    }
+
+    const plasmaPixel = Math.max(2, Math.round(2 * visualScale));
+    const snapPlasma = (value: number): number => Math.round(value / plasmaPixel) * plasmaPixel;
+    for (const orb of visuals.orbs) {
+      const centerX = snapPlasma(this.worldToScreenX(orb.x));
+      const centerY = snapPlasma(this.worldToScreenY(orb.y));
+      const bodyWidth = Math.max(plasmaPixel * 3, snapPlasma(orb.radius * visualScale * (orb.charging ? 0.95 : 1.15)));
+      const bodyHeight = Math.max(plasmaPixel * 5, snapPlasma(orb.radius * visualScale * (orb.charging ? 1.5 : 3.4)));
+      const glowWidth = bodyWidth + plasmaPixel * 2;
+      const glowHeight = bodyHeight + plasmaPixel * 3;
+      const topY = centerY - Math.round(bodyHeight * 0.38);
+      const glowX = centerX - glowWidth / 2;
+      const glowY = centerY - glowHeight / 2;
+      const bodyX = centerX - bodyWidth / 2;
+      const bodyY = topY;
+      const coreWidth = Math.max(plasmaPixel, bodyWidth - plasmaPixel * 2);
+      const coreX = centerX - coreWidth / 2;
+      const tailHeight = Math.max(plasmaPixel * 2, Math.round(bodyHeight * 0.34));
+      const tailY = bodyY + bodyHeight - plasmaPixel;
+      const chargePulse = 0.5 + 0.5 * Math.sin(this.time.now * 0.018 + orb.x * 0.04);
+
+      graphics.fillStyle(0x236dff, orb.charging ? 0.18 + chargePulse * 0.06 : 0.14);
+      graphics.fillRect(glowX, glowY, glowWidth, glowHeight);
+      graphics.fillStyle(orb.charging ? 0x4dc3ff : 0x2ea9ff, 0.96);
+      graphics.fillRect(bodyX, bodyY, bodyWidth, bodyHeight);
+      graphics.fillStyle(0x9ff4ff, 0.98);
+      graphics.fillRect(coreX, bodyY + plasmaPixel, coreWidth, Math.max(plasmaPixel * 2, bodyHeight - plasmaPixel * 2));
+      graphics.fillStyle(0xeefcff, orb.charging ? 0.78 : 1);
+      graphics.fillRect(centerX - plasmaPixel / 2, bodyY, plasmaPixel, bodyHeight);
+      graphics.fillStyle(0x56a4ff, 0.9);
+      graphics.fillRect(centerX - bodyWidth / 2 - plasmaPixel, bodyY + plasmaPixel, plasmaPixel, Math.max(plasmaPixel, bodyHeight - plasmaPixel * 2));
+      graphics.fillRect(centerX + bodyWidth / 2, bodyY + plasmaPixel, plasmaPixel, Math.max(plasmaPixel, bodyHeight - plasmaPixel * 2));
+
+      if (!orb.charging) {
+        graphics.fillStyle(0x6f87ff, 0.88);
+        graphics.fillRect(centerX - bodyWidth / 2 + plasmaPixel, tailY, Math.max(plasmaPixel, bodyWidth - plasmaPixel * 2), tailHeight);
+        graphics.fillStyle(0xcffcff, 0.94);
+        graphics.fillRect(centerX - plasmaPixel / 2, tailY + plasmaPixel, plasmaPixel, Math.max(plasmaPixel, tailHeight - plasmaPixel));
+      }
+    }
+
+    this.bossCoreSprite.setVisible(true);
+    this.bossCoreSprite.setPosition(this.worldToScreenX(visuals.core.x), this.worldToScreenY(visuals.core.y));
+    this.bossCoreSprite.setScale(BOSS_CORE_SPRITE_SCALE * visualScale);
+    this.bossCoreSprite.setRotation(Math.sin(this.time.now * 0.0018) * 0.03);
+    const coreTint = bossCoreDamageTint(visuals.core.hitPoints);
+    const vulnerablePulse = 0.42 + Math.sin(this.time.now * 0.006) * 0.14;
+    this.bossCoreSprite.setTint(
+      visuals.core.vulnerable ? mixColor(coreTint, 0xfff1bf, vulnerablePulse) : coreTint
+    );
+    this.bossCoreSprite.setAlpha(visuals.core.vulnerable ? 0.96 : 0.86);
+
+    for (const side of ['left', 'right'] as const) {
+      const sprite = this.bossClawSprites.get(side);
+      if (sprite === undefined) {
+        throw new Error(`Boss claw sprite is missing for side "${side}".`);
+      }
+
+      const claw = visuals.claws.find((entry) => entry.side === side);
+      if (claw === undefined) {
+        sprite.setVisible(false);
+        continue;
+      }
+
+      sprite.setVisible(true);
+      sprite.setPosition(this.worldToScreenX(claw.x), this.worldToScreenY(claw.y));
+      sprite.setScale(BOSS_CLAW_SPRITE_SCALE * visualScale);
+      sprite.setRotation(claw.rotationRad);
+      sprite.setAlpha(claw.striking ? 1 : 0.95);
+      const clawTint = bossClawDamageTint(claw.hitPoints);
+      sprite.setTint(claw.striking ? mixColor(clawTint, 0xffdfbf, 0.38) : clawTint);
+    }
+
+    const skullIds = new Set<number>(visuals.skulls.map((skull) => skull.id));
+    this.syncBossSkullSprites(skullIds);
+    const skullPixel = Math.max(2, Math.round(2 * visualScale));
+    for (const skull of visuals.skulls) {
+      let sprite = this.bossSkullSprites.get(skull.id);
+      if (sprite === undefined) {
+        sprite = this.add.image(this.scale.width / 2, this.scale.height / 2, BOSS_CORE_SPRITE_KEY);
+        sprite.setOrigin(0.5, 0.5);
+        this.bossSkullSprites.set(skull.id, sprite);
+      }
+
+      sprite.setVisible(true);
+      sprite.setPosition(this.worldToScreenX(skull.x), this.worldToScreenY(skull.y));
+      const materializeAt = this.bossSkullMaterializeAtById.get(skull.id);
+      let materializeProgress = 1;
+      if (materializeAt !== undefined) {
+        materializeProgress = clamp01((this.time.now - materializeAt) / BOSS_SKULL_MATERIALIZE_DURATION_MS);
+      }
+      const materializeScale = lerp(0.44, 1, materializeProgress);
+      sprite.setScale(BOSS_SKULL_SPRITE_SCALE * visualScale * materializeScale);
+      sprite.setRotation(skull.rotationRad);
+      sprite.setTint(skull.hitPoints > 1 ? 0xc8d2ff : 0xffd49c);
+      sprite.setAlpha(lerp(0.2, 0.96, materializeProgress));
+
+      if (materializeAt !== undefined && materializeProgress < 1) {
+        const centerX = Math.round(this.worldToScreenX(skull.x) / skullPixel) * skullPixel;
+        const centerY = Math.round(this.worldToScreenY(skull.y) / skullPixel) * skullPixel;
+        const spread = Math.max(
+          skullPixel,
+          Math.round((2 + 10 * materializeProgress) * visualScale / skullPixel) * skullPixel
+        );
+        const plateWidth = Math.max(
+          skullPixel,
+          Math.round((2 + 8 * materializeProgress) * visualScale / skullPixel) * skullPixel
+        );
+        const plateHeight = Math.max(
+          skullPixel,
+          Math.round((2 + 3 * materializeProgress) * visualScale / skullPixel) * skullPixel
+        );
+        const sideHeight = Math.max(
+          skullPixel,
+          Math.round((2 + 6 * materializeProgress) * visualScale / skullPixel) * skullPixel
+        );
+        const centerSize = Math.max(
+          skullPixel,
+          Math.round((1 + 5 * (1 - materializeProgress)) * visualScale / skullPixel) * skullPixel
+        );
+        const alpha = 1 - materializeProgress;
+
+        graphics.fillStyle(0x5f6fb2, 0.24 * alpha);
+        graphics.fillRect(
+          centerX - spread - skullPixel,
+          centerY - spread - skullPixel,
+          (spread + skullPixel) * 2,
+          (spread + skullPixel) * 2
+        );
+
+        graphics.fillStyle(0xd9e2ff, 0.96 * alpha);
+        graphics.fillRect(centerX - plateWidth / 2, centerY - spread, plateWidth, plateHeight);
+        graphics.fillRect(centerX - plateWidth / 2, centerY + spread - plateHeight, plateWidth, plateHeight);
+
+        graphics.fillStyle(0x9eaee8, 0.94 * alpha);
+        graphics.fillRect(centerX - spread, centerY - sideHeight / 2, plateHeight, sideHeight);
+        graphics.fillRect(centerX + spread - plateHeight, centerY - sideHeight / 2, plateHeight, sideHeight);
+
+        graphics.fillStyle(0xf8fbff, 0.98 * alpha);
+        graphics.fillRect(centerX - centerSize / 2, centerY - centerSize / 2, centerSize, centerSize);
+      }
+    }
   }
 
   private drawBullets(graphics: Phaser.GameObjects.Graphics): void {
@@ -1394,6 +1726,18 @@ export class PixelInvadersScene extends Phaser.Scene {
 
       sprite.destroy();
       this.enemySprites.delete(enemyId);
+    }
+  }
+
+  private syncBossSkullSprites(activeIds: ReadonlySet<number>): void {
+    for (const [skullId, sprite] of this.bossSkullSprites.entries()) {
+      if (activeIds.has(skullId)) {
+        continue;
+      }
+
+      sprite.destroy();
+      this.bossSkullSprites.delete(skullId);
+      this.bossSkullMaterializeAtById.delete(skullId);
     }
   }
 
@@ -2454,6 +2798,76 @@ export class PixelInvadersScene extends Phaser.Scene {
     }
   }
 
+  private spawnBossSkullCollapseFx(x: number, y: number): void {
+    this.bossSkullCollapseFx = this.bossSkullCollapseFx.concat({
+      x,
+      y,
+      startAtMs: this.time.now
+    });
+  }
+
+  private spawnBossClawExplosion(centerX: number, centerY: number): void {
+    this.spawnExplosion(centerX, centerY);
+    const offsets = [
+      { x: -10, y: -8 },
+      { x: 12, y: -5 },
+      { x: -8, y: 11 },
+      { x: 14, y: 10 }
+    ] as const;
+    offsets.forEach((offset, index) => {
+      this.time.delayedCall(index * 36, () => {
+        this.spawnExplosion(centerX + offset.x, centerY + offset.y);
+      });
+    });
+    if (this.sfxEnabled) {
+      this.sfx.playExplosion({
+        pan: xToStereoPan(centerX),
+        depth: 0,
+        large: true
+      });
+    }
+  }
+
+  private spawnBossDeathFx(centerX: number, centerY: number): void {
+    this.spawnBossPixelBurst(centerX, centerY);
+    this.spawnExplosion(centerX, centerY);
+    for (let burstIndex = 0; burstIndex < 6; burstIndex += 1) {
+      this.time.delayedCall(burstIndex * 44, () => {
+        const angle = (burstIndex / 6) * Math.PI * 2;
+        const distance = 10 + burstIndex * 3;
+        this.spawnExplosion(centerX + Math.cos(angle) * distance, centerY + Math.sin(angle) * distance);
+      });
+    }
+    if (this.sfxEnabled) {
+      this.sfx.playExplosion({
+        pan: xToStereoPan(centerX),
+        depth: 0,
+        large: true
+      });
+    }
+  }
+
+  private spawnBossPixelBurst(centerX: number, centerY: number): void {
+    const particleCount = 52;
+    const particles: BossPixelBurstParticle[] = [];
+    for (let particleIndex = 0; particleIndex < particleCount; particleIndex += 1) {
+      const angle =
+        (particleIndex / particleCount) * Math.PI * 2 + Phaser.Math.FloatBetween(-0.09, 0.09);
+      const speed = Phaser.Math.FloatBetween(48, 156);
+      particles.push({
+        x: centerX + Phaser.Math.FloatBetween(-4, 4),
+        y: centerY + Phaser.Math.FloatBetween(-4, 4),
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        size: Phaser.Math.FloatBetween(2.2, 5.4),
+        startAtMs: this.time.now,
+        ttlMs: Phaser.Math.FloatBetween(BOSS_PIXEL_BURST_DURATION_MS * 0.62, BOSS_PIXEL_BURST_DURATION_MS),
+        colorPhase: Phaser.Math.FloatBetween(0, Math.PI * 2)
+      });
+    }
+    this.bossPixelBurstParticles = this.bossPixelBurstParticles.concat(particles);
+  }
+
   private worldToScreenX(worldX: number): number {
     return this.playfieldOffsetX + worldX * this.playfieldScaleX;
   }
@@ -2471,6 +2885,28 @@ export class PixelInvadersScene extends Phaser.Scene {
     this.explosions = this.explosions.filter((explosion) => now - explosion.startAtMs < EXPLOSION_DURATION_MS);
   }
 
+  private updateBossSkullMaterializeFx(): void {
+    const now = this.time.now;
+    for (const [skullId, startAtMs] of this.bossSkullMaterializeAtById.entries()) {
+      if (now - startAtMs < BOSS_SKULL_MATERIALIZE_DURATION_MS) {
+        continue;
+      }
+      this.bossSkullMaterializeAtById.delete(skullId);
+    }
+  }
+
+  private updateBossSkullCollapseFx(): void {
+    const now = this.time.now;
+    this.bossSkullCollapseFx = this.bossSkullCollapseFx.filter((fx) => now - fx.startAtMs < SKULL_COLLAPSE_DURATION_MS);
+  }
+
+  private updateBossPixelBurst(): void {
+    const now = this.time.now;
+    this.bossPixelBurstParticles = this.bossPixelBurstParticles.filter(
+      (particle) => now - particle.startAtMs < particle.ttlMs
+    );
+  }
+
   private drawExplosions(graphics: Phaser.GameObjects.Graphics): void {
     const now = this.time.now;
     for (const explosion of this.explosions) {
@@ -2485,6 +2921,76 @@ export class PixelInvadersScene extends Phaser.Scene {
       graphics.fillCircle(screenX, screenY, outerRadius);
       graphics.fillStyle(0xfff3b0, 0.84 * alpha);
       graphics.fillCircle(screenX, screenY, innerRadius);
+    }
+  }
+
+  private drawBossSkullCollapseFx(graphics: Phaser.GameObjects.Graphics): void {
+    const now = this.time.now;
+    const pixel = Math.max(2, Math.round(2 * this.visualScale()));
+    for (const fx of this.bossSkullCollapseFx) {
+      const progress = clamp01((now - fx.startAtMs) / SKULL_COLLAPSE_DURATION_MS);
+      const collapse = 1 - progress;
+      const centerX = Math.round(this.worldToScreenX(fx.x) / pixel) * pixel;
+      const centerY = Math.round(this.worldToScreenY(fx.y) / pixel) * pixel;
+      const halfSpan = Math.max(pixel, Math.round((10 * collapse + 2) * this.visualScale() / pixel) * pixel);
+      const plateWidth = Math.max(pixel, Math.round((8 * collapse + 2) * this.visualScale() / pixel) * pixel);
+      const plateHeight = Math.max(pixel, Math.round((3 + collapse * 2) * this.visualScale() / pixel) * pixel);
+      const sideHeight = Math.max(pixel, Math.round((6 * collapse + 2) * this.visualScale() / pixel) * pixel);
+      const centerSize = Math.max(pixel, Math.round((6 * collapse + 1) * this.visualScale() / pixel) * pixel);
+      const alpha = 1 - progress;
+
+      graphics.fillStyle(0x5f6fb2, 0.2 * alpha);
+      graphics.fillRect(centerX - halfSpan - pixel, centerY - halfSpan - pixel, (halfSpan + pixel) * 2, (halfSpan + pixel) * 2);
+
+      graphics.fillStyle(0xd9e2ff, 0.96 * alpha);
+      graphics.fillRect(centerX - plateWidth / 2, centerY - halfSpan, plateWidth, plateHeight);
+      graphics.fillRect(centerX - plateWidth / 2, centerY + halfSpan - plateHeight, plateWidth, plateHeight);
+
+      graphics.fillStyle(0x9eaee8, 0.94 * alpha);
+      graphics.fillRect(centerX - halfSpan, centerY - sideHeight / 2, plateHeight, sideHeight);
+      graphics.fillRect(centerX + halfSpan - plateHeight, centerY - sideHeight / 2, plateHeight, sideHeight);
+
+      graphics.fillStyle(0xf8fbff, 0.98 * alpha);
+      graphics.fillRect(centerX - centerSize / 2, centerY - centerSize / 2, centerSize, centerSize);
+    }
+  }
+
+  private drawBossPixelBurst(graphics: Phaser.GameObjects.Graphics): void {
+    const now = this.time.now;
+    const pixel = Math.max(2, Math.round(2 * this.visualScale()));
+    const palette = [0xffffff, 0xffd36f, 0xff7f74, 0x6ceeff, 0x92a5ff] as const;
+
+    for (const particle of this.bossPixelBurstParticles) {
+      const ageMs = now - particle.startAtMs;
+      const progress = clamp01(ageMs / particle.ttlMs);
+      const ageSec = ageMs * 0.001;
+      const worldX = particle.x + particle.vx * ageSec;
+      const worldY = particle.y + particle.vy * ageSec;
+      const blink = 0.5 + 0.5 * Math.sin(now * 0.032 + particle.colorPhase + progress * 24);
+      const paletteIndex = Math.floor((blink * palette.length + particle.colorPhase) % palette.length);
+      const color = palette[paletteIndex];
+      if (color === undefined) {
+        throw new Error(`Boss pixel burst palette is missing color at index ${paletteIndex}.`);
+      }
+
+      const size = Math.max(
+        pixel,
+        Math.round((particle.size * (1 - progress * 0.46)) * this.visualScale() / pixel) * pixel
+      );
+      const centerX = Math.round(this.worldToScreenX(worldX) / pixel) * pixel;
+      const centerY = Math.round(this.worldToScreenY(worldY) / pixel) * pixel;
+      const alpha = (1 - progress) * (0.52 + blink * 0.4);
+
+      graphics.fillStyle(mixColor(color, 0x0a1024, 0.42), alpha * 0.46);
+      graphics.fillRect(centerX - size / 2 - pixel, centerY - size / 2 - pixel, size + pixel * 2, size + pixel * 2);
+      graphics.fillStyle(color, alpha);
+      graphics.fillRect(centerX - size / 2, centerY - size / 2, size, size);
+
+      if (blink > 0.58) {
+        const innerSize = Math.max(pixel, size - pixel * 2);
+        graphics.fillStyle(0xffffff, alpha * 0.92);
+        graphics.fillRect(centerX - innerSize / 2, centerY - innerSize / 2, innerSize, innerSize);
+      }
     }
   }
 

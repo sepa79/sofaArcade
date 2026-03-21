@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { createMatchInput } from '@light80/core';
 
 import {
+  BOSS_CLAW_STRIKE_DURATION_SEC,
+  BOSS_CLAW_STRIKE_TARGET_Y,
+  BOSS_CORE_Y,
+  BOSS_ORB_MAX_RADIUS,
   BULLET_HEIGHT,
   BULLET_WIDTH,
   ENEMY_STANDARD_ACTIVE_HEIGHT,
@@ -21,6 +25,7 @@ import {
   PLAYER_TAP_SHOOT_COOLDOWN,
   WORLD_WIDTH
 } from './constants';
+import { createInitialBossState } from './boss';
 import { createCollisionRuntime, createFilledAlphaMask } from './collision';
 import { stepGame } from './logic';
 import { playerLaneWorldY } from './player-lanes';
@@ -506,15 +511,23 @@ describe('stepGame', () => {
     expect(next.players[0]?.scoreMultiplier).toBe(5);
   });
 
-  it('counts cleared classic rows and respawns until all ten are spent', () => {
+  it('counts cleared classic rows and respawns when the campaign still has queued rows left', () => {
     const state = createInitialState(25, 1);
     const rowTarget = state.enemies[0];
 
     const customState: GameState = {
       ...state,
       phase: 'playing',
+      campaign: {
+        phase: 'classic-endless',
+        rowsCleared: 0,
+        rowsSpawned: CLASSIC_START_ROWS - 1,
+        rowsTarget: CLASSIC_TOTAL_ROWS,
+        startRows: CLASSIC_START_ROWS - 1,
+        transitionTimerSec: 0
+      },
       enemies: state.enemies.map((enemy) =>
-        enemy.id !== rowTarget.id
+        enemy.id >= 18 || enemy.id !== rowTarget.id
           ? {
               ...enemy,
               alive: false
@@ -538,7 +551,7 @@ describe('stepGame', () => {
     }
     expect(transitioned.phase).toBe('playing');
     expect(transitioned.campaign.rowsCleared).toBe(1);
-    expect(transitioned.campaign.rowsSpawned).toBe(CLASSIC_START_ROWS);
+    expect(transitioned.campaign.rowsSpawned).toBe(CLASSIC_START_ROWS - 1);
     expect(transitioned.pendingRowRespawns).toHaveLength(1);
 
     let spawned = transitioned;
@@ -551,11 +564,11 @@ describe('stepGame', () => {
     }
     expect(spawned.phase).toBe('playing');
     expect(spawned.pendingRowRespawns).toHaveLength(0);
-    expect(spawned.campaign.rowsSpawned).toBe(CLASSIC_START_ROWS + 1);
+    expect(spawned.campaign.rowsSpawned).toBe(CLASSIC_TOTAL_ROWS);
     expect(spawned.enemies.filter((enemy) => enemy.alive)).toHaveLength(9);
   });
 
-  it('switches from classic endless to galaga rows after the tenth cleared row', () => {
+  it('switches from classic endless to galaga rows after the final cleared row', () => {
     const state = createInitialState(26, 1);
     const target = state.enemies[0];
     const waveTen: GameState = {
@@ -679,6 +692,152 @@ describe('stepGame', () => {
     expect(next.phase).toBe('boss-ready');
     expect(next.campaign.phase).toBe('boss');
     expect(next.enemies).toHaveLength(0);
+    expect(next.boss).not.toBeNull();
+  });
+
+  it('starts the boss fight from boss-ready on fire input', () => {
+    const state = createInitialState(29, 1);
+    const bossReady: GameState = {
+      ...state,
+      phase: 'boss-ready',
+      campaign: {
+        phase: 'boss',
+        transitionTimerSec: 0
+      },
+      boss: createInitialBossState(),
+      enemies: [],
+      bullets: [],
+      pickups: [],
+      pendingRowRespawns: []
+    };
+
+    const next = stepState(bossReady, [
+      {
+        ...emptyInput(),
+        firePressed: true,
+        fireJustPressed: true
+      }
+    ]);
+
+    expect(next.phase).toBe('playing');
+    expect(next.campaign.phase).toBe('boss');
+    expect(next.boss).not.toBeNull();
+  });
+
+  it('damages the player when a boss claw strike connects', () => {
+    const state = createInitialState(29, 1);
+    const player = state.players[0];
+    const bossFight: GameState = {
+      ...state,
+      phase: 'playing',
+      campaign: {
+        phase: 'boss',
+        transitionTimerSec: 0
+      },
+      boss: {
+        ...createInitialBossState(),
+        attack: {
+          kind: 'claw-slam',
+          phase: 'strike',
+          phaseElapsedSec: BOSS_CLAW_STRIKE_DURATION_SEC * 0.88,
+          lanes: [
+            {
+              side: 'left',
+              x: player.x,
+              startY: playerLaneWorldY(player.lane) - 120,
+              targetY: BOSS_CLAW_STRIKE_TARGET_Y
+            }
+          ]
+        }
+      },
+      enemies: [],
+      bullets: [],
+      pickups: [],
+      pendingRowRespawns: []
+    };
+
+    const next = stepState(bossFight);
+
+    expect(next.players[0]?.lives).toBe(2);
+  });
+
+  it('damages the player when a boss plasma drop passes through the lane', () => {
+    const state = createInitialState(30, 1);
+    const player = state.players[0];
+    const playerY = playerLaneWorldY(player.lane);
+    const bossFight: GameState = {
+      ...state,
+      phase: 'playing',
+      campaign: {
+        phase: 'boss',
+        transitionTimerSec: 0
+      },
+      boss: {
+        ...createInitialBossState(),
+        projectiles: [
+          {
+            id: 1,
+            kind: 'orb',
+            side: 'left',
+            x: player.x,
+            y: playerY - 6,
+            radius: BOSS_ORB_MAX_RADIUS,
+            phase: 'flying',
+            elapsedSec: 1,
+            vx: 0,
+            vy: 0
+          }
+        ]
+      },
+      enemies: [],
+      bullets: [],
+      pickups: [],
+      pendingRowRespawns: []
+    };
+
+    const next = stepState(bossFight);
+
+    expect(next.players[0]?.lives).toBe(2);
+  });
+
+  it('marks the run as won when the exposed boss core is destroyed', () => {
+    const state = createInitialState(30, 1);
+    const boss = createInitialBossState();
+    const bossFight: GameState = {
+      ...state,
+      phase: 'playing',
+      campaign: {
+        phase: 'boss',
+        transitionTimerSec: 0
+      },
+      boss: {
+        ...boss,
+        coreHitPoints: 1,
+        leftClawHitPoints: 0,
+        rightClawHitPoints: 0,
+        shieldSegments: boss.shieldSegments.map((segment) => ({
+          ...segment,
+          hitPoints: 0
+        }))
+      },
+      enemies: [],
+      bullets: [
+        {
+          owner: 'player',
+          playerIndex: 0,
+          x: boss.coreX,
+          y: BOSS_CORE_Y,
+          vy: 0
+        }
+      ],
+      pickups: [],
+      pendingRowRespawns: []
+    };
+
+    const next = stepState(bossFight);
+
+    expect(next.phase).toBe('won');
+    expect(next.boss).toBeNull();
   });
 
   it('requires three hits to destroy ufo enemy', () => {
@@ -1204,9 +1363,9 @@ describe('stepGame', () => {
       campaign: {
         phase: 'classic-endless',
         rowsCleared: 1,
-        rowsSpawned: CLASSIC_START_ROWS,
+        rowsSpawned: CLASSIC_START_ROWS - 1,
         rowsTarget: CLASSIC_TOTAL_ROWS,
-        startRows: CLASSIC_START_ROWS,
+        startRows: CLASSIC_START_ROWS - 1,
         transitionTimerSec: 0
       },
       enemies: state.enemies.map((enemy) => ({
@@ -1242,10 +1401,10 @@ describe('stepGame', () => {
       phase: 'playing',
       campaign: {
         phase: 'classic-endless',
-        rowsCleared: 6,
-        rowsSpawned: CLASSIC_START_ROWS + 2,
+        rowsCleared: 1,
+        rowsSpawned: CLASSIC_START_ROWS - 1,
         rowsTarget: CLASSIC_TOTAL_ROWS,
-        startRows: CLASSIC_START_ROWS,
+        startRows: CLASSIC_START_ROWS - 1,
         transitionTimerSec: 0
       },
       enemies: state.enemies.map((enemy) => ({

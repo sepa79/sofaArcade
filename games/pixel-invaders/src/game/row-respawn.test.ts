@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { CLASSIC_START_ROWS, CLASSIC_TOTAL_ROWS, createInitialCampaignState, spawnInitialClassicFormation } from './waves';
+import { spawnInitialClassicFormation } from './waves';
 import { detectNewlyDefeatedRowIndices, drainRowRespawnQueue, enqueueDefeatedRows } from './row-respawn';
 
 describe('row respawn queue', () => {
@@ -26,7 +26,6 @@ describe('row respawn queue', () => {
   });
 
   it('respawns the next classic row into the queued slot', () => {
-    const campaign = createInitialCampaignState();
     const initial = spawnInitialClassicFormation(72);
     const clearedTopRow = initial.enemies.map((enemy) =>
       enemy.id < 9
@@ -36,8 +35,8 @@ describe('row respawn queue', () => {
           }
         : enemy
     );
-    const queue = enqueueDefeatedRows([], [0], 0, CLASSIC_TOTAL_ROWS - CLASSIC_START_ROWS);
-    const respawned = drainRowRespawnQueue(queue, clearedTopRow, initial.rngSeed, 1, campaign.rowsSpawned + 1);
+    const queue = enqueueDefeatedRows([], [0], 0, 1);
+    const respawned = drainRowRespawnQueue(queue, clearedTopRow, initial.rngSeed, 1, 3);
 
     expect(respawned.pendingRowRespawns).toHaveLength(0);
     expect(respawned.respawnedRow).toBe(true);

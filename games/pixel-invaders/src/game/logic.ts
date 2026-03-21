@@ -14,6 +14,13 @@ import {
   WORLD_WIDTH
 } from './constants';
 import {
+  createInitialBossState,
+  resolveBossHazards,
+  resolvePlayerShotsAgainstBoss,
+  stepBossState,
+  type BossScoreEvent
+} from './boss';
+import {
   collideEnemyBulletWithPlayer,
   collidePlayerBulletWithEnemy,
   createEmptyCollisionDebugFrame,
@@ -74,6 +81,93 @@ function awardPlayerScore(player: PlayerState, points: number): PlayerState {
     score: player.score + points * player.scoreMultiplier,
     hitStreak: nextHitStreak,
     scoreMultiplier: Math.min(32, nextHitStreak + 1)
+  };
+}
+
+function applyScoreEvents(
+  players: ReadonlyArray<PlayerState>,
+  scoreEvents: ReadonlyArray<BossScoreEvent>
+): ReadonlyArray<PlayerState> {
+  if (scoreEvents.length === 0) {
+    return players;
+  }
+
+  const playersByIndex = new Map<number, PlayerState>(players.map((player) => [player.playerIndex, player]));
+  for (const scoreEvent of scoreEvents) {
+    const player = playersByIndex.get(scoreEvent.playerIndex);
+    if (player === undefined) {
+      throw new Error(`Player state is missing for boss score playerIndex ${scoreEvent.playerIndex}.`);
+    }
+
+    playersByIndex.set(scoreEvent.playerIndex, awardPlayerScore(player, scoreEvent.points));
+  }
+
+  return players.map((player) => {
+    const nextPlayer = playersByIndex.get(player.playerIndex);
+    if (nextPlayer === undefined) {
+      throw new Error(`Resolved boss score state is missing for playerIndex ${player.playerIndex}.`);
+    }
+
+    return nextPlayer;
+  });
+}
+
+function applyHazardHit(playersByIndex: Map<number, PlayerState>, hitPlayerIndex: number): boolean {
+  const hitPlayer = playersByIndex.get(hitPlayerIndex);
+  if (hitPlayer === undefined) {
+    throw new Error(`Player state is missing for hit playerIndex ${hitPlayerIndex}.`);
+  }
+
+  const shield = consumeShield(hitPlayer);
+  if (shield.consumed) {
+    playersByIndex.set(hitPlayerIndex, shield.player);
+    return false;
+  }
+
+  const nextLives = hitPlayer.lives - 1;
+  playersByIndex.set(hitPlayerIndex, {
+    ...resetPlayerBonus(hitPlayer),
+    lives: nextLives,
+    respawnTimer: nextLives > 0 ? PLAYER_RESPAWN_INVULNERABILITY : 0,
+    shootTimer: nextLives > 0 ? hitPlayer.shootTimer : 0,
+    recentMovementMomentum: 0,
+    pushbackVelocityX: 0
+  });
+  return true;
+}
+
+function resolveBossHazardHits(
+  players: ReadonlyArray<PlayerState>,
+  hitPlayerIndices: ReadonlyArray<number>
+): {
+  readonly players: ReadonlyArray<PlayerState>;
+  readonly phase: 'playing' | 'lost';
+} {
+  if (hitPlayerIndices.length === 0) {
+    return {
+      players,
+      phase: 'playing'
+    };
+  }
+
+  const playersByIndex = new Map<number, PlayerState>(players.map((player) => [player.playerIndex, { ...player }]));
+  let anyPlayerHit = false;
+  for (const hitPlayerIndex of hitPlayerIndices) {
+    anyPlayerHit = applyHazardHit(playersByIndex, hitPlayerIndex) || anyPlayerHit;
+  }
+
+  const nextPlayers = players.map((player) => {
+    const nextPlayer = playersByIndex.get(player.playerIndex);
+    if (nextPlayer === undefined) {
+      throw new Error(`Resolved boss hazard state is missing for playerIndex ${player.playerIndex}.`);
+    }
+
+    return nextPlayer;
+  });
+
+  return {
+    players: nextPlayers,
+    phase: anyPlayerHit && nextPlayers.every((player) => player.lives <= 0) ? 'lost' : 'playing'
   };
 }
 
@@ -485,22 +579,7 @@ function resolveEnemyShots(
       throw new Error(`Player state is missing for hit playerIndex ${hitPlayerIndex}.`);
     }
 
-    const shield = consumeShield(hitPlayer);
-    if (shield.consumed) {
-      playersByIndex.set(hitPlayerIndex, shield.player);
-      return false;
-    }
-
-    anyPlayerHit = true;
-    const nextLives = hitPlayer.lives - 1;
-    playersByIndex.set(hitPlayerIndex, {
-      ...resetPlayerBonus(hitPlayer),
-      lives: nextLives,
-      respawnTimer: nextLives > 0 ? PLAYER_RESPAWN_INVULNERABILITY : 0,
-      shootTimer: nextLives > 0 ? hitPlayer.shootTimer : 0,
-      recentMovementMomentum: 0,
-      pushbackVelocityX: 0
-    });
+    anyPlayerHit = applyHazardHit(playersByIndex, hitPlayerIndex) || anyPlayerHit;
     return false;
   });
 
@@ -549,6 +628,124 @@ function applyMissPenalties(
   return players.map((player) => (playerMisses.has(player.playerIndex) ? resetPlayerBonus(player) : player));
 }
 
+function stepBossBattle(
+  state: GameState,
+  inputByPlayerIndex: ReadonlyMap<number, FrameInput>,
+  dt: number,
+  options: StepGameOptions,
+  collisionDebug: MutableCollisionDebugFrame | null
+): StepGameResult {
+  if (state.campaign.phase !== 'boss') {
+    throw new Error('stepBossBattle requires boss campaign phase.');
+  }
+  if (state.boss === null) {
+    throw new Error('Boss campaign phase requires boss state.');
+  }
+
+  const elapsedTimeSec = state.elapsedTimeSec + dt;
+  let players = tickPlayersPowerups(resolvePlayerSeparation(updatePlayers(state.players, inputByPlayerIndex, dt)), dt);
+  let bullets = moveBullets(state.bullets, dt);
+  const steppedPickups = stepPickups(players, state.pickups, dt);
+  players = steppedPickups.players;
+  const pickups = steppedPickups.pickups;
+
+  const spawnedShots = spawnPlayerShots(players, bullets, inputByPlayerIndex);
+  players = spawnedShots.players;
+  bullets = spawnedShots.bullets;
+
+  const bossStep = stepBossState(state.boss, dt, state.rngSeed);
+  let boss = bossStep.boss;
+  const rngSeed = bossStep.rngSeed;
+  bullets = bullets.concat(bossStep.bullets);
+
+  const friendlyFire = resolveFriendlyFire(players, bullets, dt, options.collisionRuntime, collisionDebug);
+  players = resolvePlayerSeparation(friendlyFire.players);
+  bullets = friendlyFire.bullets;
+
+  const resolvedBossShots = resolvePlayerShotsAgainstBoss(boss, bullets, dt);
+  bullets = resolvedBossShots.bullets;
+  players = applyScoreEvents(players, resolvedBossShots.scoreEvents);
+
+  const resolvedEnemyShots = resolveEnemyShots(players, bullets, dt, options.collisionRuntime, collisionDebug);
+  const filteredBullets = filterBulletsAndCountPlayerMisses(resolvedEnemyShots.bullets);
+  const playersAfterMisses = applyMissPenalties(resolvedEnemyShots.players, filteredBullets.playerMisses);
+
+  if (resolvedEnemyShots.phase === 'lost') {
+    return {
+      state: {
+        phase: 'lost',
+        elapsedTimeSec,
+        lostRestartDelaySec: LOST_RESTART_DELAY_SEC,
+        campaign: state.campaign,
+        boss: resolvedBossShots.boss,
+        players: playersAfterMisses,
+        enemyDirection: 1,
+        enemySpeed: state.enemySpeed,
+        enemyFireTimer: Number.POSITIVE_INFINITY,
+        enemyDiveTimer: Number.POSITIVE_INFINITY,
+        rngSeed,
+        enemies: [],
+        bullets: filteredBullets.bullets,
+        pickups,
+        nextPickupId: state.nextPickupId,
+        pendingRowRespawns: []
+      },
+      collisionDebug: freezeCollisionDebugFrame(collisionDebug)
+    };
+  }
+
+  if (resolvedBossShots.boss === null) {
+    return {
+      state: {
+        phase: 'won',
+        elapsedTimeSec,
+        lostRestartDelaySec: 0,
+        campaign: state.campaign,
+        boss: null,
+        players: playersAfterMisses,
+        enemyDirection: 1,
+        enemySpeed: state.enemySpeed,
+        enemyFireTimer: Number.POSITIVE_INFINITY,
+        enemyDiveTimer: Number.POSITIVE_INFINITY,
+        rngSeed,
+        enemies: [],
+        bullets: filteredBullets.bullets,
+        pickups,
+        nextPickupId: state.nextPickupId,
+        pendingRowRespawns: []
+      },
+      collisionDebug: freezeCollisionDebugFrame(collisionDebug)
+    };
+  }
+
+  boss = resolvedBossShots.boss;
+  const resolvedBossHazards = resolveBossHazards(boss, playersAfterMisses);
+  const bossHazardHits = resolveBossHazardHits(playersAfterMisses, resolvedBossHazards.hitPlayerIndices);
+  const phase = bossHazardHits.phase;
+
+  return {
+    state: {
+      phase,
+      elapsedTimeSec,
+      lostRestartDelaySec: phase === 'lost' ? LOST_RESTART_DELAY_SEC : state.lostRestartDelaySec,
+      campaign: state.campaign,
+      boss: resolvedBossHazards.boss,
+      players: bossHazardHits.players,
+      enemyDirection: 1,
+      enemySpeed: state.enemySpeed,
+      enemyFireTimer: Number.POSITIVE_INFINITY,
+      enemyDiveTimer: Number.POSITIVE_INFINITY,
+      rngSeed,
+      enemies: [],
+      bullets: filteredBullets.bullets,
+      pickups,
+      nextPickupId: state.nextPickupId,
+      pendingRowRespawns: []
+    },
+    collisionDebug: freezeCollisionDebugFrame(collisionDebug)
+  };
+}
+
 export interface StepGameOptions {
   readonly collisionRuntime: CollisionRuntime;
   readonly captureCollisionDebug: boolean;
@@ -594,6 +791,28 @@ export function stepGame(
   }
 
   if (state.phase === 'boss-ready') {
+    if (state.campaign.phase !== 'boss') {
+      throw new Error('boss-ready phase requires boss campaign phase.');
+    }
+    if (state.boss === null) {
+      throw new Error('boss-ready phase requires boss state.');
+    }
+
+    return {
+      state:
+        anyRestartPressed(matchInput)
+          ? createInitialState(state.rngSeed + 1, state.players.length)
+          : anyFirePressed(matchInput)
+            ? {
+                ...state,
+                phase: 'playing'
+              }
+            : state,
+      collisionDebug: createEmptyCollisionDebugFrame()
+    };
+  }
+
+  if (state.phase === 'won') {
     return {
       state:
         anyRestartRequested(matchInput) || anyFirePressed(matchInput)
@@ -654,6 +873,7 @@ export function stepGame(
           ...state,
           phase: 'boss-ready',
           elapsedTimeSec,
+          boss: createInitialBossState(),
           players,
           bullets: [],
           pickups: [],
@@ -705,6 +925,10 @@ export function stepGame(
       },
       collisionDebug: createEmptyCollisionDebugFrame()
     };
+  }
+
+  if (state.campaign.phase === 'boss') {
+    return stepBossBattle(state, inputByPlayerIndex, dt, options, collisionDebug);
   }
 
   const spawnedShots = spawnPlayerShots(players, bullets, inputByPlayerIndex);
@@ -822,6 +1046,7 @@ export function stepGame(
         elapsedTimeSec,
         lostRestartDelaySec: LOST_RESTART_DELAY_SEC,
         campaign,
+        boss: state.boss,
         players: playersAfterMisses,
         enemyDirection,
         enemySpeed,
@@ -860,7 +1085,14 @@ export function stepGame(
         phase: nextCampaign.phase === 'boss' ? 'boss-ready' : 'playing',
         elapsedTimeSec,
         lostRestartDelaySec: state.lostRestartDelaySec,
-        campaign: nextCampaign,
+        campaign:
+          nextCampaign.phase === 'boss'
+            ? {
+                ...nextCampaign,
+                transitionTimerSec: 0
+              }
+            : nextCampaign,
+        boss: nextCampaign.phase === 'boss' ? createInitialBossState() : null,
         players: playersAfterMisses,
         enemyDirection: 1,
         enemySpeed: enemyBaseSpeedForCampaign(nextCampaign),
@@ -883,6 +1115,7 @@ export function stepGame(
       elapsedTimeSec,
       lostRestartDelaySec: state.lostRestartDelaySec,
       campaign,
+      boss: state.boss,
       players: playersAfterMisses,
       enemyDirection,
       enemySpeed,

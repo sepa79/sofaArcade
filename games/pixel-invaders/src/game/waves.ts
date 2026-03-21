@@ -23,9 +23,9 @@ import type {
   PowerupKind
 } from './types';
 
-export const CLASSIC_START_ROWS = ENEMY_ROWS;
-export const CLASSIC_TOTAL_ROWS = 10;
-export const GALAGA_TOTAL_ROWS = 10;
+export const CLASSIC_START_ROWS = 3;
+export const CLASSIC_TOTAL_ROWS = 3;
+export const GALAGA_TOTAL_ROWS = 3;
 
 export interface GalagaRowDefinition {
   readonly rowNumber: number;

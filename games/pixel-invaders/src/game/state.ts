@@ -42,6 +42,7 @@ export function createInitialState(seed: number, playerCount: number): GameState
     elapsedTimeSec: 0,
     lostRestartDelaySec: LOST_RESTART_DELAY_SEC,
     campaign,
+    boss: null,
     players: createPlayers(playerCount),
     enemyDirection: 1,
     enemySpeed: enemyBaseSpeedForCampaign(campaign),
