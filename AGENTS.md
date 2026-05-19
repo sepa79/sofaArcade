@@ -7,6 +7,18 @@
 - Functional separation into small modules with single responsibility.
 - Fail fast on invalid input and invalid state.
 
+## AI Starter References
+- HiveMind project id: `sofaarcade`
+- HiveMind standard profile: `base@v1`
+- Project context: `docs/ai/PROJECT_CONTEXT.md`
+- Architecture map: `docs/ARCHITECTURE.md`
+- Commands: `docs/ai/COMMANDS.md`
+- HiveMind workflow: `docs/ai/HIVEMIND_RULES.md`
+- Review checks: `docs/ai/REVIEW_CHECKS.md`
+- Failure-mode checks: `docs/ai/JESTER_CHECKS.md`
+
+If these references conflict with the core rules in this file, this file wins.
+
 ## Engineering Contract
 - Do not silently recover from errors.
 - Do not auto-switch input backend, transport, or command strategy.
