@@ -1,0 +1,258 @@
+{
+  "fixture": "main-human-investment-actions",
+  "entry": "main:L4196 investment subpaths",
+  "modules": {
+    "kernal": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+      "loadAddress": "0x0800"
+    },
+    "main": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+      "loadAddress": "0x3000"
+    },
+    "sys": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+      "loadAddress": "0x9400"
+    }
+  },
+  "patchedRoutines": {
+    "ui/display helpers": "$114C, $1162, $1691, $19DE, $1A2B, $1B69, $1B0D, $1CA0, $1CB6, $1FA9, $1FD5, $2AC5, $2AEF, $3C18, $3C5C, $3C9F, $47ED, and $485F are patched to RTS",
+    "numeric choosers": "sys:L984B and kernal:L1820 are patched only in chooser cases to return deterministic selected values",
+    "confirmation input": "$2028 is patched only in the fortification case to return A=0 and X=0, matching confirmation"
+  },
+  "monitor": {
+    "commands": "docs/war-for-crown/fixtures/main-human-investment-actions.mon",
+    "viceCommand": "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/main-human-investment-actions.mon -limitcycles 1000000"
+  },
+  "cases": [
+    {
+      "name": "end-investment-applies-money-interest",
+      "entry": "main:$4752",
+      "setup": {
+        "activePlayer": 1,
+        "fullRulesFlagCA55": 0,
+        "interestPercentC901": 8,
+        "moneyBefore": 250
+      },
+      "expected": {
+        "moneyAfter": 270,
+        "interestAmount": 20,
+        "rawMemory": {
+          "$c8bb..$c8c5": [
+            "0x00",
+            "0x0e",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x01",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00"
+          ],
+          "$5b..$62": [
+            "0x14",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00"
+          ]
+        }
+      }
+    },
+    {
+      "name": "recruitment-buys-soldiers-directly-into-home-province",
+      "entry": "main:$437B",
+      "setup": {
+        "activePlayer": 1,
+        "moneyBefore": 30,
+        "homeProvince": 2,
+        "homeSoldiersBefore": 5,
+        "chosenRecruitCount": 7
+      },
+      "expected": {
+        "moneyAfter": 23,
+        "homeSoldiersAfter": 12,
+        "turnHiredCounterAfter": 7,
+        "rawMemory": {
+          "$c8bb..$c8c5": [
+            "0x00",
+            "0x17",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00"
+          ],
+          "$c706..$c70a": ["0x00", "0x00", "0x0c", "0x00", "0x00"],
+          "$c9ee..$c9f9": [
+            "0x00",
+            "0x07",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00"
+          ],
+          "$1614..$161c": [
+            "0x07",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x1e",
+            "0x00",
+            "0x00"
+          ]
+        }
+      }
+    },
+    {
+      "name": "village-purchase-uses-cap-affordability-and-price",
+      "entry": "main:L4494",
+      "setup": {
+        "activePlayer": 1,
+        "province": 2,
+        "owner": 1,
+        "moneyBefore": 25,
+        "villagePriceC900": 4,
+        "villageCapC8aa": 12,
+        "villageCapModeC8ab": 0,
+        "villagesBefore": 3,
+        "chosenVillages": 4
+      },
+      "expected": {
+        "chooserMaximumVillages": 6,
+        "moneyAfter": 9,
+        "villagesAfter": 7,
+        "villageStatCounterAfter": 4,
+        "rawMemory": {
+          "$c8bb..$c8c5": [
+            "0x00",
+            "0x09",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00"
+          ],
+          "$c6a2..$c6a6": ["0x00", "0x00", "0x07", "0x00", "0x00"],
+          "$c9fb..$ca05": [
+            "0x00",
+            "0x04",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00"
+          ],
+          "$1614..$161c": [
+            "0x04",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x06",
+            "0x00",
+            "0x00"
+          ],
+          "$5b..$62": [
+            "0x20",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x10",
+            "0x00",
+            "0x00",
+            "0x00"
+          ]
+        }
+      }
+    },
+    {
+      "name": "fortification-upgrade-sets-same-phase-marker",
+      "entry": "main:L4627",
+      "setup": {
+        "activePlayer": 1,
+        "province": 2,
+        "owner": 1,
+        "homeProvince": 1,
+        "moneyBefore": 50,
+        "fortBefore": 0,
+        "nonHomeMaxFortC8af": 3,
+        "confirmation": "A=0, X=0"
+      },
+      "expected": {
+        "moneyAfterFirstUpgrade": 30,
+        "fortAfterFirstUpgrade": 1,
+        "samePhaseMarkerAfterFirstUpgrade": "0x20",
+        "rawMemoryAfterFirstUpgrade": {
+          "$c8bb..$c8c5": [
+            "0x00",
+            "0x1e",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00"
+          ],
+          "$c63e..$c642": ["0x00", "0x00", "0x01", "0x00", "0x00"],
+          "$c832..$c836": ["0x00", "0x00", "0x20", "0x00", "0x00"]
+        },
+        "moneyAfterSecondAttempt": 30,
+        "fortAfterSecondAttempt": 1,
+        "samePhaseMarkerAfterSecondAttempt": "0x20",
+        "rawMemoryAfterSecondAttempt": {
+          "$c8bb..$c8c5": [
+            "0x00",
+            "0x1e",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00"
+          ],
+          "$c63e..$c642": ["0x00", "0x00", "0x01", "0x00", "0x00"],
+          "$c832..$c836": ["0x00", "0x00", "0x20", "0x00", "0x00"]
+        }
+      }
+    }
+  ],
+  "conclusion": [
+    "End investment applies floor(money * C901 / 100) and adds that amount to current money in simple mode.",
+    "Recruitment spends one taler per soldier and adds soldiers directly to the player's home province; there is no free-troop or reserve pool.",
+    "Village purchase uses sys:L9A2A for cap, clamps max to min(missing villages, floor(money / C900)), and spends chosenCount * C900.",
+    "Human fortification upgrade costs main:L300F[currentFort], increments the fort by one, and sets C832 bit $20 so the same province cannot be upgraded again in that investment phase."
+  ]
+}

@@ -1,0 +1,217 @@
+{
+  "fixture": "cbaron-5806-movement-entry-l5ea4-two-candidates",
+  "entry": "cbaron:$5806 -> L5D7F -> L5EA4",
+  "modules": {
+    "kernal": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+      "loadAddress": "0x0800"
+    },
+    "main": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+      "loadAddress": "0x3000"
+    },
+    "cbaron": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-cbaron.raw",
+      "loadAddress": "0x5800"
+    },
+    "kampf": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-kampf.raw",
+      "loadAddress": "0x7e00"
+    },
+    "sys": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+      "loadAddress": "0x9400"
+    }
+  },
+  "monitorCommands": {
+    "selectionBreakpoint": "docs/war-for-crown/fixtures/cbaron-l5ea4-two-candidates-selection.mon",
+    "fullReturn": "docs/war-for-crown/fixtures/cbaron-5806-movement-entry-l5ea4-two-candidates.mon"
+  },
+  "patchedRoutines": {
+    "ui": "$1b69 returns immediately",
+    "kernal:L218B": "returns 0x7b"
+  },
+  "setup": {
+    "activePlayer": 1,
+    "provinceCount": 5,
+    "mapShape": "line: 1-2-3-4-5",
+    "ownersByProvince": {
+      "1": 2,
+      "2": 1,
+      "3": 1,
+      "4": 1,
+      "5": 2
+    },
+    "homeProvinceByPlayer": {
+      "1": 3,
+      "2": 1
+    },
+    "soldiersByProvince": {
+      "1": 1,
+      "2": 2,
+      "3": 2,
+      "4": 2,
+      "5": 20
+    },
+    "activeMoney": 0,
+    "pressureSetupEnabled": false
+  },
+  "selectionBreakpointAt5f83": {
+    "registers": {
+      "a": "0x00",
+      "x": "0x01",
+      "y": "0x04"
+    },
+    "meaning": "L60DE selected province 4 as the component seed; execution stopped before STY $161F.",
+    "rawMemory": {
+      "$1602..$1604": [
+        "0x00",
+        "0x00",
+        "0x00"
+      ],
+      "$1617..$161f": [
+        "0xee",
+        "0xff",
+        "0xff",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x03"
+      ],
+      "$60db..$60de": [
+        "0x07",
+        "0xff",
+        "0xff",
+        "0x04"
+      ],
+      "$c9d0..$c9d8": [
+        "0x03",
+        "0x00",
+        "0x00",
+        "0x15",
+        "0x00",
+        "0x00",
+        "0x04",
+        "0x02",
+        "0x01"
+      ],
+      "$c706..$c70c": [
+        "0x00",
+        "0x01",
+        "0x01",
+        "0x01",
+        "0x01",
+        "0x14",
+        "0x00"
+      ],
+      "$c832..$c838": [
+        "0x80",
+        "0x00",
+        "0x11",
+        "0x11",
+        "0x11",
+        "0x00",
+        "0x00"
+      ]
+    }
+  },
+  "expectedAfterFullReturn": {
+    "returnsToHarness": true,
+    "pulledMobileSoldiers": 3,
+    "selectedL60DE": 4,
+    "rememberedTarget": 1,
+    "rememberedTargetSoldiers": 1,
+    "finalSoldiersByProvince": {
+      "1": 1,
+      "2": 4,
+      "3": 1,
+      "4": 1,
+      "5": 20
+    },
+    "finalFlagsByProvince": {
+      "1": "0x00",
+      "2": "0x00",
+      "3": "0x00",
+      "4": "0x04",
+      "5": "0x00"
+    },
+    "rawMemory": {
+      "$1602..$1604": [
+        "0x00",
+        "0x00",
+        "0x14"
+      ],
+      "$1617..$161f": [
+        "0x02",
+        "0x00",
+        "0x00",
+        "0x01",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x02"
+      ],
+      "$60db..$60de": [
+        "0x07",
+        "0xff",
+        "0xff",
+        "0x04"
+      ],
+      "$c9d0..$c9d8": [
+        "0x03",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x01",
+        "0x02",
+        "0x02"
+      ],
+      "$c706..$c70c": [
+        "0x00",
+        "0x01",
+        "0x04",
+        "0x01",
+        "0x01",
+        "0x14",
+        "0x00"
+      ],
+      "$c832..$c838": [
+        "0x80",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x04",
+        "0x00",
+        "0x00"
+      ],
+      "$c9de..$c9ed": [
+        "0x00",
+        "0x01",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x01",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00"
+      ]
+    }
+  },
+  "conclusion": [
+    "In this multi-front deficit setup, L5EA4 chooses province 4 through L60DE before reseeding the component.",
+    "The later L6C49/L6A64 flow writes remembered target province 1 with remembered strength 1.",
+    "The final redistribution is not the current simplified TypeScript underpowered movement shape: province 2 receives four soldiers while provinces 3 and 4 are left at one, with province 4 marked $04."
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "id": "sys-retreat-threshold-boundaries",
+  "type": "derived-vice-monitor-fixture",
+  "source": {
+    "disk": "ERBENT1A.D64",
+    "modules": {
+      "kampf": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-kampf.raw",
+        "loadAddress": "0x7E00"
+      },
+      "sys": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+        "loadAddress": "0x9400"
+      }
+    },
+    "monitorCommands": "docs/war-for-crown/fixtures/sys-retreat-threshold-boundaries.mon",
+    "viceCommand": "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/sys-retreat-threshold-boundaries.mon -limitcycles 1000000"
+  },
+  "routine": {
+    "module": "sys",
+    "entries": ["0x946F", "0x9486"],
+    "description": "AI battle retreat threshold comparisons"
+  },
+  "patches": [
+    {
+      "address": "0x9426",
+      "meaning": "replace ratio calculation with exact $60..$62 test values before each helper call"
+    }
+  ],
+  "observed": {
+    "attackerRetreatHelper": {
+      "entry": "0x946F",
+      "thresholdBytes": ["0xE6", "0x00", "0x00"],
+      "cases": [
+        {
+          "ratio": 229,
+          "ratioBytes": ["0xE5", "0x00", "0x00"],
+          "carryAsStoredAt0x1602": 0
+        },
+        {
+          "ratio": 230,
+          "ratioBytes": ["0xE6", "0x00", "0x00"],
+          "carryAsStoredAt0x1602": 1
+        }
+      ]
+    },
+    "defenderRetreatHelper": {
+      "entry": "0x9486",
+      "thresholdBytes": ["0xB3", "0x01", "0x00"],
+      "cases": [
+        {
+          "ratio": 434,
+          "ratioBytes": ["0xB2", "0x01", "0x00"],
+          "carryAsStoredAt0x1602": 0
+        },
+        {
+          "ratio": 435,
+          "ratioBytes": ["0xB3", "0x01", "0x00"],
+          "carryAsStoredAt0x1602": 1
+        }
+      ]
+    }
+  },
+  "assertionsForPort": [
+    "sys:L946F returns carry clear when the ratio is below 230 and carry set when it is at least 230.",
+    "kampf:L83C4 uses carry clear from sys:L946F to store attacker retreat command 2.",
+    "sys:L9486 returns carry clear below 435 and carry set when the ratio is at least 435.",
+    "kampf:L83C4 uses carry set from sys:L9486 to store defender retreat command 1, but only after defender-retreat legality has already been established by $9406."
+  ]
+}

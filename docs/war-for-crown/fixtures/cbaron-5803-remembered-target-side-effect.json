@@ -1,0 +1,108 @@
+{
+  "fixture": "cbaron-5803-remembered-target-side-effect",
+  "entry": "cbaron:$5803 -> L6560",
+  "breakpoint": "cbaron:L65F7",
+  "modules": {
+    "kernal": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+      "loadAddress": "0x0800"
+    },
+    "main": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+      "loadAddress": "0x3000"
+    },
+    "cbaron": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-cbaron.raw",
+      "loadAddress": "0x5800"
+    },
+    "kampf": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-kampf.raw",
+      "loadAddress": "0x7e00"
+    },
+    "sys": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+      "loadAddress": "0x9400"
+    }
+  },
+  "patchedRoutines": {
+    "ui": "$1d7d/$1b3b/$2aef return immediately"
+  },
+  "setup": {
+    "activePlayer": 1,
+    "provinceCount": 2,
+    "mapShape": "line: 1-2",
+    "ownersByProvince": {
+      "1": 1,
+      "2": 2
+    },
+    "soldiersByProvince": {
+      "1": 1,
+      "2": 12
+    },
+    "rememberedTarget": 2,
+    "rememberedTargetSoldiers": 4,
+    "initialPressure": {
+      "$ca61": "0x00",
+      "$ca62": "0x00"
+    }
+  },
+  "expected": {
+    "breaksAt": "0x65f7",
+    "rememberedTargetAfterBranch": 0,
+    "rememberedTargetSoldiersAfterBranch": 4,
+    "divisionQuotient": 3,
+    "pressureAfterBranch": {
+      "$ca61": "0x01",
+      "$ca62": "0x00"
+    },
+    "rawMemory": {
+      "$c9de..$c9ed": [
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x04",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00"
+      ],
+      "$ca61..$ca62": [
+        "0x01",
+        "0x00"
+      ],
+      "$0057..$0062": [
+        "0x04",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x03",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00"
+      ],
+      "$c832..$c835": [
+        "0x80",
+        "0x90",
+        "0x00",
+        "0x00"
+      ]
+    }
+  },
+  "conclusion": [
+    "At attack entry, a nonzero $C9DE + player is consumed before normal frontier target building.",
+    "The remembered target id is cleared immediately; the remembered strength bytes are not cleared by this branch.",
+    "The branch divides current remembered-target soldiers by stored remembered strength using sys:L9732 and folds the quotient into $CA61/$CA62 as a halved pressure factor."
+  ]
+}

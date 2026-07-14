@@ -1,0 +1,74 @@
+{
+  "id": "kampf-l7e76-neutral-royalist-no-join",
+  "type": "derived-vice-monitor-fixture",
+  "source": {
+    "disk": "ERBENT1A.D64",
+    "modules": {
+      "kernal": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+        "loadAddress": "0x0800"
+      },
+      "kampf": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-kampf.raw",
+        "loadAddress": "0x7E00"
+      }
+    },
+    "monitorCommands": "docs/war-for-crown/fixtures/kampf-l7e76-neutral-royalist-no-join.mon",
+    "viceCommand": "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/kampf-l7e76-neutral-royalist-no-join.mon -limitcycles 1000000"
+  },
+  "routine": {
+    "module": "kampf",
+    "entry": "0x7E76",
+    "description": "Neutral royalist no-join branch"
+  },
+  "initialState": {
+    "royalistAttitude": 1,
+    "targetProvince": 2,
+    "ownersByProvince": {
+      "2": 0
+    },
+    "attackerSoldiers": {
+      "low": 5,
+      "mid": 0,
+      "high": 0
+    },
+    "defenderSoldiers": {
+      "low": 3,
+      "mid": 0,
+      "high": 0
+    },
+    "battleProgressByte": "0x7F"
+  },
+  "observed": {
+    "breakpoint": "0xC003",
+    "attackerSoldiersAfter": {
+      "low": 5,
+      "mid": 0,
+      "high": 0
+    },
+    "defenderSoldiersAfter": {
+      "low": 3,
+      "mid": 0,
+      "high": 0
+    },
+    "targetProvinceAfter": 2,
+    "battleProgressByteAfter": "0x7F",
+    "memoryC9D0ToC9D9": [
+      "0x05",
+      "0x00",
+      "0x00",
+      "0x03",
+      "0x00",
+      "0x00",
+      "0x00",
+      "0x02",
+      "0x00",
+      "0x7F"
+    ]
+  },
+  "assertionsForPort": [
+    "When C8A5 is neutral, L7E76 returns without modifying attacker or defender soldiers.",
+    "Neutral royalists do not use the friendly join branch, even when the target owner is 0.",
+    "Neutral royalist battle setup continues through the normal combat path outside this isolated branch."
+  ]
+}

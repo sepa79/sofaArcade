@@ -1,0 +1,91 @@
+{
+  "fixture": "main-weather-selection-drift-boundaries",
+  "entry": "main:L3D7C and main:L3DCD",
+  "modules": {
+    "main": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+      "loadAddress": "0x3000"
+    },
+    "sys": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+      "loadAddress": "0x9400"
+    }
+  },
+  "patchedRoutines": {
+    "sys:L982F": "returns 0x0c and stores 0x0c in $9849"
+  },
+  "monitor": {
+    "commands": "docs/war-for-crown/fixtures/main-weather-selection-drift-boundaries.mon",
+    "viceCommand": "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/main-weather-selection-drift-boundaries.mon -limitcycles 1000000"
+  },
+  "cases": [
+    {
+      "name": "season-zero-weighted-selection-and-drift",
+      "routine": "main:L3D7C then main:L3DCD",
+      "input": {
+        "month": 1,
+        "nextMonth": 2,
+        "seasonOffset": 0,
+        "weatherRollReturn": "0x0c",
+        "weatherIndexBefore": 0,
+        "weatherFactorBefore": 120,
+        "weatherDerivedBefore": 0
+      },
+      "expected": {
+        "weatherIndex": 3,
+        "weatherFactor": 110,
+        "weatherDerived": 80,
+        "storedRandom": "0x0c"
+      }
+    },
+    {
+      "name": "neutral-weather-drifts-low-value-up",
+      "routine": "main:L3DCD",
+      "input": {
+        "weatherIndex": 3,
+        "weatherFactorBefore": 80,
+        "weatherDerivedBefore": 0
+      },
+      "expected": {
+        "weatherIndex": 3,
+        "weatherFactor": 90,
+        "weatherDerived": 60
+      }
+    },
+    {
+      "name": "bad-weather-clamps-low-boundary",
+      "routine": "main:L3DCD",
+      "input": {
+        "weatherIndex": 0,
+        "weatherFactorBefore": 41,
+        "weatherDerivedBefore": 0
+      },
+      "expected": {
+        "weatherIndex": 0,
+        "weatherFactor": 40,
+        "weatherDerived": 10
+      }
+    },
+    {
+      "name": "good-weather-clamps-high-boundary",
+      "routine": "main:L3DCD",
+      "input": {
+        "weatherIndex": 6,
+        "weatherFactorBefore": 159,
+        "weatherDerivedBefore": 0
+      },
+      "expected": {
+        "weatherIndex": 6,
+        "weatherFactor": 160,
+        "weatherDerived": 130
+      }
+    }
+  ],
+  "conclusion": [
+    "L3D7C selects weather from the season-specific seven-entry weight table using the next month, not the current displayed month.",
+    "A returned L982F value of 0x0c in season 0 selects weather index 3.",
+    "L3DCD drifts weather index 3 toward factor 100 in steps of 10.",
+    "Non-3 weather changes the factor by weatherIndex - 3 and clamps the result to 40..160.",
+    "$CA4D is always written as $CA4C - 30 by the tested paths."
+  ]
+}

@@ -1,0 +1,128 @@
+{
+  "fixture": "cbaron-l6207-fort-compensation-choice",
+  "entry": "cbaron:L6207",
+  "modules": {
+    "kernal": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+      "loadAddress": "0x0800"
+    },
+    "main": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+      "loadAddress": "0x3000"
+    },
+    "cbaron": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-cbaron.raw",
+      "loadAddress": "0x5800"
+    },
+    "kampf": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-kampf.raw",
+      "loadAddress": "0x7e00"
+    },
+    "sys": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+      "loadAddress": "0x9400"
+    }
+  },
+  "patchedRoutines": {
+    "kernal:L218B": "returns 0x7b",
+    "$CA48": "forced to 0 so sys:L949D uses the simple combat-context path"
+  },
+  "setup": {
+    "activePlayer": 1,
+    "provinceCount": 4,
+    "mapShape": "line: 1-2-3-4",
+    "activeMoney": 20,
+    "fortCostForLevel0": 20,
+    "maxHomeFortification": 6,
+    "maxProvinceFortification": 6,
+    "ownersByProvince": {
+      "1": 2,
+      "2": 1,
+      "3": 1,
+      "4": 2
+    },
+    "soldiersByProvince": {
+      "1": 30,
+      "2": 2,
+      "3": 2,
+      "4": 20
+    },
+    "initialFortificationsByProvince": {
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    },
+    "initialFlagsByProvince": {
+      "1": "0x00",
+      "2": "0x10",
+      "3": "0x10",
+      "4": "0x00"
+    }
+  },
+  "expected": {
+    "selectedProvince": 2,
+    "selectedStrengthReduction": 9,
+    "fortificationsUnchangedByL6207": {
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    },
+    "moneyUnchangedByL6207": 20,
+    "finalFlagsByProvince": {
+      "1": "0x80",
+      "2": "0x80",
+      "3": "0x10",
+      "4": "0x10"
+    },
+    "rawMemory": {
+      "$C9D6": "0x02",
+      "$1602..$1604": [
+        "0x09",
+        "0x00",
+        "0x00"
+      ],
+      "$161A..$161C": [
+        "0x09",
+        "0x00",
+        "0x00"
+      ],
+      "$C63E..$C643": [
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00"
+      ],
+      "$C832..$C837": [
+        "0x80",
+        "0x80",
+        "0x10",
+        "0x10",
+        "0x00",
+        "0x00"
+      ],
+      "$C8BB..$C8C5": [
+        "0x00",
+        "0x14",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00"
+      ]
+    }
+  },
+  "conclusion": [
+    "L6207 only selects the best fortification-compensation candidate; it does not spend money or increment C63E.",
+    "The selected province is stored in $C9D6.",
+    "The candidate score in $1602..$1604 is the unsigned three-byte reduction in required soldiers after a hypothetical one-level fortification upgrade.",
+    "Equal or better reductions replace earlier candidates during the descending scan, so equal reductions tie toward lower province numbers."
+  ]
+}

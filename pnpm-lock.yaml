@@ -199,6 +199,46 @@ importers:
         specifier: ^3.2.4
         version: 3.2.4(@types/node@20.19.35)(tsx@4.21.0)
 
+  games/war-for-crown:
+    dependencies:
+      '@fortawesome/fontawesome-free':
+        specifier: 7.1.0
+        version: 7.1.0
+      phaser:
+        specifier: ^3.90.0
+        version: 3.90.0
+    devDependencies:
+      '@eslint/js':
+        specifier: ^9.39.3
+        version: 9.39.3
+      '@types/node':
+        specifier: ^20.17.57
+        version: 20.19.35
+      '@typescript-eslint/eslint-plugin':
+        specifier: ^8.46.0
+        version: 8.56.1(@typescript-eslint/parser@8.56.1(eslint@9.39.3)(typescript@5.9.3))(eslint@9.39.3)(typescript@5.9.3)
+      '@typescript-eslint/parser':
+        specifier: ^8.46.0
+        version: 8.56.1(eslint@9.39.3)(typescript@5.9.3)
+      eslint:
+        specifier: ^9.37.0
+        version: 9.39.3
+      tsx:
+        specifier: ^4.21.0
+        version: 4.21.0
+      typescript:
+        specifier: ~5.9.3
+        version: 5.9.3
+      typescript-eslint:
+        specifier: ^8.56.1
+        version: 8.56.1(eslint@9.39.3)(typescript@5.9.3)
+      vite:
+        specifier: ^6.4.1
+        version: 6.4.1(@types/node@20.19.35)(tsx@4.21.0)
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.4(@types/node@20.19.35)(tsx@4.21.0)
+
   packages/core:
     devDependencies:
       '@eslint/js':
@@ -592,6 +632,10 @@ packages:
   '@eslint/plugin-kit@0.4.1':
     resolution: {integrity: sha512-43/qtrDUokr7LJqoF2c3+RInu/t4zfrpYdoSDfYyhg52rwLV6TnOvdG4fXm7IkSB3wErkcmJS9iEhjVtOSEjjA==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+
+  '@fortawesome/fontawesome-free@7.1.0':
+    resolution: {integrity: sha512-+WxNld5ZCJHvPQCr/GnzCTVREyStrAJjisUPtUxG5ngDA8TMlPnKp6dddlTpai4+1GNmltAeuk1hJEkBohwZYA==}
+    engines: {node: '>=6'}
 
   '@humanfs/core@0.19.1':
     resolution: {integrity: sha512-5DyQ4+1JEUzejeK1JGICcideyfUbGixgS9jNgex5nqkW+cY7WZhxBigmieN5Qnw9ZosSNVC9KQKyb+GUaGyKUA==}
@@ -1716,6 +1760,8 @@ snapshots:
     dependencies:
       '@eslint/core': 0.17.0
       levn: 0.4.1
+
+  '@fortawesome/fontawesome-free@7.1.0': {}
 
   '@humanfs/core@0.19.1': {}
 

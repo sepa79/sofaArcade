@@ -1,0 +1,111 @@
+{
+  "id": "main-l5209-royalist-production-buckets",
+  "type": "derived-vice-monitor-fixture",
+  "source": {
+    "disk": "ERBENT1A.D64",
+    "modules": {
+      "kernal": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+        "loadAddress": "0x0800"
+      },
+      "main": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+        "loadAddress": "0x3000"
+      },
+      "sys": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+        "loadAddress": "0x9400"
+      }
+    },
+    "monitorCommands": "docs/war-for-crown/fixtures/main-l5209-royalist-production-buckets.mon",
+    "viceCommand": "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/main-l5209-royalist-production-buckets.mon -limitcycles 1000000"
+  },
+  "routine": {
+    "module": "main",
+    "entry": "0x5209",
+    "description": "Royalist production, investment buckets, and post-pass bucket interest distribution"
+  },
+  "patches": [
+    {
+      "address": "0x1B69",
+      "bytes": ["0x60"],
+      "meaning": "stub province redraw side effect; production state logic is unchanged"
+    }
+  ],
+  "initialState": {
+    "activeOwner": 0,
+    "playerCount": 1,
+    "provinceCount": 2,
+    "royalistAttitude": 1,
+    "terrainAffectsIncome": true,
+    "villageCap": 12,
+    "villagePrice": 4,
+    "royalistGrowthByte": 0,
+    "royalistInvestmentByte": 0,
+    "royalistPostPassPercent": 8,
+    "maxNonHomeFortification": 1,
+    "mapCells": {
+      "0xC415": 1,
+      "0xC416": 2
+    },
+    "ownersByProvince": {
+      "1": 0,
+      "2": 0
+    },
+    "terrainByProvince": {
+      "1": 1,
+      "2": 1
+    },
+    "villagesByProvince": {
+      "1": 2,
+      "2": 2
+    },
+    "soldiersByProvince": {
+      "1": 1,
+      "2": 1
+    },
+    "villageBucketsByProvince": {
+      "1": 3,
+      "2": 0
+    },
+    "fortBucketsByProvince": {
+      "1": 0,
+      "2": 19
+    }
+  },
+  "observed": {
+    "breakpoint": "0xC003",
+    "villagesByProvinceAfter": {
+      "1": 3,
+      "2": 2
+    },
+    "fortificationsByProvinceAfter": {
+      "1": 0,
+      "2": 0
+    },
+    "soldiersByProvinceAfter": {
+      "1": 3,
+      "2": 4
+    },
+    "villageBucketsByProvinceAfter": {
+      "1": 0,
+      "2": 1
+    },
+    "fortBucketsByProvinceAfter": {
+      "1": 0,
+      "2": 19
+    },
+    "postPassSoldiers": 1,
+    "flagsByProvinceAfter": {
+      "1": "0x10",
+      "2": "0x10"
+    }
+  },
+  "assertionsForPort": [
+    "main:L5209 returns immediately only when royalist attitude C8A5 is 0; neutral and hostile royalists run production.",
+    "Per-province growth has a minimum of 1 when the high product byte is zero.",
+    "Province 1 spends C902 4 on exactly one village and clears its village bucket.",
+    "Province 2 keeps C902 1 and C966 19 because neither reaches the next village or fortification cost.",
+    "The post-pass sums remaining royalist buckets, applies floor(sum * C901 / 100), and distributes the resulting soldiers over owner-0 provinces."
+  ]
+}

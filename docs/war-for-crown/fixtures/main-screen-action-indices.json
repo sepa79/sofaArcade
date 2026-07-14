@@ -1,0 +1,239 @@
+{
+  "fixture": "main-screen-action-indices",
+  "entry": "main:L4D45/L4D4F shared screen action reader and main:L42D3 investment dispatch",
+  "modules": {
+    "kernal": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+      "loadAddress": "0x0800"
+    },
+    "main": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+      "loadAddress": "0x3000"
+    }
+  },
+  "patchedRoutines": {
+    "ui": "$114C, $1162, $1CA0, and $2AC5 are patched to RTS so the fixture isolates input/dispatch behavior",
+    "input": "$2028 is patched per case to return deterministic A/X pairs or one invalid $FF result followed by a valid result",
+    "investmentDispatchTargets": "$437B, $446B, $45FE, $42DF, $4371, and $4752 are patched to marker stubs for table-index proof",
+    "stockBranchTargets": "$3E6A and $3FA4 are patched to marker stubs only after restoring the real $4371 branch bytes"
+  },
+  "monitor": {
+    "commands": "docs/war-for-crown/fixtures/main-screen-action-indices.mon",
+    "viceCommand": "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/main-screen-action-indices.mon -limitcycles 1000000",
+    "result": "exit code 0"
+  },
+  "sharedInput": {
+    "mainL4D45": [
+      {
+        "name": "first-active-field",
+        "inputPatch": "$2028 = LDA #$00; LDX #$00; RTS",
+        "expected": {
+          "returnedA": "0x00",
+          "returnedX": "0x00",
+          "processorStatusAfterCmpZero": "0x37",
+          "zeroFlag": true,
+          "activeFieldPointer": ["0x48", "0x74"]
+        },
+        "rawMemory": {
+          "$1600..$1602": ["0x00", "0x00", "0x37"],
+          "$02C3..$02C4": ["0x48", "0x74"]
+        }
+      },
+      {
+        "name": "second-active-field",
+        "inputPatch": "$2028 = LDA #$01; LDX #$01; RTS",
+        "expected": {
+          "returnedA": "0x01",
+          "returnedX": "0x01",
+          "processorStatusAfterCmpZero": "0x35",
+          "zeroFlag": false,
+          "activeFieldPointer": ["0x48", "0x74"]
+        },
+        "rawMemory": {
+          "$1600..$1602": ["0x01", "0x01", "0x35"],
+          "$02C3..$02C4": ["0x48", "0x74"]
+        }
+      },
+      {
+        "name": "invalid-click-is-ignored-until-valid",
+        "inputPatch": "$2028 jumps to a stub returning A=$FF once, then A=$00/X=$00",
+        "expected": {
+          "inputCallCount": 2,
+          "returnedA": "0x00",
+          "returnedX": "0x00",
+          "processorStatusAfterCmpZero": "0x37",
+          "zeroFlag": true
+        },
+        "rawMemory": {
+          "$1600..$1602": ["0x00", "0x00", "0x37"],
+          "$02FB": "0x02"
+        }
+      }
+    ],
+    "cancelContinueDialogs": [
+      {
+        "entry": "main:L4D2B",
+        "name": "abort-field",
+        "inputPatch": "$2028 = LDA #$00; LDX #$00; RTS",
+        "expected": {
+          "returnedA": "0x00",
+          "returnedX": "0x00",
+          "processorStatusAfterCpxZero": "0x37",
+          "zeroFlag": true,
+          "meaning": "ABBRECHEN / abort"
+        },
+        "rawMemory": {
+          "$1603..$1605": ["0x00", "0x00", "0x37"]
+        }
+      },
+      {
+        "entry": "main:L4D2B",
+        "name": "continue-field",
+        "inputPatch": "$2028 = LDA #$01; LDX #$01; RTS",
+        "expected": {
+          "returnedA": "0x01",
+          "returnedX": "0x01",
+          "processorStatusAfterCpxZero": "0x35",
+          "zeroFlag": false,
+          "meaning": "WEITERMACHEN / continue"
+        },
+        "rawMemory": {
+          "$1603..$1605": ["0x01", "0x01", "0x35"]
+        }
+      },
+      {
+        "entry": "main:L4D38",
+        "name": "abort-field",
+        "inputPatch": "$2028 = LDA #$00; LDX #$00; RTS",
+        "expected": {
+          "returnedA": "0x00",
+          "returnedX": "0x00",
+          "processorStatusAfterCpxZero": "0x37",
+          "zeroFlag": true,
+          "meaning": "ABBRECHEN / abort"
+        },
+        "rawMemory": {
+          "$1607..$1609": ["0x00", "0x00", "0x37"]
+        }
+      },
+      {
+        "entry": "main:L4D38",
+        "name": "continue-field",
+        "inputPatch": "$2028 = LDA #$01; LDX #$01; RTS",
+        "expected": {
+          "returnedA": "0x01",
+          "returnedX": "0x01",
+          "processorStatusAfterCpxZero": "0x35",
+          "zeroFlag": false,
+          "meaning": "WEITERMACHEN / continue"
+        },
+        "rawMemory": {
+          "$1607..$1609": ["0x01", "0x01", "0x35"]
+        }
+      }
+    ]
+  },
+  "investmentMenuDispatch": {
+    "entry": "main:$42B8",
+    "table": "main:L42D3",
+    "dispatch": [
+      {
+        "choiceA": "0x00",
+        "choiceX": "0x00",
+        "tablePointer": "0x437B",
+        "targetMarker": "0x00",
+        "meaning": "recruit soldiers",
+        "rawMemory": {
+          "$1606": "0x00",
+          "$0040..$0041": ["0x7B", "0x43"]
+        }
+      },
+      {
+        "choiceA": "0x01",
+        "choiceX": "0x01",
+        "tablePointer": "0x446B",
+        "targetMarker": "0x01",
+        "meaning": "build villages",
+        "rawMemory": {
+          "$1606": "0x01",
+          "$0040..$0041": ["0x6B", "0x44"]
+        }
+      },
+      {
+        "choiceA": "0x02",
+        "choiceX": "0x02",
+        "tablePointer": "0x45FE",
+        "targetMarker": "0x02",
+        "meaning": "upgrade fortification",
+        "rawMemory": {
+          "$1606": "0x02",
+          "$0040..$0041": ["0xFE", "0x45"]
+        }
+      },
+      {
+        "choiceA": "0x03",
+        "choiceX": "0x03",
+        "tablePointer": "0x42DF",
+        "targetMarker": "0x03",
+        "meaning": "catapult purchase branch; disabled in the simple port ruleset",
+        "rawMemory": {
+          "$1606": "0x03",
+          "$0040..$0041": ["0xDF", "0x42"]
+        }
+      },
+      {
+        "choiceA": "0x04",
+        "choiceX": "0x04",
+        "tablePointer": "0x4371",
+        "targetMarker": "0x04",
+        "meaning": "full-rules stock transfer branch selector; disabled in the simple port ruleset",
+        "rawMemory": {
+          "$1606": "0x04",
+          "$0040..$0041": ["0x71", "0x43"]
+        }
+      },
+      {
+        "choiceA": "0x05",
+        "choiceX": "0x05",
+        "tablePointer": "0x4752",
+        "targetMarker": "0x05",
+        "meaning": "end investment and apply interest",
+        "rawMemory": {
+          "$1606": "0x05",
+          "$0040..$0041": ["0x52", "0x47"]
+        }
+      }
+    ],
+    "stockTransferSubdispatch": [
+      {
+        "choiceA": "0x04",
+        "choiceX": "0x00",
+        "tablePointer": "0x4371",
+        "subtargetMarker": "0x40",
+        "subtarget": "main:L3E6A",
+        "rawMemory": {
+          "$160A": "0x40",
+          "$0040..$0041": ["0x71", "0x43"]
+        }
+      },
+      {
+        "choiceA": "0x04",
+        "choiceX": "0x01",
+        "tablePointer": "0x4371",
+        "subtargetMarker": "0x41",
+        "subtarget": "main:L3FA4",
+        "rawMemory": {
+          "$160A": "0x41",
+          "$0040..$0041": ["0x71", "0x43"]
+        }
+      }
+    ]
+  },
+  "conclusions": [
+    "main:L4D45 writes active-field pointer bytes $02C3/$02C4 = $48/$74, calls kernal:$2028 until A != $FF, preserves returned A and X across the redraw call, and returns with flags from CMP #$00.",
+    "main:L4D2B and main:L4D38 return with flags from CPX #$00, so X == 0 is the abort/first-field path and X != 0 is the continue path.",
+    "The investment dispatch entry after menu rendering is main:$42B8, not $42B6; $42B6 is inside the previous JSR operand.",
+    "The investment menu jump table at main:L42D3 maps A indices 0..5 to $437B, $446B, $45FE, $42DF, $4371, and $4752.",
+    "The $4371 full-rules stock transfer branch is selected by A == 4 and then branches by X: X == 0 reaches L3E6A, while X != 0 reaches L3FA4."
+  ]
+}

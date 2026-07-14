@@ -1,0 +1,259 @@
+{
+  "fixture": "cbaron-ai-turn-l5ea4-transcript",
+  "type": "derived-vice-monitor-transcript",
+  "purpose": "C64 computer-baron phase chain where $5803 starts no battle, then the same state runs the $5806 L5EA4 multi-front movement branch and $5800 economy.",
+  "source": {
+    "disk": "ERBENT1A.D64",
+    "monitorCommands": "docs/war-for-crown/fixtures/cbaron-ai-turn-l5ea4-transcript.mon",
+    "viceCommand": "timeout 20 xvfb-run -a x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/cbaron-ai-turn-l5ea4-transcript.mon -limitcycles 5000000",
+    "modules": {
+      "kernal": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+        "loadAddress": "0x0800"
+      },
+      "main": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+        "loadAddress": "0x3000"
+      },
+      "cbaron": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-cbaron.raw",
+        "loadAddress": "0x5800"
+      },
+      "kampf": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-kampf.raw",
+        "loadAddress": "0x7e00"
+      },
+      "sys": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+        "loadAddress": "0x9400"
+      }
+    }
+  },
+  "patchedRoutines": {
+    "ui": "$1162/$1204/$1CA0/$1D7D/$1B3B/$1B69/$1FD5/$23FB/$2AC5/$2AEF return immediately",
+    "battleUi": "$853A/$8856/$8C09/$8C71/$8C8E/$8905 return immediately",
+    "sysUi": "$9A5D returns immediately",
+    "irqOrDisk": "$CDE9/$CE00 return immediately",
+    "kernal:L218B": "jumps to a tiny harness at $C100 that returns the domain RNG byte sequence 0x7b,0x9e,0x65,...",
+    "$CA48": "forced to 0 so sys:L949D stays on the simple combat-context path"
+  },
+  "initialState": {
+    "activePlayer": 1,
+    "playerCount": 2,
+    "provinceCount": 5,
+    "royalistAttitude": "neutral",
+    "royalistEvaluation": "strict",
+    "mapShape": "line: 1-2-3-4-5",
+    "ownersByProvince": {
+      "1": 2,
+      "2": 1,
+      "3": 1,
+      "4": 1,
+      "5": 2
+    },
+    "homeProvinceByPlayer": {
+      "1": 3,
+      "2": 5
+    },
+    "villagesByProvince": {
+      "1": 2,
+      "2": 2,
+      "3": 2,
+      "4": 2,
+      "5": 2
+    },
+    "soldiersByProvince": {
+      "1": 1,
+      "2": 2,
+      "3": 2,
+      "4": 2,
+      "5": 20
+    },
+    "moneyByPlayer": {
+      "1": 0,
+      "2": 0
+    },
+    "computerPlayers": {
+      "1": true,
+      "2": true
+    }
+  },
+  "phases": [
+    {
+      "entry": "cbaron:$5803",
+      "meaning": "computer baron attack phase rejects both frontier targets and starts no battle",
+      "observed": {
+        "selectedTarget": 0,
+        "battleStarted": false,
+        "ownersByProvince": {
+          "1": 2,
+          "2": 1,
+          "3": 1,
+          "4": 1,
+          "5": 2
+        },
+        "soldiersByProvince": {
+          "1": 1,
+          "2": 2,
+          "3": 2,
+          "4": 2,
+          "5": 20
+        },
+        "villagesByProvince": {
+          "1": 2,
+          "2": 2,
+          "3": 2,
+          "4": 2,
+          "5": 2
+        },
+        "moneyByPlayer": {
+          "1": 0,
+          "2": 0
+        },
+        "flagsByProvince": {
+          "1": "0x00",
+          "2": "0x90",
+          "3": "0x10",
+          "4": "0x10",
+          "5": "0x00"
+        },
+        "rememberedTarget": 0,
+        "rngBytesConsumed": 0,
+        "rawMemory": {
+          "$1602..$1608": ["0x00", "0xff", "0xff", "0x08", "0x20", "0x20", "0x20"],
+          "$c5da..$c5df": ["0x00", "0x02", "0x01", "0x01", "0x01", "0x02"],
+          "$c706..$c70c": ["0x00", "0x01", "0x02", "0x02", "0x02", "0x14", "0x00"],
+          "$c6a2..$c6a7": ["0x00", "0x02", "0x02", "0x02", "0x02", "0x02"],
+          "$c8bb..$c8c4": ["0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00"],
+          "$c8b5..$c8b7": ["0x00", "0x03", "0x02"],
+          "$c832..$c838": ["0x80", "0x00", "0x90", "0x10", "0x10", "0x00", "0x00"],
+          "$c8fb..$c8fd": ["0x00", "0x03", "0x05"],
+          "$c9d0..$c9d9": ["0x01", "0x00", "0x00", "0x01", "0x00", "0x00", "0x00", "0x01", "0x02", "0x00"],
+          "$c9de..$c9ed": ["0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00"],
+          "$c0ff": "0x00",
+          "$ca61..$ca62": ["0x00", "0x00"]
+        }
+      }
+    },
+    {
+      "entry": "cbaron:$5806",
+      "meaning": "computer baron L5EA4 multi-front underpowered movement branch",
+      "observed": {
+        "pulledMobileSoldiers": 3,
+        "defensiveRequirement": 21,
+        "ownersByProvince": {
+          "1": 2,
+          "2": 1,
+          "3": 1,
+          "4": 1,
+          "5": 2
+        },
+        "soldiersByProvince": {
+          "1": 1,
+          "2": 4,
+          "3": 1,
+          "4": 1,
+          "5": 20
+        },
+        "villagesByProvince": {
+          "1": 2,
+          "2": 2,
+          "3": 2,
+          "4": 2,
+          "5": 2
+        },
+        "moneyByPlayer": {
+          "1": 0,
+          "2": 0
+        },
+        "flagsByProvince": {
+          "1": "0x00",
+          "2": "0x00",
+          "3": "0x00",
+          "4": "0x04",
+          "5": "0x00"
+        },
+        "rememberedTarget": 1,
+        "rememberedTargetSoldiers": 1,
+        "rawMemory": {
+          "$1617..$161f": ["0x02", "0x00", "0x00", "0x01", "0x00", "0x00", "0x00", "0x00", "0x02"],
+          "$c5da..$c5df": ["0x00", "0x02", "0x01", "0x01", "0x01", "0x02"],
+          "$c706..$c70c": ["0x00", "0x01", "0x04", "0x01", "0x01", "0x14", "0x00"],
+          "$c6a2..$c6a7": ["0x00", "0x02", "0x02", "0x02", "0x02", "0x02"],
+          "$c8bb..$c8c4": ["0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00"],
+          "$c8b5..$c8b7": ["0x00", "0x03", "0x02"],
+          "$c832..$c838": ["0x80", "0x00", "0x00", "0x00", "0x04", "0x00", "0x00"],
+          "$c8fb..$c8fd": ["0x00", "0x03", "0x05"],
+          "$c9d0..$c9d9": ["0x03", "0x00", "0x00", "0x00", "0x00", "0x00", "0x01", "0x02", "0x02", "0x00"],
+          "$c9de..$c9ed": ["0x00", "0x01", "0x00", "0x00", "0x00", "0x01", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00"],
+          "$c0ff": "0x00",
+          "$ca61..$ca62": ["0x00", "0x00"]
+        }
+      }
+    },
+    {
+      "entry": "cbaron:$5800",
+      "meaning": "computer baron economy phase preserves movement remembered target when active money is zero",
+      "observed": {
+        "ownersByProvince": {
+          "1": 2,
+          "2": 1,
+          "3": 1,
+          "4": 1,
+          "5": 2
+        },
+        "soldiersByProvince": {
+          "1": 1,
+          "2": 4,
+          "3": 1,
+          "4": 1,
+          "5": 20
+        },
+        "villagesByProvince": {
+          "1": 2,
+          "2": 2,
+          "3": 2,
+          "4": 2,
+          "5": 2
+        },
+        "moneyByPlayer": {
+          "1": 0,
+          "2": 0
+        },
+        "flagsByProvince": {
+          "1": "0x00",
+          "2": "0x90",
+          "3": "0x10",
+          "4": "0x90",
+          "5": "0x00"
+        },
+        "rememberedTarget": 1,
+        "rememberedTargetSoldiers": 1,
+        "rawMemory": {
+          "$c5da..$c5df": ["0x00", "0x02", "0x01", "0x01", "0x01", "0x02"],
+          "$c706..$c70c": ["0x00", "0x01", "0x04", "0x01", "0x01", "0x14", "0x00"],
+          "$c6a2..$c6a7": ["0x00", "0x02", "0x02", "0x02", "0x02", "0x02"],
+          "$c8bb..$c8c4": ["0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00"],
+          "$c8b5..$c8b7": ["0x00", "0x03", "0x02"],
+          "$c832..$c838": ["0x80", "0x00", "0x90", "0x10", "0x90", "0x00", "0x00"],
+          "$c8fb..$c8fd": ["0x00", "0x03", "0x05"],
+          "$c9d0..$c9d9": ["0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x01", "0xdc", "0x01", "0x00"],
+          "$c9de..$c9ed": ["0x00", "0x01", "0x00", "0x00", "0x00", "0x01", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00"],
+          "$c0ff": "0x00",
+          "$ca61..$ca62": ["0x00", "0x00"]
+        }
+      }
+    }
+  ],
+  "assertionsForPort": [
+    "$5803 can reject both frontier targets in a multi-front component and start no battle.",
+    "$5806 then takes the L5EA4 multi-front underpowered branch, pulls three mobile soldiers, and leaves province 4 marked with $04 cleanup.",
+    "$5806 writes remembered target province 1 with remembered target strength 1 in $C9DE/$C9E2 + activePlayer.",
+    "$5800 with zero active money preserves the remembered target memory written by movement."
+  ],
+  "limits": [
+    "This fixture isolates direct module calls. The public TypeScript test advances turnStep between modules to mirror the surrounding engine.",
+    "The UI/redraw helpers are patched out; this fixture proves game-state memory transitions, not presentation timing.",
+    "The active player's money is zero so this transcript does not exercise economy recruitment or village purchases; those are covered by no-attack, capture, defender-retreat, and attacker-retreat phase-chain fixtures."
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "name": "war-for-crown",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./phaser": "./src/phaser.ts"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "lint": "eslint src tools vite.config.ts --max-warnings=0",
+    "test": "vitest run",
+    "test:parity": "pnpm test:parity:events && pnpm test:parity:map && pnpm test:parity:ai-reactions && pnpm test:parity:behaviors && pnpm test:parity:rounds",
+    "test:parity:ai-reactions": "tsx tools/c64-parity/verify-ai-reactions.ts",
+    "test:parity:behaviors": "tsx tools/c64-parity/verify-gameplay-behaviors.ts",
+    "test:parity:events": "tsx tools/c64-parity/verify-events.ts",
+    "test:parity:map": "tsx tools/c64-parity/verify-map-seeds.ts",
+    "test:parity:rounds": "tsx tools/c64-parity/verify-rounds.ts"
+  },
+  "dependencies": {
+    "@fortawesome/fontawesome-free": "7.1.0",
+    "phaser": "^3.90.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.3",
+    "@types/node": "^20.17.57",
+    "@typescript-eslint/eslint-plugin": "^8.46.0",
+    "@typescript-eslint/parser": "^8.46.0",
+    "eslint": "^9.37.0",
+    "tsx": "^4.21.0",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.56.1",
+    "vite": "^6.4.1",
+    "vitest": "^3.2.4"
+  }
+}

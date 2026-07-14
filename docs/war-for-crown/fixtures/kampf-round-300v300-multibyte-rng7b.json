@@ -1,0 +1,61 @@
+{
+  "id": "kampf-round-300v300-multibyte-rng7b",
+  "type": "derived-vice-monitor-fixture",
+  "source": {
+    "disk": "ERBENT1A.D64",
+    "modules": {
+      "kampf": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-kampf.raw",
+        "loadAddress": "0x7E00"
+      },
+      "sys": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+        "loadAddress": "0x9400"
+      }
+    },
+    "monitorCommands": "docs/war-for-crown/fixtures/kampf-round-300v300-multibyte-rng7b.mon",
+    "viceCommand": "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/kampf-round-300v300-multibyte-rng7b.mon -limitcycles 1000000"
+  },
+  "routine": {
+    "module": "kampf",
+    "entry": "0x8618",
+    "breakpoint": "0x86C4",
+    "description": "One combat round with multi-byte soldier counts, stopped before stat-counter side effects"
+  },
+  "initialState": {
+    "attackerSoldiers": 300,
+    "defenderSoldiers": 300,
+    "attackerCombatPercent": 25,
+    "defenderCombatPercent": 35,
+    "attackerHitDenominator": 10,
+    "defenderHitDenominator": 10,
+    "c64TerrainId": 4,
+    "fortification": 0,
+    "rngPatch": {
+      "address": "0x218B",
+      "bytes": ["0xA9", "0x7B", "0x60"],
+      "meaning": "return fixed RNG value 0x7B"
+    }
+  },
+  "observed": {
+    "attackerSoldiersAfterRound": 210,
+    "defenderSoldiersAfterRound": 195,
+    "defenderHitsAgainstAttacker": {
+      "low": 90,
+      "mid": 0,
+      "high": 0
+    },
+    "attackerHitsAgainstDefender": {
+      "low": 105,
+      "mid": 0,
+      "high": 0
+    },
+    "memoryC9D0ToC9D5": ["0xD2", "0x00", "0x00", "0xC3", "0x00", "0x00"],
+    "memory92C2To92C7": ["0x5A", "0x00", "0x00", "0x69", "0x00", "0x00"]
+  },
+  "assertionsForPort": [
+    "L8618 uses multi-byte soldier arithmetic, not byte-sized soldier counts.",
+    "With 300 attackers and 300 defenders, the applied casualties are 90 against the attacker and 105 against the defender.",
+    "The fixture stops at 0x86C4 so L92C2..L92C7 still hold unshifted round casualties."
+  ]
+}

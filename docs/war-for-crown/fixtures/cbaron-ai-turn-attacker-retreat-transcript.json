@@ -1,0 +1,220 @@
+{
+  "fixture": "cbaron-ai-turn-attacker-retreat-transcript",
+  "type": "derived-vice-monitor-transcript",
+  "purpose": "Natural C64 computer-baron phase chain where $5803 starts a battle, attacker AI retreats, then the same C64 state runs $5806 movement and $5800 economy.",
+  "source": {
+    "disk": "ERBENT1A.D64",
+    "monitorCommands": "docs/war-for-crown/fixtures/cbaron-ai-turn-attacker-retreat-transcript.mon",
+    "viceCommand": "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/cbaron-ai-turn-attacker-retreat-transcript.mon -limitcycles 5000000",
+    "modules": {
+      "kernal": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+        "loadAddress": "0x0800"
+      },
+      "main": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+        "loadAddress": "0x3000"
+      },
+      "cbaron": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-cbaron.raw",
+        "loadAddress": "0x5800"
+      },
+      "kampf": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-kampf.raw",
+        "loadAddress": "0x7e00"
+      },
+      "sys": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+        "loadAddress": "0x9400"
+      }
+    }
+  },
+  "patchedRoutines": {
+    "ui": "$1162/$1204/$1CA0/$1D7D/$1B3B/$1B69/$1FD5/$23FB/$2AC5/$2AEF return immediately",
+    "battleUi": "$853A/$8856/$8C09/$8C71/$8C8E/$8905 return immediately",
+    "sysUi": "$9A5D returns immediately",
+    "irqOrDisk": "$CDE9/$CE00 return immediately",
+    "kernal:L218B": "jumps to a tiny harness at $C100 that returns the domain RNG byte sequence 0x7b,0x9e,0x65,...",
+    "$CA48": "forced to 0 so sys:L949D stays on the simple combat-context path"
+  },
+  "initialState": {
+    "activePlayer": 1,
+    "playerCount": 2,
+    "provinceCount": 2,
+    "royalistAttitude": "neutral",
+    "royalistEvaluation": "strict",
+    "mapShape": "line: 1-2",
+    "ownersByProvince": {
+      "1": 1,
+      "2": 2
+    },
+    "homeProvinceByPlayer": {
+      "1": 1,
+      "2": 2
+    },
+    "villagesByProvince": {
+      "1": 2,
+      "2": 2
+    },
+    "soldiersByProvince": {
+      "1": 30,
+      "2": 25
+    },
+    "moneyByPlayer": {
+      "1": 20,
+      "2": 20
+    },
+    "computerPlayers": {
+      "1": true,
+      "2": true
+    }
+  },
+  "phases": [
+    {
+      "entry": "cbaron:$5803",
+      "meaning": "computer baron attack phase through battle and attacker retreat",
+      "observed": {
+        "selectedTarget": 2,
+        "sourceProvinces": [1],
+        "attackerSoldiersAtBattleStart": 29,
+        "defenderSoldiersAtBattleStart": 25,
+        "battleResolution": "attacker-retreat",
+        "rounds": 8,
+        "roundLosses": {
+          "attacker": 2,
+          "defender": 2
+        },
+        "survivors": {
+          "attacker": 5,
+          "defender": 6
+        },
+        "ownersByProvince": {
+          "1": 1,
+          "2": 2
+        },
+        "soldiersByProvince": {
+          "1": 6,
+          "2": 6
+        },
+        "flagsByProvince": {
+          "1": "0x91",
+          "2": "0x00"
+        },
+        "moneyByPlayer": {
+          "1": 20,
+          "2": 20
+        },
+        "rememberedTarget": 0,
+        "rngBytesConsumed": 17,
+        "rawMemory": {
+          "$1602..$1608": ["0x00", "0x00", "0x00", "0x08", "0x32", "0x35", "0x20"],
+          "$c5da..$c5dc": ["0x00", "0x01", "0x02"],
+          "$c706..$c708": ["0x00", "0x06", "0x06"],
+          "$c6a2..$c6a4": ["0x00", "0x02", "0x02"],
+          "$c8bb..$c8c4": ["0x00", "0x14", "0x14", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00"],
+          "$c8b5..$c8b7": ["0x00", "0x01", "0x01"],
+          "$c832..$c834": ["0x80", "0x91", "0x00"],
+          "$c8fb..$c8fd": ["0x00", "0x01", "0x02"],
+          "$c9d0..$c9d9": ["0x00", "0x00", "0x00", "0x06", "0x00", "0x00", "0x02", "0x02", "0x02", "0x02"],
+          "$c9de..$c9ed": ["0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00"],
+          "$9400..$9408": ["0x19", "0x19", "0x0a", "0x0a", "0x01", "0x00", "0x00", "0x00", "0x00"],
+          "$c0ff": "0x11",
+          "$ca61..$ca62": ["0x00", "0x00"]
+        }
+      }
+    },
+    {
+      "entry": "cbaron:$5806",
+      "meaning": "computer baron movement phase on the post-retreat state",
+      "observed": {
+        "pulledMobileSoldiers": 5,
+        "defensiveRequirement": 5,
+        "ownersByProvince": {
+          "1": 1,
+          "2": 2
+        },
+        "soldiersByProvince": {
+          "1": 6,
+          "2": 6
+        },
+        "villagesByProvince": {
+          "1": 2,
+          "2": 2
+        },
+        "moneyByPlayer": {
+          "1": 20,
+          "2": 20
+        },
+        "flagsByProvince": {
+          "1": "0x00",
+          "2": "0x00"
+        },
+        "rememberedTarget": 0,
+        "rawMemory": {
+          "$1617..$161f": ["0x00", "0x00", "0x00", "0x05", "0x00", "0x00", "0x00", "0x00", "0x01"],
+          "$c5da..$c5dc": ["0x00", "0x01", "0x02"],
+          "$c706..$c708": ["0x00", "0x06", "0x06"],
+          "$c6a2..$c6a4": ["0x00", "0x02", "0x02"],
+          "$c8bb..$c8c4": ["0x00", "0x14", "0x14", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00"],
+          "$c8b5..$c8b7": ["0x00", "0x01", "0x01"],
+          "$c832..$c834": ["0x80", "0x00", "0x00"],
+          "$c8fb..$c8fd": ["0x00", "0x01", "0x02"],
+          "$c9d0..$c9d9": ["0x05", "0x00", "0x00", "0x05", "0x00", "0x00", "0x02", "0x01", "0x01", "0x02"],
+          "$c9de..$c9ed": ["0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00"],
+          "$c0ff": "0x11",
+          "$ca61..$ca62": ["0x00", "0x00"]
+        }
+      }
+    },
+    {
+      "entry": "cbaron:$5800",
+      "meaning": "computer baron economy phase on the same post-movement state",
+      "observed": {
+        "ownersByProvince": {
+          "1": 1,
+          "2": 2
+        },
+        "soldiersByProvince": {
+          "1": 10,
+          "2": 6
+        },
+        "villagesByProvince": {
+          "1": 6,
+          "2": 2
+        },
+        "moneyByPlayer": {
+          "1": 0,
+          "2": 20
+        },
+        "flagsByProvince": {
+          "1": "0x90",
+          "2": "0x00"
+        },
+        "rememberedTarget": 0,
+        "rawMemory": {
+          "$c5da..$c5dc": ["0x00", "0x01", "0x02"],
+          "$c706..$c708": ["0x00", "0x0a", "0x06"],
+          "$c6a2..$c6a4": ["0x00", "0x06", "0x02"],
+          "$c8bb..$c8c4": ["0x00", "0x00", "0x14", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00"],
+          "$c8b5..$c8b7": ["0x00", "0x01", "0x01"],
+          "$c832..$c834": ["0x80", "0x90", "0x00"],
+          "$c8fb..$c8fd": ["0x00", "0x01", "0x02"],
+          "$c9d0..$c9d9": ["0x13", "0x00", "0x00", "0x04", "0x00", "0x00", "0x02", "0xdc", "0x00", "0x02"],
+          "$c9de..$c9ed": ["0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00"],
+          "$c0ff": "0x11",
+          "$ca61..$ca62": ["0x00", "0x00"]
+        }
+      }
+    }
+  ],
+  "assertionsForPort": [
+    "$5803 can start a battle, run the computer battle-command loop to attacker retreat, and return to the caller without ending the game.",
+    "After attacker retreat, the target remains defender-owned and attacker survivors are back on the source province.",
+    "$5806 on this post-retreat two-province state pulls and immediately satisfies a five-soldier local requirement, leaving map soldiers unchanged.",
+    "$5800 then spends the active player's 20 percent recruitment budget, adds four soldiers to the home province, spends the remaining 16 talers on four villages, and leaves player 1 with 0."
+  ],
+  "limits": [
+    "This fixture isolates direct module calls. The public TypeScript test advances turnStep between modules to mirror the surrounding engine.",
+    "The UI/redraw helpers are patched out; this fixture proves game-state memory transitions, not presentation timing."
+  ]
+}

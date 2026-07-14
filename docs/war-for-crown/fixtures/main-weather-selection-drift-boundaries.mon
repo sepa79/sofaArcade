@@ -1,0 +1,31 @@
+bload "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw" 0 3000
+bload "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw" 0 9400
+> 982f a9 0c 8d 49 98 60
+> c000 20 7c 3d 20 cd 3d ea
+break c006
+> c8a3 01
+> ca4b 00
+> ca4c 78
+> ca4d 00
+> 9849 00
+g c000
+m ca4b ca4d
+m 9849 9849
+> c000 20 cd 3d ea
+break c003
+> ca4b 03
+> ca4c 50
+> ca4d 00
+g c000
+m ca4b ca4d
+> ca4b 00
+> ca4c 29
+> ca4d 00
+g c000
+m ca4b ca4d
+> ca4b 06
+> ca4c 9f
+> ca4d 00
+g c000
+m ca4b ca4d
+quit

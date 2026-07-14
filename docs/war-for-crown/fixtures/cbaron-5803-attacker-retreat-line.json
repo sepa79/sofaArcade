@@ -1,0 +1,184 @@
+{
+  "fixture": "cbaron-5803-attacker-retreat-line",
+  "entry": "cbaron:$5803 -> main:L4A49 -> kampf attacker retreat -> main:L4C50",
+  "modules": {
+    "kernal": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+      "loadAddress": "0x0800"
+    },
+    "main": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+      "loadAddress": "0x3000"
+    },
+    "cbaron": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-cbaron.raw",
+      "loadAddress": "0x5800"
+    },
+    "kampf": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-kampf.raw",
+      "loadAddress": "0x7e00"
+    },
+    "sys": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+      "loadAddress": "0x9400"
+    }
+  },
+  "patchedRoutines": {
+    "ui": "$1162/$1204/$1CA0/$1D7D/$1B3B/$1B69/$1FD5/$23FB/$2AC5/$2AEF return immediately",
+    "battleUi": "$853A/$8856/$8C09/$8C71/$8C8E/$8905 return immediately",
+    "sysUi": "$9A5D returns immediately",
+    "irqOrDisk": "$CDE9/$CE00 return immediately",
+    "kernal:L218B": "jumps to a tiny harness at $C100 that returns the domain RNG byte sequence 0x7b,0x9e,0x65,...",
+    "$CA48": "forced to 0 so sys:L949D stays on the simple combat-context path",
+    "breakpoint": "$4C50, after attacker-retreat aftermath"
+  },
+  "monitor": {
+    "commands": "docs/war-for-crown/fixtures/cbaron-5803-attacker-retreat-line.mon",
+    "roundTraceCommands": "docs/war-for-crown/fixtures/cbaron-5803-attacker-retreat-round-trace.mon",
+    "viceCommand": "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/cbaron-5803-attacker-retreat-line.mon -limitcycles 5000000",
+    "result": "exit code 0"
+  },
+  "initialState": {
+    "activePlayer": 1,
+    "provinceCount": 2,
+    "mapShape": "line: 1-2",
+    "ownersByProvince": {
+      "1": 1,
+      "2": 2
+    },
+    "soldiersByProvince": {
+      "1": 30,
+      "2": 25
+    },
+    "homeProvinceByPlayer": {
+      "1": 1,
+      "2": 2
+    },
+    "computerPlayers": {
+      "1": true,
+      "2": true
+    }
+  },
+  "observed": {
+    "selectedTarget": 2,
+    "sourceProvinces": [1],
+    "attackerSoldiersAtBattleStart": 29,
+    "defenderSoldiersAtBattleStart": 25,
+    "battleCommand": 2,
+    "battleResolution": "attacker-retreat",
+    "rounds": 8,
+    "roundLosses": {
+      "attacker": 2,
+      "defender": 2
+    },
+    "survivors": {
+      "attacker": 5,
+      "defender": 6
+    },
+    "ownersByProvince": {
+      "1": 1,
+      "2": 2
+    },
+    "soldiersByProvince": {
+      "1": 6,
+      "2": 6
+    },
+    "sourceFlagsByProvince": {
+      "1": "0x11",
+      "2": "0x00"
+    },
+    "provinceCountsByOwner": {
+      "0": 0,
+      "1": 1,
+      "2": 1
+    },
+    "homeProvinceByPlayer": {
+      "1": 1,
+      "2": 2
+    },
+    "combatContext": {
+      "$9400": "0x19",
+      "$9401": "0x19",
+      "$9402": "0x0a",
+      "$9403": "0x0a",
+      "$9404": "0x01",
+      "$9405": "0x00",
+      "$9406": "0x00",
+      "$9407": "0x00",
+      "$9408": "0x00"
+    },
+    "rngBytesConsumed": 17,
+    "roundTraceAt86C4": [
+      {
+        "round": 1,
+        "soldiers": { "attacker": 26, "defender": 20 },
+        "losses": { "attacker": 3, "defender": 5 },
+        "rngBytesConsumed": 3
+      },
+      {
+        "round": 2,
+        "soldiers": { "attacker": 19, "defender": 17 },
+        "losses": { "attacker": 7, "defender": 3 },
+        "rngBytesConsumed": 5
+      },
+      {
+        "round": 3,
+        "soldiers": { "attacker": 17, "defender": 15 },
+        "losses": { "attacker": 2, "defender": 2 },
+        "rngBytesConsumed": 7
+      },
+      {
+        "round": 4,
+        "soldiers": { "attacker": 15, "defender": 13 },
+        "losses": { "attacker": 2, "defender": 2 },
+        "rngBytesConsumed": 9
+      },
+      {
+        "round": 5,
+        "soldiers": { "attacker": 11, "defender": 11 },
+        "losses": { "attacker": 4, "defender": 2 },
+        "rngBytesConsumed": 11
+      },
+      {
+        "round": 6,
+        "soldiers": { "attacker": 10, "defender": 9 },
+        "losses": { "attacker": 1, "defender": 2 },
+        "rngBytesConsumed": 13
+      },
+      {
+        "round": 7,
+        "soldiers": { "attacker": 7, "defender": 8 },
+        "losses": { "attacker": 3, "defender": 1 },
+        "rngBytesConsumed": 15
+      },
+      {
+        "round": 8,
+        "soldiers": { "attacker": 5, "defender": 6 },
+        "losses": { "attacker": 2, "defender": 2 },
+        "rngBytesConsumed": 17
+      }
+    ],
+    "rawMemory": {
+      "$1602..$1608": ["0x05", "0x00", "0x00", "0x08", "0x32", "0x35", "0x20"],
+      "$C5DA..$C5DC": ["0x00", "0x01", "0x02"],
+      "$C706..$C708": ["0x00", "0x06", "0x06"],
+      "$C76A..$C76C": ["0x00", "0x00", "0x00"],
+      "$C7CE..$C7D0": ["0x00", "0x00", "0x00"],
+      "$C8B5..$C8B7": ["0x00", "0x01", "0x01"],
+      "$C832..$C834": ["0x80", "0x11", "0x00"],
+      "$C8FB..$C8FD": ["0x00", "0x01", "0x02"],
+      "$C9D0..$C9D9": ["0x05", "0x00", "0x00", "0x06", "0x00", "0x00", "0x02", "0x02", "0x02", "0x02"],
+      "$92C2..$92C7": ["0x01", "0x00", "0x00", "0x01", "0x00", "0x00"],
+      "$9400..$9408": ["0x19", "0x19", "0x0a", "0x0a", "0x01", "0x00", "0x00", "0x00", "0x00"],
+      "$C0FF": "0x11",
+      "$CA61..$CA62": ["0x00", "0x00"]
+    }
+  },
+  "conclusion": [
+    "A computer baron can start an accepted attack, continue several fight rounds, and later retreat as attacker when the recovered battle ratio falls below $00E6.",
+    "The retreat command is stored as $C9D9 = 2 and still resolves one final simultaneous combat round.",
+    "Attacker survivors are distributed back over the original $10 source set through main:L4F49; the target remains owned by the defender.",
+    "This fixture keeps $9406 at zero because the target is the defender's home province, so defender retreat cannot preempt the attacker retreat.",
+    "The $86C4 round trace is the source for per-round casualties; the later $4C50 dump has already passed stat-counter accounting and leaves $92C2..$92C7 as 1/1."
+  ]
+}

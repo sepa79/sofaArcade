@@ -1,0 +1,8 @@
+bload "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw" 0 9400
+> c9d0 14 00 00 06 00 00
+> 9400 19 23
+> c000 20 26 94 ea
+break c003
+g c000
+m 5f 62
+quit

@@ -1,0 +1,68 @@
+bload "/tmp/wfc-c64-logic/disasm/erbent1a-cbaron.raw" 0 5800
+> c000 20 ce 63 ea
+break c003
+
+f c832 c835 00
+f c8bb c8c8 00
+f c8fb c900 00
+f c9d3 c9d5 00
+f 161a 161c 00
+> 1624 01
+> c8fc 01
+> c9d3 14 00 00
+> 63b9 a9 04 8d 1a 16 a9 00 8d 1b 16 a9 00 8d 1c 16 60
+r SP = ff
+g c000
+m c9d3 c9d5
+m 161a 161c
+
+f c832 c835 00
+f c8bb c8c8 00
+f c8fb c900 00
+f c9d3 c9d5 00
+f 161a 161c 00
+> 1624 01
+> c8fc 01
+> c833 10
+> c8bc 0a
+> c9d3 14 00 00
+> 63b9 a9 04 8d 1a 16 a9 00 8d 1b 16 a9 00 8d 1c 16 60
+r SP = ff
+g c000
+m c9d3 c9d5
+m 161a 161c
+
+f c832 c835 00
+f c8bb c8c8 00
+f c8fb c900 00
+f c9d3 c9d5 00
+f 161a 161c 00
+> 1624 01
+> c8fc 01
+> c833 10
+> c8bc 04
+> c9d3 14 00 00
+> 63b9 a9 0a 8d 1a 16 a9 00 8d 1b 16 a9 00 8d 1c 16 60
+r SP = ff
+g c000
+m c9d3 c9d5
+m 161a 161c
+
+f c832 c835 00
+f c8bb c8c8 00
+f c8fb c900 00
+f c9d3 c9d5 00
+f 161a 161c 00
+> 1624 01
+> c8fc 01
+> c833 10
+> c8bc 04
+> c8c1 01
+> c8c6 00
+> c9d3 00 02 00
+> 63b9 a9 00 8d 1a 16 a9 02 8d 1b 16 a9 00 8d 1c 16 60
+r SP = ff
+g c000
+m c9d3 c9d5
+m 161a 161c
+quit

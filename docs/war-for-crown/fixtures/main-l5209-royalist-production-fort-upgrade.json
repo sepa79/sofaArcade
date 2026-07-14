@@ -1,0 +1,89 @@
+{
+  "id": "main-l5209-royalist-production-fort-upgrade",
+  "type": "derived-vice-monitor-fixture",
+  "source": {
+    "disk": "ERBENT1A.D64",
+    "modules": {
+      "kernal": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+        "loadAddress": "0x0800"
+      },
+      "main": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+        "loadAddress": "0x3000"
+      },
+      "sys": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+        "loadAddress": "0x9400"
+      }
+    },
+    "monitorCommands": "docs/war-for-crown/fixtures/main-l5209-royalist-production-fort-upgrade.mon",
+    "viceCommand": "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/main-l5209-royalist-production-fort-upgrade.mon -limitcycles 1000000"
+  },
+  "routine": {
+    "module": "main",
+    "entry": "0x5209",
+    "description": "Royalist production fortification upgrade from saved C966 bucket"
+  },
+  "patches": [
+    {
+      "address": "0x1B69",
+      "bytes": ["0x60"],
+      "meaning": "stub province redraw side effect; production state logic is unchanged"
+    }
+  ],
+  "initialState": {
+    "activeOwner": 0,
+    "royalistAttitude": 1,
+    "provinceCount": 1,
+    "terrainAffectsIncome": true,
+    "villageCap": 12,
+    "villagePrice": 4,
+    "royalistGrowthByte": 0,
+    "royalistInvestmentByte": 0,
+    "royalistPostPassPercent": 0,
+    "maxNonHomeFortification": 1,
+    "villagesByProvince": {
+      "1": 2
+    },
+    "soldiersByProvince": {
+      "1": 1
+    },
+    "fortificationsByProvince": {
+      "1": 0
+    },
+    "villageBucketsByProvince": {
+      "1": 0
+    },
+    "fortBucketsByProvince": {
+      "1": 20
+    }
+  },
+  "observed": {
+    "breakpoint": "0xC003",
+    "villagesByProvinceAfter": {
+      "1": 2
+    },
+    "fortificationsByProvinceAfter": {
+      "1": 1
+    },
+    "soldiersByProvinceAfter": {
+      "1": 3
+    },
+    "villageBucketsByProvinceAfter": {
+      "1": 1
+    },
+    "fortBucketsByProvinceAfter": {
+      "1": 0
+    },
+    "postPassSoldiers": 0,
+    "flagsByProvinceAfter": {
+      "1": "0x10"
+    }
+  },
+  "assertionsForPort": [
+    "When C966 + province reaches the cost table entry L300F[currentFort], main:L5209 subtracts that cost and increments the province fortification.",
+    "The first fort upgrade from 0 to 1 costs 20.",
+    "The province still receives soldier production from income not reserved into the minimum growth bucket."
+  ]
+}

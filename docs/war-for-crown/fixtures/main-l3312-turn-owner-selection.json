@@ -1,0 +1,178 @@
+{
+  "fixture": "main-l3312-turn-owner-selection",
+  "entry": "main:L3312 active owner selection, wrap, skip, victory",
+  "modules": {
+    "main": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+      "loadAddress": "0x3000"
+    }
+  },
+  "patchedRoutines": {
+    "main:L337A": "INC $C020; RTS, records royalist world-pass call",
+    "main:L52FD": "INC $C021; RTS, records post-world display/status call",
+    "main:L35E5": "INC $C022; RTS, records month/weather call",
+    "main:L33A0": "RTS, preserves victory result without final-loader stack exit"
+  },
+  "monitor": {
+    "commands": "docs/war-for-crown/fixtures/main-l3312-turn-owner-selection.mon",
+    "viceCommand": "x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/main-l3312-turn-owner-selection.mon -limitcycles 1000000",
+    "result": "exit code 0"
+  },
+  "cases": [
+    {
+      "name": "normal-next-player",
+      "setup": {
+        "activeOwnerBefore": 0,
+        "configuredPlayers": 3,
+        "provinceCounts": {
+          "royalists0": 0,
+          "player1": 1,
+          "player2": 2,
+          "player3": 3
+        }
+      },
+      "observed": {
+        "$1624": "0x01",
+        "$3349": "0x00",
+        "$C020..$C022": ["0x00", "0x00", "0x00"],
+        "$CA75": "0x00",
+        "$C8CF..$C8D3": ["0x00", "0x00", "0x00", "0x00", "0x00"]
+      }
+    },
+    {
+      "name": "skip-zero-province-player",
+      "setup": {
+        "activeOwnerBefore": 1,
+        "configuredPlayers": 3,
+        "provinceCounts": {
+          "royalists0": 0,
+          "player1": 1,
+          "player2": 0,
+          "player3": 2
+        }
+      },
+      "observed": {
+        "$1624": "0x03",
+        "$3349": "0x00",
+        "$C020..$C022": ["0x00", "0x00", "0x00"],
+        "$CA75": "0x00",
+        "$C8CF..$C8D3": ["0x00", "0x00", "0x00", "0x00", "0x00"]
+      }
+    },
+    {
+      "name": "wrap-with-no-royalists",
+      "setup": {
+        "activeOwnerBefore": 3,
+        "configuredPlayers": 3,
+        "provinceCount": 5,
+        "provinceCounts": {
+          "royalists0": 0,
+          "player1": 1,
+          "player2": 2,
+          "player3": 3
+        }
+      },
+      "observed": {
+        "$1624": "0x01",
+        "$3349": "0x01",
+        "$C020..$C022": ["0x00", "0x01", "0x01"],
+        "$CA75": "0x00",
+        "$C8CF..$C8D3": ["0x00", "0x00", "0x00", "0x00", "0x00"]
+      }
+    },
+    {
+      "name": "wrap-with-royalist-world-pass",
+      "setup": {
+        "activeOwnerBefore": 3,
+        "configuredPlayers": 3,
+        "provinceCount": 5,
+        "provinceCounts": {
+          "royalists0": 2,
+          "player1": 1,
+          "player2": 2,
+          "player3": 3
+        }
+      },
+      "observed": {
+        "$1624": "0x01",
+        "$3349": "0x01",
+        "$C020..$C022": ["0x01", "0x01", "0x01"],
+        "$CA75": "0x00",
+        "$C8CF..$C8D3": ["0x00", "0x00", "0x00", "0x00", "0x00"]
+      }
+    },
+    {
+      "name": "human-player-owns-continent",
+      "setup": {
+        "activeOwnerBefore": 1,
+        "configuredPlayers": 3,
+        "provinceCount": 5,
+        "provinceCounts": {
+          "royalists0": 0,
+          "player1": 1,
+          "player2": 5,
+          "player3": 1
+        },
+        "computerFlagForPlayer2": 0
+      },
+      "observed": {
+        "$1624": "0x02",
+        "$3349": "0x00",
+        "$C020..$C022": ["0x00", "0x00", "0x00"],
+        "$CA75": "0x03",
+        "$C8CF..$C8D3": ["0x00", "0x00", "0x05", "0x00", "0x00"]
+      }
+    },
+    {
+      "name": "computer-player-owns-continent",
+      "setup": {
+        "activeOwnerBefore": 1,
+        "configuredPlayers": 3,
+        "provinceCount": 5,
+        "provinceCounts": {
+          "royalists0": 0,
+          "player1": 1,
+          "player2": 5,
+          "player3": 1
+        },
+        "computerFlagForPlayer2": 1
+      },
+      "observed": {
+        "$1624": "0x02",
+        "$3349": "0x00",
+        "$C020..$C022": ["0x00", "0x00", "0x00"],
+        "$CA75": "0x01",
+        "$C8CF..$C8D3": ["0x00", "0x00", "0x05", "0x00", "0x00"]
+      }
+    },
+    {
+      "name": "royalists-own-continent",
+      "setup": {
+        "activeOwnerBefore": 3,
+        "configuredPlayers": 3,
+        "provinceCount": 5,
+        "provinceCounts": {
+          "royalists0": 5,
+          "player1": 1,
+          "player2": 2,
+          "player3": 3
+        }
+      },
+      "observed": {
+        "$1624": "0x00",
+        "$3349": "0x00",
+        "$C020..$C022": ["0x00", "0x00", "0x00"],
+        "$CA75": "0x02",
+        "$C8CF..$C8D3": ["0x00", "0x00", "0x00", "0x00", "0x00"]
+      }
+    }
+  ],
+  "conclusions": [
+    "main:L3312 skips owners whose $C8B5,x province count is zero by recursively incrementing $1624.",
+    "When the configured player range wraps, $1624 is first set to owner 0; if royalists own provinces but not all provinces, main:L337A runs before L52FD, L35E5, and the next round starts at player 1.",
+    "The new-round notification flag L3349 is incremented only on normal wrap into player 1, not on victory exits.",
+    "A human player owning all provinces sets $C8CF,x to 5 and $CA75 to 3.",
+    "A computer player owning all provinces sets $C8CF,x to 5 and $CA75 to 1.",
+    "Royalists owning all provinces sets $CA75 to 2 before world/weather calls."
+  ]
+}

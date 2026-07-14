@@ -1,0 +1,89 @@
+{
+  "id": "main-l5209-royalist-production-fort-max-boundary",
+  "type": "derived-vice-monitor-fixture",
+  "source": {
+    "disk": "ERBENT1A.D64",
+    "modules": {
+      "kernal": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+        "loadAddress": "0x0800"
+      },
+      "main": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+        "loadAddress": "0x3000"
+      },
+      "sys": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+        "loadAddress": "0x9400"
+      }
+    },
+    "monitorCommands": "docs/war-for-crown/fixtures/main-l5209-royalist-production-fort-max-boundary.mon",
+    "viceCommand": "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/main-l5209-royalist-production-fort-max-boundary.mon -limitcycles 1000000"
+  },
+  "routine": {
+    "module": "main",
+    "entry": "0x5209",
+    "description": "Royalist production behavior when fortification is already at C8AF maximum"
+  },
+  "patches": [
+    {
+      "address": "0x1B69",
+      "bytes": ["0x60"],
+      "meaning": "stub province redraw side effect; production state logic is unchanged"
+    }
+  ],
+  "initialState": {
+    "activeOwner": 0,
+    "royalistAttitude": 1,
+    "provinceCount": 1,
+    "terrainAffectsIncome": true,
+    "villageCap": 12,
+    "villagePrice": 4,
+    "royalistGrowthByte": 0,
+    "royalistInvestmentByte": 0,
+    "royalistPostPassPercent": 0,
+    "maxNonHomeFortification": 1,
+    "villagesByProvince": {
+      "1": 2
+    },
+    "soldiersByProvince": {
+      "1": 1
+    },
+    "fortificationsByProvince": {
+      "1": 1
+    },
+    "villageBucketsByProvince": {
+      "1": 0
+    },
+    "fortBucketsByProvince": {
+      "1": 20
+    }
+  },
+  "observed": {
+    "breakpoint": "0xC003",
+    "villagesByProvinceAfter": {
+      "1": 2
+    },
+    "fortificationsByProvinceAfter": {
+      "1": 1
+    },
+    "soldiersByProvinceAfter": {
+      "1": 23
+    },
+    "villageBucketsByProvinceAfter": {
+      "1": 1
+    },
+    "fortBucketsByProvinceAfter": {
+      "1": 0
+    },
+    "postPassSoldiers": 0,
+    "flagsByProvinceAfter": {
+      "1": "0x10"
+    }
+  },
+  "assertionsForPort": [
+    "When the province fortification already equals C8AF, main:L5209 cannot spend C966 on another fort upgrade.",
+    "The blocked fortification bucket is added back into C8C0 production and then converted into soldiers.",
+    "The blocked C966 bucket is cleared rather than retained."
+  ]
+}

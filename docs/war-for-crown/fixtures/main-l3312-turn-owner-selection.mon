@@ -1,0 +1,128 @@
+bload "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw" 0 3000
+> 337a ee 20 c0 60
+> 52fd ee 21 c0 60
+> 35e5 ee 22 c0 60
+> 33a0 60
+> c000 20 12 33 ea
+break c003
+f c020 c022 00
+f c8b5 c8b8 00
+f c8cf c8d3 00
+f c9d9 c9dd 00
+> ca75 00
+> 3349 00
+> 1624 00
+> c896 03
+> c8a1 05
+> c8b5 00 01 02 03
+r SP = ff
+g c000
+m 1624 1624
+m 3349 3349
+m c020 c022
+m ca75 ca75
+m c8cf c8d3
+f c020 c022 00
+f c8b5 c8b8 00
+f c8cf c8d3 00
+f c9d9 c9dd 00
+> ca75 00
+> 3349 00
+> 1624 01
+> c896 03
+> c8a1 05
+> c8b5 00 01 00 02
+r SP = ff
+g c000
+m 1624 1624
+m 3349 3349
+m c020 c022
+m ca75 ca75
+m c8cf c8d3
+f c020 c022 00
+f c8b5 c8b8 00
+f c8cf c8d3 00
+f c9d9 c9dd 00
+> ca75 00
+> 3349 00
+> 1624 03
+> c896 03
+> c8a1 05
+> c8b5 00 01 02 03
+r SP = ff
+g c000
+m 1624 1624
+m 3349 3349
+m c020 c022
+m ca75 ca75
+m c8cf c8d3
+f c020 c022 00
+f c8b5 c8b8 00
+f c8cf c8d3 00
+f c9d9 c9dd 00
+> ca75 00
+> 3349 00
+> 1624 03
+> c896 03
+> c8a1 05
+> c8b5 02 01 02 03
+r SP = ff
+g c000
+m 1624 1624
+m 3349 3349
+m c020 c022
+m ca75 ca75
+m c8cf c8d3
+f c020 c022 00
+f c8b5 c8b8 00
+f c8cf c8d3 00
+f c9d9 c9dd 00
+> ca75 00
+> 3349 00
+> 1624 01
+> c896 03
+> c8a1 05
+> c8b5 00 01 05 01
+r SP = ff
+g c000
+m 1624 1624
+m 3349 3349
+m c020 c022
+m ca75 ca75
+m c8cf c8d3
+f c020 c022 00
+f c8b5 c8b8 00
+f c8cf c8d3 00
+f c9d9 c9dd 00
+> ca75 00
+> 3349 00
+> 1624 01
+> c896 03
+> c8a1 05
+> c8b5 00 01 05 01
+> c9db 01
+r SP = ff
+g c000
+m 1624 1624
+m 3349 3349
+m c020 c022
+m ca75 ca75
+m c8cf c8d3
+f c020 c022 00
+f c8b5 c8b8 00
+f c8cf c8d3 00
+f c9d9 c9dd 00
+> ca75 00
+> 3349 00
+> 1624 03
+> c896 03
+> c8a1 05
+> c8b5 05 01 02 03
+r SP = ff
+g c000
+m 1624 1624
+m 3349 3349
+m c020 c022
+m ca75 ca75
+m c8cf c8d3
+quit

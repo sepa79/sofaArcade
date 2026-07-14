@@ -1,0 +1,238 @@
+{
+  "fixture": "main-event-module-effects-simple",
+  "entry": "event modules at $5504",
+  "modules": {
+    "main": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+      "loadAddress": "0x3000"
+    },
+    "sys": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+      "loadAddress": "0x9400"
+    },
+    "events": {
+      "loadAddress": "0x5500",
+      "paths": [
+        "/tmp/wfc-c64-logic/disasm/erbent1a-zc.raw",
+        "/tmp/wfc-c64-logic/disasm/erbent1a-zf.raw",
+        "/tmp/wfc-c64-logic/disasm/erbent1a-zg.raw",
+        "/tmp/wfc-c64-logic/disasm/erbent1a-zm.raw",
+        "/tmp/wfc-c64-logic/disasm/erbent1a-zj.raw",
+        "/tmp/wfc-c64-logic/disasm/erbent1a-zn.raw"
+      ]
+    }
+  },
+  "patchedRoutines": {
+    "ui/display helpers": "$1CA0, $1B69, $1B0D, $1FD5, $2AC5, $305D, and $3060 are patched to RTS",
+    "sys:L9A2A": "patched to return 12 for the zc village-cap check",
+    "sys:L982F": "patched per case to return a fixed value and store it in $9849"
+  },
+  "monitor": {
+    "commands": "docs/war-for-crown/fixtures/main-event-module-effects-simple.mon",
+    "viceCommand": "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/main-event-module-effects-simple.mon -limitcycles 1000000"
+  },
+  "cases": [
+    {
+      "name": "zc-adds-village-to-selected-owned-province",
+      "module": "zc",
+      "input": {
+        "activePlayer": 1,
+        "provinceCount": 4,
+        "ownedProvinceCount": 2,
+        "ownersByProvince1To4": [
+          2,
+          1,
+          1,
+          2
+        ],
+        "villagesByProvince1To4": [
+          2,
+          4,
+          4,
+          5
+        ],
+        "moduleRollReturn": "0x03",
+        "villageCapReturn": 12
+      },
+      "expected": {
+        "selectedProvince": 3,
+        "villagesByProvince1To4": [
+          2,
+          4,
+          5,
+          5
+        ],
+        "storedRandom": "0x03"
+      }
+    },
+    {
+      "name": "zf-reduces-selected-province-soldiers-by-random-percent",
+      "module": "zf",
+      "input": {
+        "activePlayer": 1,
+        "provinceCount": 3,
+        "ownersByProvince1To3": [
+          2,
+          2,
+          1
+        ],
+        "soldiersByProvince1To3": [
+          0,
+          0,
+          100
+        ],
+        "lossRollReturn": "0x05",
+        "lossBasePercent": 5
+      },
+      "expected": {
+        "selectedProvince": 3,
+        "soldiersByProvince1To3": [
+          0,
+          0,
+          90
+        ],
+        "scratch5bTo62": [
+          "0x5a",
+          "0x00",
+          "0x00",
+          "0x00",
+          "0x0a",
+          "0x00",
+          "0x00",
+          "0x00"
+        ],
+        "displayAmount1602To1604": [
+          "0x0a",
+          "0x00",
+          "0x00"
+        ],
+        "storedRandom": "0x05"
+      }
+    },
+    {
+      "name": "zg-stores-deserter-handoff-after-soldier-loss",
+      "module": "zg",
+      "input": {
+        "activePlayer": 1,
+        "provinceCount": 3,
+        "ownersByProvince1To3": [
+          2,
+          2,
+          1
+        ],
+        "soldiersByProvince1To3": [
+          0,
+          0,
+          100
+        ],
+        "lossRollReturn": "0x05",
+        "lossBasePercent": 5
+      },
+      "expected": {
+        "selectedProvince": 3,
+        "soldiersByProvince1To3": [
+          0,
+          0,
+          90
+        ],
+        "deserterAmountCA49": 10,
+        "deserterOwnerCA4A": 1,
+        "displayAmount1602To1604": [
+          "0x0a",
+          "0x00",
+          "0x00"
+        ]
+      }
+    },
+    {
+      "name": "zm-transfers-remembered-deserters-to-current-home",
+      "module": "zm",
+      "input": {
+        "activePlayer": 2,
+        "homeProvinceByPlayer1To2": [
+          3,
+          2
+        ],
+        "soldiersByProvince1To3": [
+          0,
+          7,
+          90
+        ],
+        "deserterAmountCA49": 10,
+        "deserterOwnerCA4A": 1
+      },
+      "expected": {
+        "selectedProvince": 2,
+        "soldiersByProvince1To3": [
+          0,
+          17,
+          90
+        ],
+        "deserterAmountCA49": 0,
+        "deserterOwnerCA4A": 0,
+        "displayAmount1602To1604": [
+          "0x0a",
+          "0x00",
+          "0x00"
+        ]
+      }
+    },
+    {
+      "name": "zj-entry-is-disabled-rts-even-when-conditions-match",
+      "module": "zj",
+      "input": {
+        "activePlayer": 1,
+        "royalistAttitude": 2,
+        "royalistProvinceCount": 1,
+        "activeRank": 4,
+        "activeComputerFlag": 0,
+        "homeProvince": 1,
+        "candidateProvince": 2,
+        "candidateOwnerBefore": 1,
+        "candidateSoldiersBefore": 1,
+        "moduleRollReturn": "0x06"
+      },
+      "expected": {
+        "ownersByProvince1To3": [
+          1,
+          1,
+          2
+        ],
+        "soldiersByProvince1To3": [
+          32,
+          1,
+          8
+        ],
+        "ownerCountsRoyalistAndPlayer1": [
+          1,
+          2
+        ],
+        "selectedProvince": 0
+      }
+    },
+    {
+      "name": "zn-entry-is-disabled-rts-even-after-year-twelve",
+      "module": "zn",
+      "input": {
+        "activePlayer": 1,
+        "year": 12,
+        "moneyBefore": 20,
+        "moduleRollReturn": "0x06"
+      },
+      "expected": {
+        "moneyAfter": 20,
+        "displayAmount1602To1604": [
+          "0x00",
+          "0x00",
+          "0x00"
+        ]
+      }
+    }
+  ],
+  "conclusion": [
+    "zc chooses among owned provinces by scanning downward from $C8A1 and increments the selected province only when it is below the L9A2A cap.",
+    "zf and zg use L3003 with base 5 plus the L982F return as a percent loss; with return 5 and 100 soldiers, the province is reduced to 90 and the displayed loss is 10.",
+    "zg stores the lost soldiers in $CA49 and the source owner in $CA4A; zm later moves that amount to another active player's home and clears both fields.",
+    "zj and zn contain code after the first instruction, but their $5504 entrypoint is RTS in the ERBENT1A baseline, so they have no gameplay effect through the normal event dispatcher."
+  ]
+}

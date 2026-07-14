@@ -1,0 +1,28 @@
+attach "/mnt/c/Games/c64/WfC/ERBENT1A.D64" 8
+load "boot" 8
+r SP = ff
+> 9d53 60
+> 9d2d 60
+break 5000
+break 3063
+g 9b20
+m ca75 ca75
+m 4df0 4df8
+> 5000 60
+g 5000
+delete 2
+> c000 20 12 33 ea
+> 1624 00
+> c896 04
+> c8a1 01
+f c8b5 c8ba 00
+> c8b6 01
+f c9d9 c9de 00
+> ca75 00
+> 4df5 10
+g c000
+m ca75 ca75
+m 4df0 4df8
+m 5000 5005
+m 5960 5968
+quit

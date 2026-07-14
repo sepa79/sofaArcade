@@ -1,0 +1,137 @@
+{
+  "fixture": "cbaron-5803-defender-retreat-line",
+  "entry": "cbaron:$5803 -> main:L4A49 -> kampf defender retreat -> main:L4C50",
+  "modules": {
+    "kernal": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+      "loadAddress": "0x0800"
+    },
+    "main": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+      "loadAddress": "0x3000"
+    },
+    "cbaron": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-cbaron.raw",
+      "loadAddress": "0x5800"
+    },
+    "kampf": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-kampf.raw",
+      "loadAddress": "0x7e00"
+    },
+    "sys": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+      "loadAddress": "0x9400"
+    }
+  },
+  "patchedRoutines": {
+    "ui": "$1162/$1204/$1CA0/$1D7D/$1B3B/$1B69/$1FD5/$23FB/$2AC5/$2AEF return immediately",
+    "battleUi": "$853A/$8856/$8C09/$8C71/$8C8E/$8905 return immediately",
+    "sysUi": "$9A5D returns immediately",
+    "irqOrDisk": "$CDE9/$CE00 return immediately",
+    "kernal:L218B": "jumps to a tiny harness at $C100 that returns the domain RNG byte sequence 0x7b,0x9e,0x65,...",
+    "$CA48": "forced to 0 so sys:L949D stays on the simple combat-context path",
+    "breakpoint": "$4C50, after defender-retreat aftermath and target capture"
+  },
+  "monitor": {
+    "commands": "docs/war-for-crown/fixtures/cbaron-5803-defender-retreat-line.mon",
+    "viceCommand": "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/cbaron-5803-defender-retreat-line.mon -limitcycles 3000000",
+    "result": "exit code 0"
+  },
+  "initialState": {
+    "activePlayer": 1,
+    "provinceCount": 3,
+    "mapShape": "line: 1-2-3",
+    "ownersByProvince": {
+      "1": 1,
+      "2": 2,
+      "3": 2
+    },
+    "soldiersByProvince": {
+      "1": 100,
+      "2": 50,
+      "3": 10
+    },
+    "homeProvinceByPlayer": {
+      "1": 1,
+      "2": 3
+    },
+    "computerPlayers": {
+      "1": true,
+      "2": true
+    }
+  },
+  "observed": {
+    "selectedTarget": 2,
+    "sourceProvinces": [1],
+    "retreatTarget": 3,
+    "attackerSoldiersAtBattleStart": 99,
+    "defenderSoldiersAtBattleStart": 50,
+    "battleCommand": 1,
+    "battleResolution": "defender-retreat",
+    "roundLosses": {
+      "attacker": 6,
+      "defender": 19
+    },
+    "survivors": {
+      "attacker": 93,
+      "defender": 31
+    },
+    "ownersByProvince": {
+      "1": 1,
+      "2": 1,
+      "3": 2
+    },
+    "soldiersByProvince": {
+      "1": 1,
+      "2": 93,
+      "3": 41
+    },
+    "sourceFlagsByProvince": {
+      "1": "0x11",
+      "2": "0x11",
+      "3": "0x80"
+    },
+    "provinceCountsByOwner": {
+      "0": 0,
+      "1": 2,
+      "2": 1
+    },
+    "homeProvinceByPlayer": {
+      "1": 1,
+      "2": 3
+    },
+    "combatContext": {
+      "$9400": "0x19",
+      "$9401": "0x19",
+      "$9402": "0x0a",
+      "$9403": "0x0a",
+      "$9404": "0x01",
+      "$9405": "0x00",
+      "$9406": "0x03",
+      "$9407": "0x00",
+      "$9408": "0x00"
+    },
+    "rngBytesConsumed": 3,
+    "rawMemory": {
+      "$1602..$1608": ["0x00", "0x00", "0x00", "0x08", "0x35", "0x30", "0x20"],
+      "$C5DA..$C5DD": ["0x00", "0x01", "0x01", "0x02"],
+      "$C706..$C709": ["0x00", "0x01", "0x5d", "0x29"],
+      "$C76A..$C76D": ["0x00", "0x00", "0x00", "0x00"],
+      "$C7CE..$C7D1": ["0x00", "0x00", "0x00", "0x00"],
+      "$C8B5..$C8B7": ["0x00", "0x02", "0x01"],
+      "$C832..$C835": ["0x80", "0x11", "0x11", "0x80"],
+      "$C8FB..$C8FD": ["0x00", "0x01", "0x03"],
+      "$C9D0..$C9D9": ["0x5d", "0x00", "0x00", "0x1f", "0x00", "0x00", "0x02", "0x02", "0x02", "0x01"],
+      "$92C2..$92C7": ["0x03", "0x00", "0x00", "0x09", "0x00", "0x00"],
+      "$9400..$9408": ["0x19", "0x19", "0x0a", "0x0a", "0x01", "0x00", "0x03", "0x00", "0x00"],
+      "$C0FF": "0x03",
+      "$CA61..$CA62": ["0x00", "0x00"]
+    }
+  },
+  "conclusion": [
+    "A computer-controlled defender retreats from a non-home target when $9406 is nonzero and the recovered ratio is at least $01B3.",
+    "The retreat command is stored as $C9D9 = 1 and still resolves one final simultaneous combat round.",
+    "C64 consumes RNG for attacker hits before defender hits; this fixture catches reversed RNG-byte order.",
+    "After defender retreat, the attacker captures the target with surviving attackers, while surviving defenders are added to the legal retreat province."
+  ]
+}

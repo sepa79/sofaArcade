@@ -1,0 +1,75 @@
+{
+  "id": "cbaron-l63ce-home-pressure-adjustment",
+  "type": "derived-vice-monitor-fixture",
+  "source": {
+    "disk": "ERBENT1A.D64",
+    "modules": {
+      "cbaron": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-cbaron.raw",
+        "loadAddress": "0x5800"
+      }
+    },
+    "monitorCommands": "docs/war-for-crown/fixtures/cbaron-l63ce-home-pressure-adjustment.mon",
+    "viceCommand": "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/cbaron-l63ce-home-pressure-adjustment.mon -limitcycles 1000000"
+  },
+  "routine": {
+    "module": "cbaron",
+    "entry": "0x63CE",
+    "description": "Random L6808 home-pressure adjustment to C9D3..C9D5"
+  },
+  "harness": {
+    "entry": "0xC000",
+    "code": "20 ce 63 ea",
+    "patch": "cbaron:L63B9 is patched per case to store deterministic $161A..$161C requirement and RTS"
+  },
+  "observed": {
+    "cases": [
+      {
+        "id": "home-not-in-worklist",
+        "homeProvince": 1,
+        "homeFlag": "0x00",
+        "initialC9D3ToC9D5": ["0x14", "0x00", "0x00"],
+        "stubbedRequirement161ATo161C": ["0x04", "0x00", "0x00"],
+        "moneyC8BBPlusPlayer": ["0x00", "0x00", "0x00"],
+        "finalC9D3ToC9D5": ["0x14", "0x00", "0x00"],
+        "final161ATo161C": ["0x00", "0x00", "0x00"]
+      },
+      {
+        "id": "requirement-below-money",
+        "homeProvince": 1,
+        "homeFlag": "0x10",
+        "initialC9D3ToC9D5": ["0x14", "0x00", "0x00"],
+        "stubbedRequirement161ATo161C": ["0x04", "0x00", "0x00"],
+        "moneyC8BBPlusPlayer": ["0x0a", "0x00", "0x00"],
+        "finalC9D3ToC9D5": ["0x10", "0x00", "0x00"],
+        "final161ATo161C": ["0x04", "0x00", "0x00"]
+      },
+      {
+        "id": "requirement-capped-by-low-byte-money",
+        "homeProvince": 1,
+        "homeFlag": "0x10",
+        "initialC9D3ToC9D5": ["0x14", "0x00", "0x00"],
+        "stubbedRequirement161ATo161C": ["0x0a", "0x00", "0x00"],
+        "moneyC8BBPlusPlayer": ["0x04", "0x00", "0x00"],
+        "finalC9D3ToC9D5": ["0x10", "0x00", "0x00"],
+        "final161ATo161C": ["0x04", "0x00", "0x00"]
+      },
+      {
+        "id": "requirement-capped-by-middle-byte-quirk",
+        "homeProvince": 1,
+        "homeFlag": "0x10",
+        "initialC9D3ToC9D5": ["0x00", "0x02", "0x00"],
+        "stubbedRequirement161ATo161C": ["0x00", "0x02", "0x00"],
+        "moneyC8BBPlusPlayer": ["0x04", "0x01", "0x00"],
+        "finalC9D3ToC9D5": ["0xff", "0x00", "0x00"],
+        "final161ATo161C": ["0x01", "0x01", "0x00"]
+      }
+    ]
+  },
+  "assertionsForPort": [
+    "L63CE does nothing unless the active player's home province has C832 bit 0x10.",
+    "When active money is greater than or equal to the home requirement, L63CE subtracts the requirement from C9D3..C9D5.",
+    "When active money is lower than the requirement on the low-byte compare, L63CE caps the subtraction to the three money bytes.",
+    "When active money is lower on the middle-byte compare, C64 stores the compared middle byte into $161A before loading the middle and high money bytes; this produces the observed $0101 cap for money $0104 against requirement $0200."
+  ]
+}

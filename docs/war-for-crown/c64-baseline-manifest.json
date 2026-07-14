@@ -1,0 +1,208 @@
+{
+  "schemaVersion": 1,
+  "baselineId": "erbent1a",
+  "diskPath": "/mnt/c/Games/c64/WfC/ERBENT1A.D64",
+  "diskSha256": "98e8d70c546f12ea4d8fe8217a382422013ce5082f1ca6185c034dbe0410e249",
+  "extractedDirectory": "/tmp/wfc-c64-logic/erbent1a",
+  "rawDirectory": "/tmp/wfc-c64-logic/disasm",
+  "modules": [
+    {
+      "name": "main",
+      "loadAddress": 12288,
+      "size": 9446,
+      "sha256": "5ae92aa06644306b61c1821f43d03eff3f06200dafc391e321a72ab76e292d8a"
+    },
+    {
+      "name": "menue",
+      "loadAddress": 12288,
+      "size": 10259,
+      "sha256": "28583f0fcd89593a7f6943bb37431220d0b3feb0d8edc5b5b03d087768e8d3e0"
+    },
+    {
+      "name": "kampf",
+      "loadAddress": 32256,
+      "size": 5371,
+      "sha256": "351fedbf44f8c8e4c5d466af239a871cb01fdbb471b483bc8af3d9ff691a3653"
+    },
+    {
+      "name": "cbaron",
+      "loadAddress": 22528,
+      "size": 5992,
+      "sha256": "c44954456b3d32e17bc8683cb5d8fb28b4f53ac7a77594435e77d2aa4d7d45f4"
+    },
+    {
+      "name": "sys",
+      "loadAddress": 37888,
+      "size": 1667,
+      "sha256": "0b679663414e19b3a4f34ab024d559606f09918b3959e2d79ba729ba6befd605"
+    },
+    {
+      "name": "kernal",
+      "loadAddress": 2048,
+      "size": 9218,
+      "sha256": "85fadf4bdbfffe4cf954742f64c81e9d0981fcacda38893d467e4bcc2932cec0"
+    },
+    {
+      "name": "code",
+      "loadAddress": 20480,
+      "size": 2524,
+      "sha256": "2cb1776bf60ea71d6dde77b0c1286285f34a2bccf526981ed3dbe18adb0ea72b"
+    },
+    {
+      "name": "za",
+      "loadAddress": 21760,
+      "size": 100,
+      "sha256": "00f61da7996db5585d6dc7f3eff435c99e07c8ce2c1f009d9bcba8b3f9e19402"
+    },
+    {
+      "name": "zb",
+      "loadAddress": 21760,
+      "size": 143,
+      "sha256": "965b838b9f28567b6582d098fbf5f15a04c1a07461166370143ec8173f0adc89"
+    },
+    {
+      "name": "zc",
+      "loadAddress": 21760,
+      "size": 133,
+      "sha256": "0fa1fee9ac3320136abcb965d461f4605165e27c469685a0fe928c321debed5e"
+    },
+    {
+      "name": "zd",
+      "loadAddress": 21760,
+      "size": 200,
+      "sha256": "e8d2a4b54f6508274963aa3fddbe76aebf4c2dc7e39648cfae13ade7c66294f6"
+    },
+    {
+      "name": "ze",
+      "loadAddress": 21760,
+      "size": 89,
+      "sha256": "2106e1b82bbf46beee04fdbdd10a8de5ba4c5b25cff32467d42a0e5d2bf634d5"
+    },
+    {
+      "name": "zf",
+      "loadAddress": 21760,
+      "size": 178,
+      "sha256": "f8de62c53b27df10fdf76ece019c8679145564b8732ca140ab89e335d3ccd909"
+    },
+    {
+      "name": "zg",
+      "loadAddress": 21760,
+      "size": 197,
+      "sha256": "8d918940a72daf0d36b1daa6d2cc6d26f83d6e1c891885ae9fed90fbea683f82"
+    },
+    {
+      "name": "zh",
+      "loadAddress": 21760,
+      "size": 178,
+      "sha256": "41444048e336a1713c4690735e6d49f5a339635b13ca748699e7c84a2734ccf8"
+    },
+    {
+      "name": "zi",
+      "loadAddress": 21760,
+      "size": 120,
+      "sha256": "9e53e39ab616de26599ec00412bff96cf6b895bed93373c026045bcdc6ee2228"
+    },
+    {
+      "name": "zj",
+      "loadAddress": 21760,
+      "size": 356,
+      "sha256": "ae0954447fad60d635061b0f46348ece3aea294cbb5978344d4558088920c523"
+    },
+    {
+      "name": "zk",
+      "loadAddress": 21760,
+      "size": 186,
+      "sha256": "7b9de2988f233ceb1d303793fe02fbe008c7d43b9c03920986f50d5a5923f471"
+    },
+    {
+      "name": "zl",
+      "loadAddress": 21760,
+      "size": 571,
+      "sha256": "7c9e231ca02c80adf6348757104b22d3ca001788ceb7942c658b0bd2d8872a5f"
+    },
+    {
+      "name": "zm",
+      "loadAddress": 21760,
+      "size": 312,
+      "sha256": "4a556affcebcac0a68f38e1e00e74ea0781b57617918604d2df0556a078f2972"
+    },
+    {
+      "name": "zn",
+      "loadAddress": 21760,
+      "size": 106,
+      "sha256": "94e5eb4a539e09472ce7e1ea4b421c016b76bc8682bbbf361fe013f4864417f8"
+    },
+    {
+      "name": "zo",
+      "loadAddress": 21760,
+      "size": 92,
+      "sha256": "85d805d3bd76a28872cc7ada5336d328895bf1b7a1f691839fe1550dbdaab033"
+    },
+    {
+      "name": "zp",
+      "loadAddress": 21760,
+      "size": 126,
+      "sha256": "2ae8665ca1965b3a8c1d3460a768cb432b60835dc2e6d0a5c9f391777f32f36c"
+    },
+    {
+      "name": "zq",
+      "loadAddress": 21760,
+      "size": 134,
+      "sha256": "0b2f19e952e2d8d43dacbc331a32e347b294f1c513e95a470a84bf03408867fb"
+    },
+    {
+      "name": "zr",
+      "loadAddress": 21760,
+      "size": 101,
+      "sha256": "ee3a148e4a9002db712e8b49e9e755588e50269743ab0242f0e5055f75b6c8c9"
+    },
+    {
+      "name": "zs",
+      "loadAddress": 21760,
+      "size": 112,
+      "sha256": "fe19f4e2d59e880d25ad9a2d8cbc33a947bd7fce6b3d0cca49cece590401311b"
+    },
+    {
+      "name": "zt",
+      "loadAddress": 21760,
+      "size": 109,
+      "sha256": "5fa680edfe9107ccb605391b0dc81f9f75615f50b5a4bcf5953d688b4544adf6"
+    },
+    {
+      "name": "zu",
+      "loadAddress": 21760,
+      "size": 94,
+      "sha256": "741dab9b35c2648c374224eb290eab8e283385c8e360885bae018dbf8e6102da"
+    },
+    {
+      "name": "zv",
+      "loadAddress": 21760,
+      "size": 129,
+      "sha256": "d223d9c0418cc8f4fed38e75105ab8d44a4c760b9fe638b1be39b1bae83d905c"
+    },
+    {
+      "name": "zw",
+      "loadAddress": 21760,
+      "size": 137,
+      "sha256": "7aeb8fdc7a19582f6b4fde8cf723a15659ceefd5c32bbb8592a0d316bcc288cd"
+    },
+    {
+      "name": "zx",
+      "loadAddress": 21760,
+      "size": 134,
+      "sha256": "df2d12ad56161d9cfa7ad886cb0ad7b207ad2c6fff53e8c9bfaab3ff4fdd7f25"
+    },
+    {
+      "name": "zy",
+      "loadAddress": 21760,
+      "size": 200,
+      "sha256": "1a189aacfbd0ec704aebd4ca22535224b1be6abbc9f960fc92a2e71117e6dd0c"
+    },
+    {
+      "name": "zz",
+      "loadAddress": 21760,
+      "size": 92,
+      "sha256": "85d805d3bd76a28872cc7ada5336d328895bf1b7a1f691839fe1550dbdaab033"
+    }
+  ]
+}

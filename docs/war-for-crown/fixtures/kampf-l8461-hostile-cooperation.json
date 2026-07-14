@@ -1,0 +1,126 @@
+{
+  "id": "kampf-l8461-hostile-cooperation",
+  "type": "derived-vice-monitor-fixture-suite",
+  "source": {
+    "disk": "ERBENT1A.D64",
+    "modules": {
+      "kernal": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+        "loadAddress": "0x0800"
+      },
+      "kampf": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-kampf.raw",
+        "loadAddress": "0x7E00"
+      }
+    },
+    "monitorCommands": [
+      "docs/war-for-crown/fixtures/kampf-l8461-hostile-cooperation-off.mon",
+      "docs/war-for-crown/fixtures/kampf-l8461-hostile-cooperation-on.mon"
+    ],
+    "viceCommands": [
+      "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/kampf-l8461-hostile-cooperation-off.mon -limitcycles 1000000",
+      "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/kampf-l8461-hostile-cooperation-on.mon -limitcycles 1000000"
+    ]
+  },
+  "routine": {
+    "module": "kampf",
+    "entry": "0x8461",
+    "description": "Hostile royalist attack source collection before battle entry"
+  },
+  "patches": [
+    {
+      "address": "0x842E",
+      "bytes": ["0x38", "0x60"],
+      "meaning": "force threshold acceptance with SEC/RTS so the fixture isolates source collection"
+    }
+  ],
+  "sharedInitialState": {
+    "activeOwner": 0,
+    "provinceCount": 3,
+    "royalistAttitude": 2,
+    "royalistSuccessEvaluation": 1,
+    "mapCells": {
+      "0xC415": 1,
+      "0xC416": 2,
+      "0xC417": 3
+    },
+    "ownersByProvince": {
+      "1": 0,
+      "2": 1,
+      "3": 0
+    },
+    "soldiersByProvince": {
+      "1": 5,
+      "2": 1,
+      "3": 6
+    }
+  },
+  "cases": [
+    {
+      "id": "cooperation-off",
+      "royalistCooperation": 0,
+      "observed": {
+        "breakpoint": "0x7E00",
+        "battleTargetProvince": 2,
+        "attackerSoldiers": {
+          "low": 5,
+          "mid": 0,
+          "high": 0
+        },
+        "defenderSoldiers": {
+          "low": 1,
+          "mid": 0,
+          "high": 0
+        },
+        "flagsByProvinceAfter": {
+          "0": "0x80",
+          "1": "0x80",
+          "2": "0x00",
+          "3": "0x90"
+        },
+        "lastSourceCursor": 3
+      },
+      "assertionsForPort": [
+        "With C8A6 = 0, L8461 stops source collection after the first adjacent owner-0 source found in high-to-low province order.",
+        "Province 3 contributes 6 soldiers minus one garrison, so C9D0..C9D2 becomes 5.",
+        "Province 3 gets the selected-source bit 0x10, while province 1 remains only adjacent-marked with 0x80."
+      ]
+    },
+    {
+      "id": "cooperation-on",
+      "royalistCooperation": 1,
+      "observed": {
+        "breakpoint": "0x7E00",
+        "battleTargetProvince": 2,
+        "attackerSoldiers": {
+          "low": 9,
+          "mid": 0,
+          "high": 0
+        },
+        "defenderSoldiers": {
+          "low": 1,
+          "mid": 0,
+          "high": 0
+        },
+        "flagsByProvinceAfter": {
+          "0": "0x80",
+          "1": "0x90",
+          "2": "0x00",
+          "3": "0x90"
+        },
+        "lastSourceCursor": 0
+      },
+      "assertionsForPort": [
+        "With C8A6 != 0, L8461 continues source collection after the first adjacent owner-0 source.",
+        "Provinces 3 and 1 both contribute mobile soldiers, leaving one garrison each: (6 - 1) + (5 - 1) = 9.",
+        "Both royalist sources get the selected-source bit 0x10 before battle entry."
+      ]
+    }
+  ],
+  "sharedAssertionsForPort": [
+    "L8461 scans player-owned target provinces from high id to low id.",
+    "For each target, L219C marks adjacent province ids with 0x80 and L21F0 keeps that high-bit mark only on owner-0 provinces.",
+    "The target defender soldiers are copied to C9D3..C9D5 before source collection.",
+    "Accepted hostile royalist attacks enter the normal battle module through 0x7E00."
+  ]
+}

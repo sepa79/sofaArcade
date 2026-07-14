@@ -1,0 +1,77 @@
+{
+  "id": "kampf-round-20v6-terrain7-fort6-rng7b",
+  "type": "derived-vice-monitor-fixture",
+  "source": {
+    "disk": "ERBENT1A.D64",
+    "modules": {
+      "kampf": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-kampf.raw",
+        "loadAddress": "0x7E00"
+      },
+      "sys": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+        "loadAddress": "0x9400"
+      }
+    },
+    "monitorCommands": "docs/war-for-crown/fixtures/kampf-round-20v6-terrain7-fort6-rng7b.mon",
+    "viceCommand": "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/kampf-round-20v6-terrain7-fort6-rng7b.mon -limitcycles 1000000"
+  },
+  "routine": {
+    "module": "kampf",
+    "setupEntry": "0x949D",
+    "roundEntry": "0x8618",
+    "breakpoint": "0x86C4",
+    "description": "High-fortification combat round with real sys:L949D combat setup"
+  },
+  "initialState": {
+    "attackerSoldiers": 20,
+    "defenderSoldiers": 6,
+    "targetProvince": 1,
+    "targetOwner": 2,
+    "c64TerrainId": 7,
+    "fortification": 6,
+    "terrainInfluence": 1,
+    "advancedCombatModifiers": 0,
+    "rngPatch": {
+      "address": "0x218B",
+      "bytes": ["0xA9", "0x7B", "0x60"],
+      "meaning": "return fixed RNG value 0x7B"
+    }
+  },
+  "observed": {
+    "combatContext9400To9408": [
+      "0x08",
+      "0x7D",
+      "0x2D",
+      "0x0F",
+      "0x07",
+      "0x06",
+      "0x00",
+      "0x00",
+      "0x00"
+    ],
+    "attackerCombatPercent": 8,
+    "defenderCombatPercent": 125,
+    "attackerHitDenominator": 45,
+    "defenderHitDenominator": 15,
+    "attackerSoldiersAfterRound": 13,
+    "defenderSoldiersAfterRound": 5,
+    "defenderHitsAgainstAttacker": {
+      "low": 7,
+      "mid": 0,
+      "high": 0
+    },
+    "attackerHitsAgainstDefender": {
+      "low": 1,
+      "mid": 0,
+      "high": 0
+    },
+    "memoryC9D0ToC9D5": ["0x0D", "0x00", "0x00", "0x05", "0x00", "0x00"],
+    "memory92C2To92C7": ["0x07", "0x00", "0x00", "0x01", "0x00", "0x00"]
+  },
+  "assertionsForPort": [
+    "sys:L949D maps C64 terrain id 7 and fortification 6 to attacker combat 8, defender combat 125, attacker hit denominator 45, and defender hit denominator 15.",
+    "With those combat fields and RNG 0x7B, L8618 applies 7 defender hits and 1 attacker hit before stat-counter side effects.",
+    "The fixture stops at 0x86C4 so L92C2..L92C7 still hold unshifted round casualties."
+  ]
+}

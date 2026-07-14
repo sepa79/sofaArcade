@@ -1,0 +1,176 @@
+{
+  "fixture": "main-owner0-world-pass-production-distribution",
+  "type": "derived-vice-monitor-transcript",
+  "purpose": "Owner-0 world-pass chain proving that royalist production at main:$5209 and distribution at main:$50D3 operate correctly on the same C64 state.",
+  "source": {
+    "disk": "ERBENT1A.D64",
+    "monitorCommands": "docs/war-for-crown/fixtures/main-owner0-world-pass-production-distribution.mon",
+    "viceCommand": "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/main-owner0-world-pass-production-distribution.mon -limitcycles 2000000",
+    "modules": {
+      "kernal": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+        "loadAddress": "0x0800"
+      },
+      "main": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+        "loadAddress": "0x3000"
+      },
+      "sys": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+        "loadAddress": "0x9400"
+      }
+    }
+  },
+  "patchedRoutines": {
+    "main:L1B69": "returns immediately so the transcript isolates map/state logic from province redraw side effects"
+  },
+  "initialState": {
+    "activeOwner": 0,
+    "playerCount": 1,
+    "provinceCount": 3,
+    "royalistAttitude": "neutral",
+    "royalistDistribution": "even",
+    "terrainAffectsIncome": true,
+    "villageCap": 12,
+    "villagePrice": 4,
+    "royalistGrowthByte": 0,
+    "royalistInvestmentByte": 0,
+    "royalistPostPassPercent": 8,
+    "maxNonHomeFortification": 1,
+    "mapShape": "line: 1-2-3",
+    "ownersByProvince": {
+      "1": 0,
+      "2": 0,
+      "3": 1
+    },
+    "terrainByProvince": {
+      "1": 1,
+      "2": 1,
+      "3": 1
+    },
+    "villagesByProvince": {
+      "1": 2,
+      "2": 2,
+      "3": 2
+    },
+    "fortificationsByProvince": {
+      "1": 0,
+      "2": 0,
+      "3": 0
+    },
+    "soldiersByProvince": {
+      "1": 1,
+      "2": 10,
+      "3": 20
+    },
+    "villageBucketsByProvince": {
+      "1": 3,
+      "2": 0,
+      "3": 0
+    },
+    "fortBucketsByProvince": {
+      "1": 0,
+      "2": 19,
+      "3": 0
+    }
+  },
+  "phases": [
+    {
+      "entry": "main:$5209",
+      "meaning": "royalist production and post-pass bucket soldier distribution",
+      "observed": {
+        "villagesByProvince": {
+          "1": 3,
+          "2": 2,
+          "3": 2
+        },
+        "fortificationsByProvince": {
+          "1": 0,
+          "2": 0,
+          "3": 0
+        },
+        "soldiersByProvince": {
+          "1": 3,
+          "2": 13,
+          "3": 20
+        },
+        "villageBucketsByProvince": {
+          "1": 0,
+          "2": 1,
+          "3": 0
+        },
+        "fortBucketsByProvince": {
+          "1": 0,
+          "2": 19,
+          "3": 0
+        },
+        "flagsByProvince": {
+          "1": "0x10",
+          "2": "0x10",
+          "3": "0x00"
+        },
+        "rawMemory": {
+          "$c6a3..$c6a5": ["0x03", "0x02", "0x02"],
+          "$c63f..$c641": ["0x00", "0x00", "0x00"],
+          "$c707..$c709": ["0x03", "0x0d", "0x14"],
+          "$c903..$c905": ["0x00", "0x01", "0x00"],
+          "$c967..$c969": ["0x00", "0x13", "0x00"],
+          "$c833..$c835": ["0x10", "0x10", "0x00"],
+          "$c9d0..$c9d5": ["0x01", "0x00", "0x00", "0x00", "0x00", "0x00"]
+        }
+      }
+    },
+    {
+      "entry": "main:$50D3",
+      "meaning": "royalist connected-component equal distribution after production",
+      "observed": {
+        "mobileSoldiersPulled": 14,
+        "villagesByProvince": {
+          "1": 3,
+          "2": 2,
+          "3": 2
+        },
+        "fortificationsByProvince": {
+          "1": 0,
+          "2": 0,
+          "3": 0
+        },
+        "soldiersByProvince": {
+          "1": 8,
+          "2": 8,
+          "3": 20
+        },
+        "villageBucketsByProvince": {
+          "1": 0,
+          "2": 1,
+          "3": 0
+        },
+        "fortBucketsByProvince": {
+          "1": 0,
+          "2": 19,
+          "3": 0
+        },
+        "flagsByProvince": {
+          "1": "0x01",
+          "2": "0x01",
+          "3": "0x00"
+        },
+        "rawMemory": {
+          "$c6a3..$c6a5": ["0x03", "0x02", "0x02"],
+          "$c63f..$c641": ["0x00", "0x00", "0x00"],
+          "$c707..$c709": ["0x08", "0x08", "0x14"],
+          "$c903..$c905": ["0x00", "0x01", "0x00"],
+          "$c967..$c969": ["0x00", "0x13", "0x00"],
+          "$c833..$c835": ["0x01", "0x01", "0x00"],
+          "$c9d0..$c9d5": ["0x0e", "0x00", "0x00", "0x0e", "0x00", "0x00"]
+        }
+      }
+    }
+  ],
+  "assertionsForPort": [
+    "Neutral owner-0 world pass runs production before distribution.",
+    "Production output is carried directly into distribution on the same state.",
+    "main:$50D3 equal distribution pulls fourteen mobile soldiers from the two-province owner-0 component after production and ends with eight soldiers on each royalist province.",
+    "Player-owned province 3 is not modified by owner-0 production or equal distribution."
+  ]
+}

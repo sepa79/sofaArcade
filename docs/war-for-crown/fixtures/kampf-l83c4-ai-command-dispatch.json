@@ -1,0 +1,110 @@
+{
+  "id": "kampf-l83c4-ai-command-dispatch",
+  "type": "derived-vice-monitor-fixture",
+  "source": {
+    "disk": "ERBENT1A.D64",
+    "modules": {
+      "kampf": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-kampf.raw",
+        "loadAddress": "0x7E00"
+      },
+      "sys": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+        "loadAddress": "0x9400"
+      }
+    },
+    "monitorCommands": "docs/war-for-crown/fixtures/kampf-l83c4-ai-command-dispatch.mon",
+    "viceCommand": "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/kampf-l83c4-ai-command-dispatch.mon -limitcycles 1000000"
+  },
+  "routine": {
+    "module": "kampf",
+    "entry": "0x83C4",
+    "description": "Battle command dispatch for AI-controlled sides and retreat legality"
+  },
+  "harness": {
+    "entry": "0xC000",
+    "code": "20 c4 83 ad d9 c9 8d 20 c0 ea",
+    "meaning": "call kampf:L83C4, copy command byte C9D9 to C020, stop at C009",
+    "stubs": {
+      "0x9486": "patched per case to SEC/RTS or CLC/RTS for defender-retreat helper",
+      "0x946F": "patched per case to SEC/RTS or CLC/RTS for attacker-retreat helper"
+    }
+  },
+  "observed": {
+    "cases": [
+      {
+        "id": "defender-ai-retreat-priority",
+        "activeAttackerOwner1624": 1,
+        "defenderOwnerC9D8": 2,
+        "attackerAiFlagC9DA": 0,
+        "defenderAiFlagC9DB": 1,
+        "defenderRetreatTarget9406": 3,
+        "defenderHelperCarry": 1,
+        "attackerHelperCarry": 1,
+        "commandC9D9": 1
+      },
+      {
+        "id": "attacker-ai-retreat-after-defender-declines",
+        "activeAttackerOwner1624": 1,
+        "defenderOwnerC9D8": 2,
+        "attackerAiFlagC9DA": 1,
+        "defenderAiFlagC9DB": 1,
+        "defenderRetreatTarget9406": 3,
+        "defenderHelperCarry": 0,
+        "attackerHelperCarry": 0,
+        "commandC9D9": 2
+      },
+      {
+        "id": "both-ai-fight-round",
+        "activeAttackerOwner1624": 1,
+        "defenderOwnerC9D8": 2,
+        "attackerAiFlagC9DA": 1,
+        "defenderAiFlagC9DB": 1,
+        "defenderRetreatTarget9406": 3,
+        "defenderHelperCarry": 0,
+        "attackerHelperCarry": 1,
+        "commandC9D9": 0
+      },
+      {
+        "id": "defender-retreat-helper-skipped-without-retreat-target",
+        "activeAttackerOwner1624": 1,
+        "defenderOwnerC9D8": 2,
+        "attackerAiFlagC9DA": 1,
+        "defenderAiFlagC9DB": 1,
+        "defenderRetreatTarget9406": 0,
+        "defenderHelperCarry": 1,
+        "attackerHelperCarry": 1,
+        "commandC9D9": 0
+      },
+      {
+        "id": "owner-zero-defender-is-ai-controlled",
+        "activeAttackerOwner1624": 1,
+        "defenderOwnerC9D8": 0,
+        "attackerAiFlagC9DA": 0,
+        "defenderAiFlagC9DB": 0,
+        "defenderRetreatTarget9406": 3,
+        "defenderHelperCarry": 1,
+        "attackerHelperCarry": 1,
+        "commandC9D9": 1
+      },
+      {
+        "id": "owner-zero-attacker-is-ai-controlled",
+        "activeAttackerOwner1624": 0,
+        "defenderOwnerC9D8": 2,
+        "attackerAiFlagC9DA": 0,
+        "defenderAiFlagC9DB": 0,
+        "defenderRetreatTarget9406": 0,
+        "defenderHelperCarry": 1,
+        "attackerHelperCarry": 0,
+        "commandC9D9": 2
+      }
+    ]
+  },
+  "assertionsForPort": [
+    "Defender AI command has priority over attacker AI command.",
+    "Defender retreat helper is skipped when $9406 is zero, even if it would otherwise return carry set.",
+    "Owner 0 defender is treated as AI-controlled by L83C4.",
+    "Owner 0 attacker is treated as AI-controlled by L83C4.",
+    "Command 0 means fight one round, command 1 means defender retreat, and command 2 means attacker retreat."
+  ]
+}

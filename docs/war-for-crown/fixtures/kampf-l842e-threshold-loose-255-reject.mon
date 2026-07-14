@@ -1,0 +1,11 @@
+bload "/tmp/wfc-c64-logic/disasm/erbent1a-kampf.raw" 0 7e00
+bload "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw" 0 9400
+> 949d 60
+> 9426 a9 ff 85 60 a9 00 85 61 a9 00 85 62 60
+> c8a7 00
+> c020 ff
+> c000 20 2e 84 90 08 a9 01 8d 20 c0 4c 12 c0 a9 00 8d 20 c0 ea
+break c012
+g c000
+m c020 c020
+quit

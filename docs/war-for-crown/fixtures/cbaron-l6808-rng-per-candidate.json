@@ -1,0 +1,62 @@
+{
+  "fixture": "cbaron-l6808-rng-per-candidate",
+  "entry": "cbaron:L6808 target scoring RNG consumption",
+  "modules": {
+    "kernal": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+      "loadAddress": "0x0800"
+    },
+    "main": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+      "loadAddress": "0x3000"
+    },
+    "cbaron": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-cbaron.raw",
+      "loadAddress": "0x5800"
+    },
+    "sys": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+      "loadAddress": "0x9400"
+    }
+  },
+  "patchedRoutines": {
+    "kernal:L218B": "INC $C020; LDA #$7B; RTS"
+  },
+  "monitor": {
+    "commands": "docs/war-for-crown/fixtures/cbaron-l6808-rng-per-candidate.mon",
+    "viceCommand": "x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/cbaron-l6808-rng-per-candidate.mon -limitcycles 1000000",
+    "result": "exit code 0"
+  },
+  "setup": {
+    "activePlayer": 1,
+    "playerCount": 2,
+    "provinceCount": 3,
+    "mapShape": "line: 1-2-3",
+    "candidateFlagsByProvince": {
+      "1": "0x02",
+      "2": "0x00",
+      "3": "0x02"
+    },
+    "ownersByProvince": {
+      "1": 2,
+      "2": 1,
+      "3": 2
+    },
+    "soldiersByProvince": {
+      "1": 4,
+      "2": 20,
+      "3": 4
+    }
+  },
+  "observed": {
+    "$C020RngCallCount": "0x02",
+    "$1602SelectedTarget": "0x01",
+    "$699A..$699DScore": ["0xff", "0xf8", "0x06", "0x00"],
+    "$C832..$C835": ["0x80", "0x02", "0x10", "0x02"]
+  },
+  "conclusions": [
+    "L6808 calls kernal:L218B once for each accepted target candidate processed by the scoring loop.",
+    "The RNG call is inside the candidate loop, after temporary target ownership and L62BC, before optional L63CE.",
+    "A TypeScript port must consume a sequence of RNG bytes and report how many bytes were consumed; a single rngByte for the whole L6808 call is not byte-compatible."
+  ]
+}

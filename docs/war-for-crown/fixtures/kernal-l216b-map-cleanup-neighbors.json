@@ -1,0 +1,97 @@
+{
+  "fixture": "kernal-l216b-map-cleanup-neighbors",
+  "entry": "kernal:L216B",
+  "modules": {
+    "kernal": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+      "loadAddress": "0x0800"
+    }
+  },
+  "monitor": {
+    "commands": "docs/war-for-crown/fixtures/kernal-l216b-map-cleanup-neighbors.mon",
+    "viceCommand": "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/kernal-l216b-map-cleanup-neighbors.mon -limitcycles 1000000"
+  },
+  "setup": {
+    "currentTileIndexY": "0x35",
+    "currentTileAddress": "0xc435",
+    "neighborAddresses": {
+      "left": "0xc434",
+      "right": "0xc436",
+      "down": "0xc449",
+      "up": "0xc421"
+    }
+  },
+  "cases": [
+    {
+      "name": "all four orthogonal neighbors are water",
+      "neighbors": {
+        "left": "0x00",
+        "right": "0x00",
+        "down": "0x00",
+        "up": "0x00"
+      },
+      "expected": {
+        "a": "0x00",
+        "y": "0x21"
+      }
+    },
+    {
+      "name": "left neighbor is nonzero",
+      "neighbors": {
+        "left": "0xff",
+        "right": "0x00",
+        "down": "0x00",
+        "up": "0x00"
+      },
+      "expected": {
+        "a": "0xff",
+        "y": "0x34"
+      }
+    },
+    {
+      "name": "right neighbor is nonzero",
+      "neighbors": {
+        "left": "0x00",
+        "right": "0x02",
+        "down": "0x00",
+        "up": "0x00"
+      },
+      "expected": {
+        "a": "0x02",
+        "y": "0x36"
+      }
+    },
+    {
+      "name": "down neighbor is pending high-bit land",
+      "neighbors": {
+        "left": "0x00",
+        "right": "0x00",
+        "down": "0x80",
+        "up": "0x00"
+      },
+      "expected": {
+        "a": "0x80",
+        "y": "0x49"
+      }
+    },
+    {
+      "name": "up neighbor is nonzero",
+      "neighbors": {
+        "left": "0x00",
+        "right": "0x00",
+        "down": "0x00",
+        "up": "0x07"
+      },
+      "expected": {
+        "a": "0x07",
+        "y": "0x21"
+      }
+    }
+  ],
+  "conclusion": [
+    "kernal:L216B tests the four orthogonal neighbors in left, right, down, up order.",
+    "The helper returns zero only when all four neighbors are water/zero.",
+    "Any nonzero neighbor value is treated as connected land for setup cleanup.",
+    "The map setup pass calls this helper and converts the current tile to water only when the returned A register is zero."
+  ]
+}

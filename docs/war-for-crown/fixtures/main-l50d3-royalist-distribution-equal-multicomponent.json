@@ -1,0 +1,94 @@
+{
+  "id": "main-l50d3-royalist-distribution-equal-multicomponent",
+  "type": "derived-vice-monitor-fixture",
+  "source": {
+    "disk": "ERBENT1A.D64",
+    "modules": {
+      "kernal": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+        "loadAddress": "0x0800"
+      },
+      "main": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+        "loadAddress": "0x3000"
+      },
+      "sys": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+        "loadAddress": "0x9400"
+      }
+    },
+    "monitorCommands": "docs/war-for-crown/fixtures/main-l50d3-royalist-distribution-equal-multicomponent.mon",
+    "viceCommand": "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/main-l50d3-royalist-distribution-equal-multicomponent.mon -limitcycles 1000000"
+  },
+  "routine": {
+    "module": "main",
+    "entry": "0x50D3",
+    "description": "Royalist equal soldier redistribution over multiple disconnected components"
+  },
+  "patches": [
+    {
+      "address": "0x1B69",
+      "bytes": ["0x60"],
+      "meaning": "stub province redraw side effect; distribution state logic is unchanged"
+    }
+  ],
+  "initialState": {
+    "activeOwner": 0,
+    "royalistAttitude": 1,
+    "distributionMode": 1,
+    "provinceCount": 5,
+    "royalistProvinceCount": 4,
+    "mapCells": {
+      "0xC415": 1,
+      "0xC416": 2,
+      "0xC417": 3,
+      "0xC418": 4,
+      "0xC419": 5
+    },
+    "ownersByProvince": {
+      "1": 0,
+      "2": 0,
+      "3": 1,
+      "4": 0,
+      "5": 0
+    },
+    "soldiersByProvince": {
+      "1": 1,
+      "2": 4,
+      "3": 1,
+      "4": 7,
+      "5": 10
+    }
+  },
+  "observed": {
+    "breakpoint": "0xC003",
+    "soldiersByProvinceAfter": {
+      "1": 2,
+      "2": 3,
+      "3": 1,
+      "4": 8,
+      "5": 9
+    },
+    "flagsByProvinceAfter": {
+      "1": "0x01",
+      "2": "0x01",
+      "3": "0x00",
+      "4": "0x01",
+      "5": "0x01"
+    },
+    "lastDistributionRegisters": {
+      "C9D0": 3,
+      "C9D1": 0,
+      "C9D2": 0,
+      "C9D3": 3,
+      "C9D4": 0,
+      "C9D5": 0
+    }
+  },
+  "assertionsForPort": [
+    "main:L50D3 processes disconnected royalist components independently.",
+    "Equal mode does not pool mobile soldiers across components separated by a non-royalist province.",
+    "For component 4-5, mobile soldiers 15 redistribute as +1 and +8 over the one-garrison baseline, producing 8 and 9.",
+    "For component 1-2, mobile soldiers 3 redistribute over the one-garrison baseline, producing 2 and 3."
+  ]
+}

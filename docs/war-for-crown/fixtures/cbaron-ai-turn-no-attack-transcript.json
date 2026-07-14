@@ -1,0 +1,328 @@
+{
+  "fixture": "cbaron-ai-turn-no-attack-transcript",
+  "type": "derived-vice-monitor-transcript",
+  "purpose": "First C64-side AI turn transcript target for comparing TypeScript headless before/after snapshots against a controlled C64 phase chain.",
+  "source": {
+    "disk": "ERBENT1A.D64",
+    "monitorCommands": "docs/war-for-crown/fixtures/cbaron-ai-turn-no-attack-transcript.mon",
+    "viceCommand": "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/cbaron-ai-turn-no-attack-transcript.mon -limitcycles 2000000",
+    "modules": {
+      "kernal": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+        "loadAddress": "0x0800"
+      },
+      "main": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+        "loadAddress": "0x3000"
+      },
+      "cbaron": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-cbaron.raw",
+        "loadAddress": "0x5800"
+      },
+      "kampf": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-kampf.raw",
+        "loadAddress": "0x7e00"
+      },
+      "sys": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+        "loadAddress": "0x9400"
+      }
+    }
+  },
+  "patchedRoutines": {
+    "ui": "$1162, $1b69, $1d7d, $2ac5, and $2aef return immediately so the transcript isolates logic state changes",
+    "kernal:L218B": "returns fixed RNG byte 0x7b"
+  },
+  "setupNotes": [
+    "$CA55..$CA71 is cleared before the transcript so stale carryover bytes cannot force a false economy branch",
+    "$C8AA/$C8AB is set to 12 so the village-purchase cap matches the scenario's configured maximum"
+  ],
+  "initialState": {
+    "activePlayer": 1,
+    "playerCount": 2,
+    "provinceCount": 3,
+    "royalistAttitude": "neutral",
+    "royalistEvaluation": "strict",
+    "mapShape": "line: 1-2-3",
+    "ownersByProvince": {
+      "1": 1,
+      "2": 1,
+      "3": 0
+    },
+    "homeProvinceByPlayer": {
+      "1": 1
+    },
+    "villagesByProvince": {
+      "1": 2,
+      "2": 2,
+      "3": 12
+    },
+    "soldiersByProvince": {
+      "1": 5,
+      "2": 6,
+      "3": 32
+    },
+    "moneyByPlayer": {
+      "1": 20
+    }
+  },
+  "phases": [
+    {
+      "entry": "cbaron:$5803",
+      "meaning": "computer baron attack phase",
+      "observed": {
+        "selectedTarget": 0,
+        "battleStarted": false,
+        "soldiersByProvince": {
+          "1": 5,
+          "2": 6,
+          "3": 32
+        },
+        "flagsByProvince": {
+          "1": "0x10",
+          "2": "0x90",
+          "3": "0x00"
+        },
+        "rememberedTarget": 0,
+        "rawMemory": {
+          "$1602..$1608": [
+            "0x00",
+            "0xff",
+            "0xff",
+            "0x08",
+            "0x20",
+            "0x20",
+            "0x20"
+          ],
+          "$c706..$c709": [
+            "0x00",
+            "0x05",
+            "0x06",
+            "0x20"
+          ],
+          "$c832..$c835": [
+            "0x80",
+            "0x10",
+            "0x90",
+            "0x00"
+          ],
+          "$c9d0..$c9d8": [
+            "0x05",
+            "0x00",
+            "0x00",
+            "0x20",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x03",
+            "0x00"
+          ],
+          "$c9de..$c9ed": [
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00"
+          ],
+          "$ca61..$ca62": [
+            "0x00",
+            "0x00"
+          ]
+        }
+      }
+    },
+    {
+      "entry": "cbaron:$5806",
+      "meaning": "computer baron movement phase",
+      "observed": {
+        "pulledMobileSoldiers": 9,
+        "defensiveRequirement": 0,
+        "soldiersByProvince": {
+          "1": 1,
+          "2": 10,
+          "3": 32
+        },
+        "flagsByProvince": {
+          "1": "0x00",
+          "2": "0x00",
+          "3": "0x00"
+        },
+        "rememberedTarget": 0,
+        "rawMemory": {
+          "$1617..$161f": [
+            "0x09",
+            "0x00",
+            "0x00",
+            "0x24",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x01"
+          ],
+          "$c706..$c709": [
+            "0x00",
+            "0x01",
+            "0x0a",
+            "0x20"
+          ],
+          "$c832..$c835": [
+            "0x80",
+            "0x00",
+            "0x00",
+            "0x00"
+          ],
+          "$c9d0..$c9d8": [
+            "0x09",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x01",
+            "0x00"
+          ],
+          "$c9de..$c9ed": [
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00"
+          ],
+          "$ca61..$ca62": [
+            "0x00",
+            "0x00"
+          ]
+        }
+      }
+    },
+    {
+      "entry": "cbaron:$5800",
+      "meaning": "computer baron economy phase",
+      "observed": {
+        "soldiersByProvince": {
+          "1": 5,
+          "2": 10,
+          "3": 32
+        },
+        "villagesByProvince": {
+          "1": 6,
+          "2": 2,
+          "3": 12
+        },
+        "moneyByPlayer": {
+          "1": 0
+        },
+        "flagsByProvince": {
+          "1": "0x10",
+          "2": "0x90",
+          "3": "0x00"
+        },
+        "rememberedTarget": 0,
+        "rawMemory": {
+          "$c706..$c709": [
+            "0x00",
+            "0x05",
+            "0x0a",
+            "0x20"
+          ],
+          "$c6a2..$c6a5": [
+            "0x00",
+            "0x06",
+            "0x02",
+            "0x0c"
+          ],
+          "$c8bb..$c8bf": [
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00"
+          ],
+          "$c8c0..$c8c4": [
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00"
+          ],
+          "$c8c5..$c8c9": [
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00"
+          ],
+          "$c832..$c835": [
+            "0x80",
+            "0x10",
+            "0x90",
+            "0x00"
+          ],
+          "$c9d0..$c9d8": [
+            "0x13",
+            "0x00",
+            "0x00",
+            "0x04",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0xdc",
+            "0x00"
+          ],
+          "$c9de..$c9ed": [
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00",
+            "0x00"
+          ]
+        }
+      }
+    }
+  ],
+  "assertionsForPort": [
+    "A phase-level c64-original attack action may complete without a battle when $5803 leaves $1602 at 0.",
+    "The no-attack branch can leave C832 work flags set; the following $5806 movement pass must clear them before returning.",
+    "$5806 can move mobile soldiers across the active owned component even when the preceding $5803 attack did not start a battle.",
+    "In this controlled state, $5800 spends 4 talers on soldiers in the home province and 16 talers on four villages, leaving player 1 money at 0 before any interest can grow the treasury."
+  ],
+  "limits": [
+    "This is a no-battle transcript. It does not cover cbaron battle entry, C64 battle command loops, retreat, or post-battle capture.",
+    "The UI/redraw helpers are patched out; this fixture proves game-state memory transitions, not presentation timing."
+  ]
+}

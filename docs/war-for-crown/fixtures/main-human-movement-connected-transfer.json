@@ -1,0 +1,146 @@
+{
+  "fixture": "main-human-movement-connected-transfer",
+  "entry": "main:L33B3 movement legality and main:L346B transfer arithmetic",
+  "modules": {
+    "kernal": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+      "loadAddress": "0x0800"
+    },
+    "main": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+      "loadAddress": "0x3000"
+    },
+    "sys": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+      "loadAddress": "0x9400"
+    }
+  },
+  "patchedRoutines": {
+    "ui/display helpers": "$1162, $19DE, $1B69, $1CA0, and $2AC5 are patched to RTS",
+    "sys:L984B": "patched only in transfer cases to avoid physical joystick input and return a deterministic selected destination count"
+  },
+  "monitor": {
+    "commands": "docs/war-for-crown/fixtures/main-human-movement-connected-transfer.mon",
+    "viceCommand": "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/main-human-movement-connected-transfer.mon -limitcycles 1000000"
+  },
+  "cases": [
+    {
+      "name": "connected-owned-path-marks-non-adjacent-source",
+      "entry": "kernal:L2221",
+      "setup": {
+        "activePlayer": 1,
+        "provinceCount": 3,
+        "mapShape": "line: 1-2-3",
+        "ownersByProvince": {
+          "1": 1,
+          "2": 1,
+          "3": 1
+        },
+        "destinationProvince161fBefore": 3
+      },
+      "expected": {
+        "rawMemory": {
+          "$c832..$c835": ["0x80", "0x80", "0xc0", "0xc0"],
+          "$161f": "0x02"
+        },
+        "sourceProvince1Reachable": true,
+        "notes": [
+          "$C833 is province 1 and has bit $80, even though province 1 is not adjacent to destination province 3.",
+          "$161F is mutated by the flood-fill and must not be read afterward as the original destination."
+        ]
+      }
+    },
+    {
+      "name": "transfer-uses-final-destination-count",
+      "entry": "main:L346B",
+      "setup": {
+        "sourceProvinceC9d6": 1,
+        "destinationProvinceC9d7": 3,
+        "sourceSoldiersBefore": 8,
+        "destinationSoldiersBefore": 4,
+        "chooserSelectedDestinationCount": 5
+      },
+      "expected": {
+        "breaksAt": "0x33b3",
+        "sourceSoldiersAfter": 7,
+        "destinationSoldiersAfter": 5,
+        "rawMemory": {
+          "$c707..$c709": ["0x07", "0x00", "0x05"],
+          "$c76b..$c76d": ["0x00", "0x00", "0x00"],
+          "$c7cf..$c7d1": ["0x00", "0x00", "0x00"],
+          "$c9d0..$c9d7": [
+            "0x0c",
+            "0x00",
+            "0x00",
+            "0x04",
+            "0x00",
+            "0x00",
+            "0x01",
+            "0x03"
+          ],
+          "$1614..$161c": [
+            "0x05",
+            "0x00",
+            "0x00",
+            "0x01",
+            "0x00",
+            "0x00",
+            "0x0b",
+            "0x00",
+            "0x00"
+          ]
+        }
+      }
+    },
+    {
+      "name": "one-one-endpoints-force-single-valid-split",
+      "entry": "main:L346B",
+      "setup": {
+        "sourceProvinceC9d6": 1,
+        "destinationProvinceC9d7": 3,
+        "sourceSoldiersBefore": 1,
+        "destinationSoldiersBefore": 1,
+        "chooserBehavior": "RTS with initial destination count unchanged"
+      },
+      "expected": {
+        "breaksAt": "0x33b3",
+        "sourceSoldiersAfter": 1,
+        "destinationSoldiersAfter": 1,
+        "minimumDestinationCount1617To1619": ["0x01", "0x00", "0x00"],
+        "maximumDestinationCount161aTo161c": ["0x01", "0x00", "0x00"],
+        "rawMemory": {
+          "$c707..$c709": ["0x01", "0x00", "0x01"],
+          "$c76b..$c76d": ["0x00", "0x00", "0x00"],
+          "$c7cf..$c7d1": ["0x00", "0x00", "0x00"],
+          "$c9d0..$c9d7": [
+            "0x02",
+            "0x00",
+            "0x00",
+            "0x01",
+            "0x00",
+            "0x00",
+            "0x01",
+            "0x03"
+          ],
+          "$1614..$161c": [
+            "0x01",
+            "0x00",
+            "0x00",
+            "0x01",
+            "0x00",
+            "0x00",
+            "0x01",
+            "0x00",
+            "0x00"
+          ]
+        }
+      }
+    }
+  ],
+  "conclusion": [
+    "Human movement is legal between any two active-owned provinces in the same connected component; direct adjacency is not required.",
+    "The numeric chooser selects the final destination soldier count, not the amount moved.",
+    "The destination range is 1..total-1, so both selected provinces always retain at least one soldier.",
+    "Movement does not set same-phase spent flags; after applying the transfer the routine jumps back to main:L33B3."
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "fixture": "cbaron-l5ca5-static-write-scan",
+  "purpose": "Static evidence for the two unreachable cbaron:L5CA5 CMP #$00 / BCC branches before a full loader watch is available.",
+  "disk": "ERBENT1A.D64",
+  "sourceFiles": [
+    "/tmp/wfc-c64-logic/disasm/erbent1a-*.raw"
+  ],
+  "targetRange": {
+    "start": "0x5CC0",
+    "end": "0x5CDF"
+  },
+  "scannedWriteOpcodes": {
+    "absoluteStores": [
+      "STA abs",
+      "STX abs",
+      "STY abs",
+      "STA abs,X",
+      "STA abs,Y"
+    ],
+    "absoluteReadModifyWrite": [
+      "INC abs",
+      "INC abs,X",
+      "DEC abs",
+      "DEC abs,X",
+      "ASL abs",
+      "ASL abs,X",
+      "ROL abs",
+      "ROL abs,X",
+      "LSR abs",
+      "LSR abs,X",
+      "ROR abs",
+      "ROR abs,X"
+    ]
+  },
+  "observed": {
+    "absoluteWriteHits": 0,
+    "branchBytes": {
+      "0x5CCC": [
+        "0xC9",
+        "0x00",
+        "0x90",
+        "0x03"
+      ],
+      "0x5CD6": [
+        "0xC9",
+        "0x00",
+        "0x90",
+        "0x03"
+      ]
+    }
+  },
+  "limitations": [
+    "This is a static direct-address scan, not a full live loader watch.",
+    "It does not rule out an indirect write through a runtime pointer.",
+    "The raw-module VICE watch already rules out self-patching during isolated cbaron:$5806 execution.",
+    "The prepared full-disk watch still needs a working automated KERNAL LOAD path before it can prove loader-time behavior."
+  ],
+  "conclusion": "No extracted ERBENT1A module contains a direct absolute store or absolute read-modify-write instruction targeting $5CC0-$5CDF. The disk cbaron bytes at $5CCC and $5CD6 are the unreachable CMP #$00 / BCC form."
+}

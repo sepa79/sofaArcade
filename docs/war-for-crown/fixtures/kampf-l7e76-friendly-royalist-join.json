@@ -1,0 +1,106 @@
+{
+  "id": "kampf-l7e76-friendly-royalist-join",
+  "type": "derived-vice-monitor-fixture",
+  "source": {
+    "disk": "ERBENT1A.D64",
+    "modules": {
+      "kernal": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+        "loadAddress": "0x0800"
+      },
+      "kampf": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-kampf.raw",
+        "loadAddress": "0x7E00"
+      },
+      "sys": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+        "loadAddress": "0x9400"
+      }
+    },
+    "monitorCommands": "docs/war-for-crown/fixtures/kampf-l7e76-friendly-royalist-join.mon",
+    "viceCommand": "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/kampf-l7e76-friendly-royalist-join.mon -limitcycles 1000000"
+  },
+  "routine": {
+    "module": "kampf",
+    "entry": "0x7E3A",
+    "specialCase": "0x7E76",
+    "description": "Friendly royalist battle-entry special case"
+  },
+  "patches": [
+    {
+      "address": "0x1CA0",
+      "bytes": ["0x60"],
+      "meaning": "stub display setup side effect"
+    },
+    {
+      "address": "0x1FD5",
+      "bytes": ["0x60"],
+      "meaning": "stub display text side effect"
+    },
+    {
+      "address": "0x2AC5",
+      "bytes": ["0x60"],
+      "meaning": "stub display text side effect"
+    },
+    {
+      "address": "0x2AEF",
+      "bytes": ["0x60"],
+      "meaning": "stub display text side effect"
+    },
+    {
+      "address": "0x9A5D",
+      "bytes": ["0x60"],
+      "meaning": "stub battle-screen setup side effect"
+    }
+  ],
+  "initialState": {
+    "royalistAttitude": 0,
+    "targetProvince": 2,
+    "ownersByProvince": {
+      "2": 0
+    },
+    "attackerSoldiers": {
+      "low": 5,
+      "mid": 0,
+      "high": 0
+    },
+    "defenderSoldiers": {
+      "low": 3,
+      "mid": 0,
+      "high": 0
+    },
+    "battleProgressByte": "0x7F"
+  },
+  "observed": {
+    "breakpoint": "0xC003",
+    "attackerSoldiersAfter": {
+      "low": 8,
+      "mid": 0,
+      "high": 0
+    },
+    "defenderSoldiersAfter": {
+      "low": 0,
+      "mid": 0,
+      "high": 0
+    },
+    "targetProvinceAfter": 2,
+    "battleProgressByteAfter": "0x00",
+    "memoryC9D0ToC9D9": [
+      "0x08",
+      "0x00",
+      "0x00",
+      "0x00",
+      "0x00",
+      "0x00",
+      "0x00",
+      "0x02",
+      "0x00",
+      "0x00"
+    ]
+  },
+  "assertionsForPort": [
+    "When C8A5 is friendly and the target owner is 0, L7E76 adds defender soldiers in C9D3..C9D5 into attacker soldiers in C9D0..C9D2.",
+    "The friendly join branch zeroes C9D3..C9D5 and C9D9.",
+    "The friendly join branch exits the battle entry by PLA/PLA/RTS, so normal battle setup and the combat loop are skipped."
+  ]
+}

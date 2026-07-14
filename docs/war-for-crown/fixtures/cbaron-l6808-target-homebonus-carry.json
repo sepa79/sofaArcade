@@ -1,0 +1,98 @@
+{
+  "id": "cbaron-l6808-target-homebonus-carry",
+  "type": "derived-vice-monitor-fixture",
+  "source": {
+    "disk": "ERBENT1A.D64",
+    "modules": {
+      "kernal": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+        "loadAddress": "0x0800"
+      },
+      "main": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+        "loadAddress": "0x3000"
+      },
+      "cbaron": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-cbaron.raw",
+        "loadAddress": "0x5800"
+      },
+      "kampf": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-kampf.raw",
+        "loadAddress": "0x7E00"
+      },
+      "sys": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+        "loadAddress": "0x9400"
+      }
+    },
+    "monitorCommands": "docs/war-for-crown/fixtures/cbaron-l6808-target-homebonus-carry.mon",
+    "viceCommand": "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/cbaron-l6808-target-homebonus-carry.mon -limitcycles 1000000"
+  },
+  "routine": {
+    "module": "cbaron",
+    "entry": "0x6808",
+    "description": "AI target scoring home-castle bonus carry behavior"
+  },
+  "initialState": {
+    "activePlayer": 1,
+    "playerCount": 2,
+    "provinceCount": 5,
+    "rngPatch": {
+      "address": "0x218B",
+      "bytes": ["0xA9", "0x7B", "0x60"],
+      "meaning": "return fixed RNG value 0x7B"
+    },
+    "mapCells": {
+      "0xC415": 1,
+      "0xC416": 2,
+      "0xC417": 3,
+      "0xC418": 4,
+      "0xC419": 5
+    },
+    "ownersByProvince": {
+      "1": 1,
+      "2": 2,
+      "3": 2,
+      "4": 2,
+      "5": 2
+    },
+    "homeProvinceByPlayer": {
+      "1": 1,
+      "2": 2
+    },
+    "provinceCountByOwner": {
+      "1": 1,
+      "2": 4
+    },
+    "villagesByProvince": {
+      "1": 4,
+      "2": 4,
+      "3": 4,
+      "4": 4,
+      "5": 4
+    },
+    "soldiersByProvince": {
+      "1": 200,
+      "2": 4,
+      "3": 4,
+      "4": 4,
+      "5": 4
+    },
+    "candidateFlagsByProvince": {
+      "2": "0x02"
+    }
+  },
+  "observed": {
+    "breakpoint": "0xC003",
+    "selectedTarget": 2,
+    "scoreBytesLittleEndian": ["0x0C", "0x00", "0x19", "0x00"],
+    "mobileArmyBytes": ["0xC7", "0x00", "0x00"],
+    "targetSupportEstimateBytes": ["0x00", "0x00", "0x00"],
+    "flagsC832ToC837": ["0x80", "0x10", "0x02", "0x00", "0x00", "0x00"]
+  },
+  "assertionsForPort": [
+    "Home-castle target scoring multiplies the target owner's province count by 0x8000 before the strategic-weight multiplication.",
+    "With owner province count 4, L6808 selects the home target and produces score bytes 0c 00 19 00.",
+    "The port must preserve the C64 little-endian score comparison and carry behavior instead of recalculating with an unrelated floating-point heuristic."
+  ]
+}

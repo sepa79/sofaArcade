@@ -1,0 +1,181 @@
+bload "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw" 0 0800
+bload "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw" 0 3000
+bload "/tmp/wfc-c64-logic/disasm/erbent1a-cbaron.raw" 0 5800
+bload "/tmp/wfc-c64-logic/disasm/erbent1a-kampf.raw" 0 7e00
+bload "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw" 0 9400
+> c000 20 00 58 ea
+break c003
+> 1624 01
+> c901 08
+> c8bb 00 32 00 00 00
+> c8c0 00 00 00 00 00
+> c8c5 00 00 00 00 00
+> ca65 00 50 00 00 00
+> ca69 00 00 00 00 00
+> ca6d 00 00 00 00 00
+g c000
+m c8bb c8bf
+m c8c0 c8c4
+m c8c5 c8c9
+m ca65 ca69
+m ca69 ca6d
+m ca6d ca71
+m 5b 5e
+
+bload "/tmp/wfc-c64-logic/disasm/erbent1a-cbaron.raw" 0 5800
+> 1b69 60
+> 218b a9 7b 60
+f c400 c4ff 00
+f c576 c579 00
+f c5da c5dd 00
+f c63e c641 00
+f c6a2 c6a5 00
+f c706 c709 00
+f c76a c76d 00
+f c7ce c7d1 00
+f c832 c835 00
+f c8b5 c8ba 00
+f c8bb c8c9 00
+f c8fb c900 00
+f c9d0 c9f9 00
+f ca09 ca14 00
+f ca65 ca71 00
+> c000 20 00 58 ea
+break 5b68
+> 1624 01
+> c896 02
+> c8a1 03
+> c8a2 03
+> c8a3 00
+> c8a5 01
+> c8a7 01
+> c8ac 01
+> c8b1 01
+> c8b2 00
+> c8ae 06
+> c8af 03
+> c900 04
+> c901 08
+> ca48 00
+> ca55 00
+> c8b5 00 02 01
+> c8fb 00 01 03
+> c8bb 00 64 00 00 00
+> c8c0 00 00 00 00 00
+> c8c5 00 00 00 00 00
+> c415 01 02 03
+> c577 01 01 01
+> c5db 01 01 02
+> c6a3 0c 0c 0c
+> c707 0a 0a 03
+g c000
+m c8bb c8bf
+m c8c0 c8c4
+m c8c5 c8c9
+m c706 c709
+m c76a c76d
+m c7ce c7d1
+m c9d0 c9d8
+m c9ee c9f9
+m 580c 580e
+m 5b 5e
+
+bload "/tmp/wfc-c64-logic/disasm/erbent1a-cbaron.raw" 0 5800
+> 1b69 60
+> 218b a9 7b 60
+f c400 c4ff 00
+f c576 c579 00
+f c5da c5dd 00
+f c63e c641 00
+f c6a2 c6a5 00
+f c706 c709 00
+f c76a c76d 00
+f c7ce c7d1 00
+f c832 c835 00
+f c8b5 c8ba 00
+f c8bb c8c9 00
+f c8fb c900 00
+f c9d0 c9f9 00
+f ca09 ca14 00
+f ca65 ca71 00
+> c000 20 00 58 ea
+> 1624 01
+> c896 02
+> c8a1 03
+> c8a2 03
+> c8a3 00
+> c8a5 01
+> c8a7 01
+> c8ac 01
+> c8b1 01
+> c8b2 00
+> c8ae 06
+> c8af 03
+> c900 04
+> c901 08
+> ca48 00
+> ca55 00
+> c8b5 00 02 01
+> c8fb 00 01 03
+> c8bb 00 64 00 00 00
+> c8c0 00 00 00 00 00
+> c8c5 00 00 00 00 00
+> c9ee 00 00 32 00
+> c9f2 00 00 00 00
+> c9f6 00 00 00 00
+> c415 01 02 03
+> c577 01 01 01
+> c5db 01 01 02
+> c6a3 0c 0c 0c
+> c707 0a 0a 03
+g c000
+m c8bb c8bf
+m c706 c709
+m c9d0 c9d8
+m c9ee c9f9
+m 580c 580e
+m 5b 5e
+
+bload "/tmp/wfc-c64-logic/disasm/erbent1a-cbaron.raw" 0 5800
+> c000 20 c6 5b ea
+> 1b69 60
+> 3038 60
+> 9a2a a9 0c 60
+f c400 c4ff 00
+f c576 c579 00
+f c5da c5dd 00
+f c63e c641 00
+f c6a2 c6a5 00
+f c706 c709 00
+f c76a c76d 00
+f c7ce c7d1 00
+f c832 c835 00
+f c8b5 c8ba 00
+f c8bb c8c9 00
+f c8fb c900 00
+> 1624 01
+> c896 02
+> c8a1 03
+> c8a5 01
+> c8ac 01
+> c900 04
+> 5c6e 00
+> c8b5 00 02 01
+> c8fb 00 01 03
+> c8bb 00 14 00 00 00
+> c8c0 00 00 00 00 00
+> c8c5 00 00 00 00 00
+> c415 01 02 03
+> c577 01 01 01
+> c5db 01 01 02
+> c6a3 0c 04 02
+> c707 0a 05 03
+g c000
+m c8bb c8bf
+m c8c0 c8c4
+m c8c5 c8c9
+m c6a2 c6a5
+m c832 c835
+m 161f 161f
+m 598f 598f
+quit

@@ -1,0 +1,175 @@
+{
+  "fixture": "main-castle-capture-transfer",
+  "entry": "main:L4C7A home-castle capture transfer",
+  "modules": {
+    "kernal": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+      "loadAddress": "0x0800"
+    },
+    "main": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+      "loadAddress": "0x3000"
+    }
+  },
+  "patchedRoutines": {
+    "redraw": "$1B69 is patched to STY $161F; RTS because L4C7A expects redraw to preserve the current province through $161F",
+    "messages": "$1CA0 and $1FD5 are patched to RTS; transfer logic and counters are not patched"
+  },
+  "monitor": {
+    "commands": "docs/war-for-crown/fixtures/main-castle-capture-transfer.mon",
+    "viceCommand": "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/main-castle-capture-transfer.mon -limitcycles 1000000",
+    "result": "exit code 0"
+  },
+  "cases": [
+    {
+      "name": "human-player-captures-enemy-home-castle",
+      "entry": "main:L4C7A",
+      "setup": {
+        "activeOwner1624": 1,
+        "targetProvinceC9D7": 3,
+        "provinceCountC8A1": 5,
+        "ownersBefore": {
+          "province1": 1,
+          "province2": 2,
+          "province3": 2,
+          "province4": 2,
+          "province5": 0
+        },
+        "homeProvinceC8FB": {
+          "player1": 1,
+          "player2": 3
+        },
+        "provinceCountsBefore": {
+          "royalists0": 1,
+          "player1": 1,
+          "player2": 3,
+          "player3": 0
+        },
+        "eliminatedPlayer2StatCountersBefore": {
+          "$C9FB+2": 7,
+          "$CA00+2": 8,
+          "$CA05+2": 9
+        }
+      },
+      "expected": {
+        "ownersAfter": {
+          "province1": 1,
+          "province2": 1,
+          "province3": 1,
+          "province4": 1,
+          "province5": 0
+        },
+        "soldiersPreserved": true,
+        "homeProvinceMarkersAfter": {
+          "player1": 1,
+          "player2": 3
+        },
+        "provinceCountsAfter": {
+          "royalists0": 1,
+          "player1": 4,
+          "player2": 0,
+          "player3": 0
+        },
+        "eliminatedPlayer2StatCountersAfter": {
+          "$C9FB+2": 0,
+          "$CA00+2": 0,
+          "$CA05+2": 0
+        },
+        "activeOwnerRestored": 1,
+        "rawMemory": {
+          "$C5DB..$C5DF": ["0x01", "0x01", "0x01", "0x01", "0x00"],
+          "$C706..$C70B": ["0x00", "0x04", "0x0C", "0x09", "0x05", "0x03"],
+          "$C8B5..$C8B8": ["0x01", "0x04", "0x00", "0x00"],
+          "$C8FB..$C8FE": ["0x00", "0x01", "0x03", "0x00"],
+          "$C9FB..$C9FE": ["0x00", "0x00", "0x00", "0x00"],
+          "$CA00..$CA08": ["0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00"],
+          "$1624": "0x01"
+        }
+      }
+    },
+    {
+      "name": "capturing-non-home-province-does-not-eliminate",
+      "entry": "main:L4C7A",
+      "setup": {
+        "activeOwner1624": 1,
+        "targetProvinceC9D7": 2,
+        "ownerOfTarget": 2,
+        "player2HomeProvinceC8FD": 3
+      },
+      "expected": {
+        "ownersUnchanged": true,
+        "provinceCountsUnchanged": true,
+        "eliminatedPlayer2StatCountersUnchanged": true,
+        "activeOwnerRestored": 1,
+        "rawMemory": {
+          "$C5DB..$C5DF": ["0x01", "0x02", "0x02", "0x02", "0x00"],
+          "$C706..$C70B": ["0x00", "0x04", "0x0C", "0x09", "0x05", "0x03"],
+          "$C8B5..$C8B8": ["0x01", "0x01", "0x03", "0x00"],
+          "$C9FB..$C9FE": ["0x00", "0x00", "0x07", "0x00"],
+          "$CA00..$CA08": ["0x00", "0x00", "0x08", "0x00", "0x00", "0x00", "0x00", "0x09", "0x00"],
+          "$1624": "0x01"
+        }
+      }
+    },
+    {
+      "name": "royalists-capture-player-home-castle",
+      "entry": "main:L4C7A",
+      "setup": {
+        "activeOwner1624": 0,
+        "targetProvinceC9D7": 3,
+        "provinceCountC8A1": 5,
+        "ownersBefore": {
+          "province1": 1,
+          "province2": 2,
+          "province3": 2,
+          "province4": 2,
+          "province5": 0
+        },
+        "player2HomeProvinceC8FD": 3,
+        "provinceCountsBefore": {
+          "royalists0": 1,
+          "player1": 1,
+          "player2": 3,
+          "player3": 0
+        }
+      },
+      "expected": {
+        "ownersAfter": {
+          "province1": 1,
+          "province2": 0,
+          "province3": 0,
+          "province4": 0,
+          "province5": 0
+        },
+        "provinceCountsAfter": {
+          "royalists0": 4,
+          "player1": 1,
+          "player2": 0,
+          "player3": 0
+        },
+        "eliminatedPlayer2StatCountersAfter": {
+          "$C9FB+2": 0,
+          "$CA00+2": 0,
+          "$CA05+2": 0
+        },
+        "activeOwnerRestored": 0,
+        "rawMemory": {
+          "$C5DB..$C5DF": ["0x01", "0x00", "0x00", "0x00", "0x00"],
+          "$C706..$C70B": ["0x00", "0x04", "0x0C", "0x09", "0x05", "0x03"],
+          "$C8B5..$C8B8": ["0x04", "0x01", "0x00", "0x00"],
+          "$C8FB..$C8FE": ["0x00", "0x01", "0x03", "0x00"],
+          "$C9FB..$C9FE": ["0x00", "0x00", "0x00", "0x00"],
+          "$CA00..$CA08": ["0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00"],
+          "$1624": "0x00"
+        }
+      }
+    }
+  ],
+  "conclusions": [
+    "main:L4C7A only eliminates a non-royalist previous owner when the captured target province equals that owner's $C8FB home province.",
+    "All provinces still owned by the eliminated player are reassigned to the active owner in $1624; soldier and fortification arrays are not modified by L4C7A.",
+    "The active owner's $C8B5 province count receives the eliminated owner's full $C8B5 count, then the eliminated owner's $C8B5 is zeroed.",
+    "The eliminated owner's $C9FB/$CA00/$CA05 stat counters are zeroed, but $C8FB home-province markers are not cleared.",
+    "Owner 0 follows the same transfer/counting logic and restores active owner 0 after the royalist message path."
+  ]
+}

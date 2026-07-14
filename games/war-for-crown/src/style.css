@@ -1,0 +1,18 @@
+html,
+body,
+#app {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+  background: #040809;
+  color: #79e4df;
+  font-family: "Atkinson Hyperlegible";
+}
+
+canvas {
+  display: block;
+}

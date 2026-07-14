@@ -1,0 +1,62 @@
+bload "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw" 0 0800
+bload "/tmp/wfc-c64-logic/disasm/erbent1a-menue.raw" 0 3000
+> 218b ad fb 02 a8 ee fb 02 b9 fc 02 60
+> c000 a2 01 4c 97 51
+break 51a1
+f c576 c57e 00
+> 02fb 00
+> 02fc 01
+> c001 01
+g c000
+m 02fb 02fb
+m c577 c57e
+f c576 c57e 00
+> 02fb 00
+> 02fc 02
+> c001 02
+g c000
+m 02fb 02fb
+m c577 c57e
+f c576 c57e 00
+> 02fb 00
+> 02fc 03
+> c001 03
+g c000
+m 02fb 02fb
+m c577 c57e
+f c576 c57e 00
+> 02fb 00
+> 02fc 04
+> c001 04
+g c000
+m 02fb 02fb
+m c577 c57e
+f c576 c57e 00
+> 02fb 00
+> 02fc 05
+> c001 05
+g c000
+m 02fb 02fb
+m c577 c57e
+f c576 c57e 00
+> 02fb 00
+> 02fc 06
+> c001 06
+g c000
+m 02fb 02fb
+m c577 c57e
+f c576 c57e 00
+> 02fb 00
+> 02fc 07
+> c001 07
+g c000
+m 02fb 02fb
+m c577 c57e
+f c576 c57e 00
+> 02fb 00
+> 02fc 08 07
+> c001 08
+g c000
+m 02fb 02fb
+m c577 c57e
+quit

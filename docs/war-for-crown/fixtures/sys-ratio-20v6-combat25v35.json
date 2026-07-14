@@ -1,0 +1,14 @@
+{
+  "routine": "sys:L9426",
+  "monitorCommands": "docs/war-for-crown/fixtures/sys-ratio-20v6-combat25v35.mon",
+  "input": {
+    "attackerSoldiers": 20,
+    "defenderSoldiers": 6,
+    "attackerCombatPercent": 25,
+    "defenderCombatPercent": 35
+  },
+  "expected": {
+    "ratioBytesLittleEndian": ["0x14", "0xee", "0x07", "0x00"],
+    "ratioDecimal": 519700
+  }
+}

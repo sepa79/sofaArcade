@@ -1,0 +1,117 @@
+bload "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw" 0 3000
+bload "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw" 0 9400
+> c000 20 04 55 ea
+break c003
+> 1ca0 60
+> 1b69 60
+> 1b0d 60
+> 1fd5 60
+> 2ac5 60
+> 305d 60
+> 3060 60
+> 9a2a a9 0c 60
+
+bload "/tmp/wfc-c64-logic/disasm/erbent1a-zc.raw" 0 5500
+> 982f a9 03 8d 49 98 60
+> 1624 01
+> c896 04
+> c8a1 04
+> c8b5 00 02 00 00 00
+> c5da 00 02 01 01 02
+> c6a2 00 02 04 04 05
+> 161f 00
+g c000
+m c6a2 c6a6
+m 161f 161f
+m 9849 9849
+
+bload "/tmp/wfc-c64-logic/disasm/erbent1a-zf.raw" 0 5500
+> 982f a9 05 8d 49 98 60
+> 1624 01
+> c8a1 03
+> c5da 00 02 02 01
+> c706 00 00 00 64
+> c76a 00 00 00 00
+> c7ce 00 00 00 00
+> 5b 00 00 00 00 00 00 00 00
+> 1602 00 00 00
+> 161f 00
+g c000
+m c706 c709
+m c76a c76d
+m c7ce c7d1
+m 5b 62
+m 1602 1604
+m 161f 161f
+m 9849 9849
+
+bload "/tmp/wfc-c64-logic/disasm/erbent1a-zg.raw" 0 5500
+> 982f a9 05 8d 49 98 60
+> 1624 01
+> c8a1 03
+> c5da 00 02 02 01
+> c706 00 00 00 64
+> c76a 00 00 00 00
+> c7ce 00 00 00 00
+> ca49 00 00
+> 5b 00 00 00 00 00 00 00 00
+> 1602 00 00 00
+> 161f 00
+g c000
+m c706 c709
+m ca49 ca4a
+m 1602 1604
+m 161f 161f
+
+bload "/tmp/wfc-c64-logic/disasm/erbent1a-zm.raw" 0 5500
+> 1624 02
+> c8fb 00 03 02
+> c706 00 00 07 5a
+> c76a 00 00 00 00
+> c7ce 00 00 00 00
+> ca49 0a 01
+> 1602 00 00 00
+> 161f 00
+g c000
+m c706 c709
+m ca49 ca4a
+m 1602 1604
+m 161f 161f
+
+bload "/tmp/wfc-c64-logic/disasm/erbent1a-zj.raw" 0 5500
+> 982f a9 06 8d 49 98 60
+> 1624 01
+> c8a1 03
+> c8a5 02
+> c8b5 01 02
+> c8cf 00 04
+> c9d9 00 00
+> c8fb 00 01
+> c5da 00 01 01 02
+> c706 00 20 01 08
+> c76a 00 00 00 00
+> c7ce 00 00 00 00
+> 161f 00
+g c000
+m c5da c5dd
+m c706 c709
+m c8b5 c8b6
+m 161f 161f
+
+bload "/tmp/wfc-c64-logic/disasm/erbent1a-zn.raw" 0 5500
+> 982f a9 06 8d 49 98 60
+> 1624 01
+> c896 04
+> c8a2 0c
+> c8b5 00 02 02 00 00
+> c8cf 00 04 03 00 00
+> c8bb 00 14 00 00 00
+> c8c0 00 00 00 00 00
+> c8c5 00 00 00 00 00
+> 1602 00 00 00
+g c000
+m c8bb c8bf
+m c8c0 c8c4
+m c8c5 c8c9
+m 1602 1604
+quit

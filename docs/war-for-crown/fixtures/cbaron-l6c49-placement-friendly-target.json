@@ -1,0 +1,106 @@
+{
+  "id": "cbaron-l6c49-placement-friendly-target",
+  "type": "derived-vice-monitor-fixture",
+  "source": {
+    "disk": "ERBENT1A.D64",
+    "modules": {
+      "kernal": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+        "loadAddress": "0x0800"
+      },
+      "main": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+        "loadAddress": "0x3000"
+      },
+      "cbaron": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-cbaron.raw",
+        "loadAddress": "0x5800"
+      },
+      "sys": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+        "loadAddress": "0x9400"
+      }
+    },
+    "monitorCommands": "docs/war-for-crown/fixtures/cbaron-l6c49-placement-friendly-target.mon",
+    "viceCommand": "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/cbaron-l6c49-placement-friendly-target.mon -limitcycles 1000000"
+  },
+  "routine": {
+    "module": "cbaron",
+    "entry": "0x6C49",
+    "description": "AI surplus placement/staging selection for movement cleanup"
+  },
+  "initialState": {
+    "activePlayer": 1,
+    "playerCount": 1,
+    "provinceCount": 5,
+    "royalistAttitude": 0,
+    "screenPointer": "0x0400",
+    "surplusSoldiers": 5,
+    "mapCells": {
+      "0xC415": 1,
+      "0xC416": 2,
+      "0xC417": 3,
+      "0xC418": 4,
+      "0xC419": 5
+    },
+    "ownersByProvince": {
+      "1": 0,
+      "2": 1,
+      "3": 0,
+      "4": 1,
+      "5": 0
+    },
+    "villagesByProvince": {
+      "1": 2,
+      "2": 2,
+      "3": 2,
+      "4": 2,
+      "5": 8
+    },
+    "soldiersByProvince": {
+      "1": 1,
+      "2": 1,
+      "3": 1,
+      "4": 1,
+      "5": 1
+    },
+    "flagsByProvince": {
+      "1": "0x00",
+      "2": "0x01",
+      "3": "0x08",
+      "4": "0x01",
+      "5": "0x00"
+    }
+  },
+  "observed": {
+    "breakpoint": "0xC003",
+    "bestScoreBytes": ["0x02", "0x00", "0x00"],
+    "chosenAmount": 1,
+    "remainingSurplus": 4,
+    "currentTarget": 3,
+    "selectedStagingProvince": 4,
+    "rememberedTarget": 3,
+    "rememberedTargetSoldiers": 1,
+    "soldiersByProvinceAfter": {
+      "1": 1,
+      "2": 1,
+      "3": 1,
+      "4": 2,
+      "5": 1
+    },
+    "flagsByProvinceAfter": {
+      "1": "0x00",
+      "2": "0x01",
+      "3": "0x00",
+      "4": "0x01",
+      "5": "0x00"
+    }
+  },
+  "assertionsForPort": [
+    "For a friendly royalist target, L6484 returns target need 1 before adjacent mobile support is subtracted.",
+    "With both adjacent owned staging provinces holding one soldier, L5069 subtracts zero mobile support and the target need remains 1.",
+    "L6C49 selects staging province 4 in this setup because its non-active neighbours yield the greater placement score.",
+    "The selected amount is deposited immediately into the staging province and subtracted from the surplus.",
+    "When C9DE + activePlayer is empty, L6C49 stores the non-owned target id and target soldier count for later AI planning."
+  ]
+}

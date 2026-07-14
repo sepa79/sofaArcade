@@ -1,0 +1,108 @@
+{
+  "fixture": "main-retreat-placement-multiple-destinations",
+  "entry": "main:L4F49 attacker return distribution and main:L4FA7 defender retreat distribution",
+  "modules": {
+    "kernal": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+      "loadAddress": "0x0800"
+    },
+    "main": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+      "loadAddress": "0x3000"
+    },
+    "sys": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+      "loadAddress": "0x9400"
+    }
+  },
+  "patchedRoutines": {
+    "redraw": "kernal/main display helper $1B69 is patched to RTS; arithmetic and distribution helpers are not patched"
+  },
+  "monitor": {
+    "commands": "docs/war-for-crown/fixtures/main-retreat-placement-multiple-destinations.mon",
+    "viceCommand": "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/main-retreat-placement-multiple-destinations.mon -limitcycles 1000000",
+    "result": "exit code 0"
+  },
+  "cases": [
+    {
+      "name": "attacker-survivors-distribute-over-selected-source-set",
+      "entry": "main:L4F49",
+      "setup": {
+        "provinceCountC8A1": 5,
+        "survivorsC9D0C9D2": 8,
+        "selectedMarker": "C832 & 0x10",
+        "markedProvinces": [2, 4, 5],
+        "soldiersBefore": {
+          "province2": 1,
+          "province4": 10,
+          "province5": 20
+        }
+      },
+      "expected": {
+        "countedDestinations": 3,
+        "baseShare": 2,
+        "remainder": 2,
+        "scanOrderForRemainder": "province ids from C8A1 down to 1",
+        "addedByProvince": {
+          "province5": 3,
+          "province4": 3,
+          "province2": 2
+        },
+        "soldiersAfter": {
+          "province2": 3,
+          "province4": 13,
+          "province5": 23
+        },
+        "rawMemory": {
+          "$C706..$C70C": ["0x00", "0x00", "0x03", "0x00", "0x0D", "0x17", "0x00"],
+          "$C832..$C838": ["0x00", "0x00", "0x10", "0x00", "0x10", "0x10", "0x00"],
+          "$005B..$0062": ["0x02", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00"],
+          "$161F": "0x01"
+        }
+      }
+    },
+    {
+      "name": "defender-survivors-distribute-over-retreat-set",
+      "entry": "main:L4FA7",
+      "setup": {
+        "provinceCountC8A1": 5,
+        "survivorsC9D3C9D5": 7,
+        "selectedMarker": "C832 & 0x80",
+        "markedProvinces": [1, 3, 4],
+        "soldiersBefore": {
+          "province1": 1,
+          "province3": 2,
+          "province4": 3
+        }
+      },
+      "expected": {
+        "countedDestinations": 3,
+        "baseShare": 2,
+        "remainder": 1,
+        "scanOrderForRemainder": "province ids from C8A1 down to 1",
+        "addedByProvince": {
+          "province4": 3,
+          "province3": 2,
+          "province1": 2
+        },
+        "soldiersAfter": {
+          "province1": 3,
+          "province3": 4,
+          "province4": 6
+        },
+        "rawMemory": {
+          "$C706..$C70C": ["0x00", "0x03", "0x00", "0x04", "0x06", "0x00", "0x00"],
+          "$C832..$C838": ["0x00", "0x80", "0x00", "0x80", "0x80", "0x00", "0x00"],
+          "$005B..$0062": ["0x02", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00"],
+          "$161F": "0x01"
+        }
+      }
+    }
+  ],
+  "conclusions": [
+    "main:L4F49 distributes attacker survivors from $C9D0..$C9D2 over provinces marked with $C832 & $10.",
+    "main:L4FA7 distributes defender survivors from $C9D3..$C9D5 over provinces marked with $C832 & $80.",
+    "Both routines count marked destinations, divide survivors by that count through sys:L9728, add the base share to each marked province, and assign one extra survivor to each marked province while the remainder is nonzero.",
+    "The scan order is descending by province id from $C8A1 to 1, so remainder soldiers go to the highest-numbered legal destinations first."
+  ]
+}

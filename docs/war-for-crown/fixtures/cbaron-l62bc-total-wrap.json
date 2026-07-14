@@ -1,0 +1,37 @@
+{
+  "fixture": "cbaron-l62bc-total-wrap",
+  "entry": "cbaron:L62BC",
+  "modules": {
+    "cbaron": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-cbaron.raw",
+      "loadAddress": "0x5800"
+    }
+  },
+  "monitor": {
+    "commands": "docs/war-for-crown/fixtures/cbaron-l62bc-total-wrap.mon",
+    "viceCommand": "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/cbaron-l62bc-total-wrap.mon -limitcycles 1000000"
+  },
+  "patchedRoutines": {
+    "cbaron:L63B9": "patched to store fixed requirement $161A..$161C = 00 00 90 and RTS"
+  },
+  "setup": {
+    "provinceCount": 2,
+    "markedWorklistFlags": {
+      "1": "0x10",
+      "2": "0x10"
+    },
+    "perProvinceRequirement": {
+      "bytes": ["0x00", "0x00", "0x90"],
+      "value": 9437184
+    }
+  },
+  "observed": {
+    "totalRequirementC9D3ToC9D5": ["0x00", "0x00", "0x20"],
+    "lastRequirement161ATo161C": ["0x00", "0x00", "0x90"]
+  },
+  "conclusion": [
+    "L62BC sums marked province requirements through three stack bytes using ADC.",
+    "The total is stored in $C9D3..$C9D5 as a three-byte value and wraps at 0x1000000.",
+    "Two requirements of 0x900000 produce a final total of 0x200000, not 0x1200000."
+  ]
+}

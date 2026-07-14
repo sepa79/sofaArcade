@@ -1,0 +1,96 @@
+{
+  "fixture": "cbaron-l6dfa-fallback-frontier-distribution",
+  "entry": "cbaron:L6DFA",
+  "modules": {
+    "kernal": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+      "loadAddress": "0x0800"
+    },
+    "main": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+      "loadAddress": "0x3000"
+    },
+    "cbaron": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-cbaron.raw",
+      "loadAddress": "0x5800"
+    },
+    "sys": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+      "loadAddress": "0x9400"
+    }
+  },
+  "patchedRoutines": {
+    "ui": "$1b69 returns immediately"
+  },
+  "setup": {
+    "activePlayer": 1,
+    "provinceCount": 3,
+    "mapShape": "line: 1-2-3",
+    "ownersByProvince": {
+      "1": 1,
+      "2": 1,
+      "3": 2
+    },
+    "soldiersByProvince": {
+      "1": 1,
+      "2": 1,
+      "3": 1
+    },
+    "initialFlagsByProvince": {
+      "1": "0x01",
+      "2": "0x01",
+      "3": "0x00"
+    },
+    "surplus": 5
+  },
+  "expected": {
+    "distributedSoldiers": 5,
+    "finalSoldiersByProvince": {
+      "1": 1,
+      "2": 6,
+      "3": 1
+    },
+    "finalFlagsByProvince": {
+      "1": "0x01",
+      "2": "0x91",
+      "3": "0x00"
+    },
+    "rawMemory": {
+      "$1617..$161f": [
+        "0x05",
+        "0x00",
+        "0x00",
+        "0xff",
+        "0xff",
+        "0xff",
+        "0x00",
+        "0x00",
+        "0x01"
+      ],
+      "$c9d0..$c9d2": [
+        "0x05",
+        "0x00",
+        "0x00"
+      ],
+      "$c706..$c70a": [
+        "0x00",
+        "0x01",
+        "0x06",
+        "0x01",
+        "0x00"
+      ],
+      "$c832..$c836": [
+        "0x80",
+        "0x01",
+        "0x91",
+        "0x00",
+        "0x00"
+      ]
+    }
+  },
+  "conclusion": [
+    "L6DFA converts $01 markers into redistribution candidates, then main:L514A filters that set to frontier context before main:L4F49 distribution.",
+    "In this line-map fixture only province 2 remains on the filtered $10 worklist, so all five surplus soldiers are added there.",
+    "Fallback distribution consumes $1617..$1619 through $C9D0..$C9D2; it is not a separate reserve pool."
+  ]
+}

@@ -1,0 +1,87 @@
+{
+  "fixture": "kampf-l8461-hostile-post-battle-repeat",
+  "entry": "kampf:L8461 through battle entry and main:L4C50 repeat",
+  "modules": {
+    "kernal": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+      "loadAddress": "0x0800"
+    },
+    "main": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+      "loadAddress": "0x3000"
+    },
+    "kampf": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-kampf.raw",
+      "loadAddress": "0x7e00"
+    },
+    "sys": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+      "loadAddress": "0x9400"
+    }
+  },
+  "monitor": {
+    "commands": "docs/war-for-crown/fixtures/kampf-l8461-hostile-post-battle-repeat.mon",
+    "viceCommand": "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/kampf-l8461-hostile-post-battle-repeat.mon -limitcycles 3000000"
+  },
+  "patchedRoutines": {
+    "kernal:L1204": "patched to RTS for terrain label rendering in the battle screen",
+    "kernal:L1CA0": "patched to RTS for text rendering",
+    "kernal:L1B69": "patched to RTS for map redraw",
+    "kernal:L1FD5": "patched to RTS for delay",
+    "kernal:L2AC5": "patched to RTS for screen clear",
+    "kernal:L2AEF": "patched to RTS for text-window setup",
+    "kernal:L23FB": "patched to RTS for sprite/screen redraw",
+    "main:L4D45": "patched to RTS for confirmation prompt avoidance",
+    "kampf:L853A": "patched to RTS for pre-battle province display",
+    "kampf:L8856": "patched to RTS for per-round battle animation",
+    "kampf:L8C09": "patched to RTS for IRQ/screen setup",
+    "kampf:L8C71": "patched to RTS for defender-lost result presentation",
+    "kampf:L8C8E": "patched to RTS for attacker-lost result presentation",
+    "kampf:L8905": "patched to RTS for battle bar animation",
+    "kampf:L9A5D": "patched to RTS for battle screen bitmap setup",
+    "sys:LCDE9": "patched to RTS for animation/audio side effects",
+    "sys:LCE00": "patched to RTS for animation/audio side effects",
+    "kernal:L218B": "patched to return 0x7b for deterministic combat helper paths"
+  },
+  "initialState": {
+    "activeOwner": 0,
+    "provinceCount": 4,
+    "royalistAttitude": 2,
+    "royalistCooperation": 0,
+    "royalistSuccessEvaluation": 1,
+    "advancedCombatModifiers": 0,
+    "ownersByProvince": [0, 1, 0, 1],
+    "soldiersByProvince": [50, 1, 50, 1],
+    "terrainByProvince": [2, 2, 2, 2],
+    "initialProvinceFlagsC832ToC836": ["0x80", "0x00", "0x00", "0x90", "0x00"]
+  },
+  "observed": {
+    "firstL4C50": {
+      "description": "royalists capture province 4, then main:L4C50 returns to attack dispatch",
+      "ownersC5daToC5de": ["0x00", "0x00", "0x01", "0x00", "0x00"],
+      "soldiersLowC706ToC70a": ["0x00", "0x32", "0x01", "0x18", "0x19"],
+      "soldiersMidC76aToC76e": ["0x00", "0x00", "0x00", "0x00", "0x00"],
+      "soldiersHighC7ceToC7d2": ["0x00", "0x00", "0x00", "0x00", "0x00"],
+      "provinceCountsC8b5ToC8b6": ["0x03", "0x01"],
+      "battleStateC9d0ToC9d9": ["0x2f", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x04", "0x01", "0x00"],
+      "provinceFlagsC832ToC836": ["0x80", "0x00", "0x00", "0x11", "0x11"]
+    },
+    "secondL4C50": {
+      "description": "the post-battle dispatch repeats L8461 and royalists capture province 2",
+      "ownersC5daToC5de": ["0x00", "0x00", "0x00", "0x00", "0x00"],
+      "soldiersLowC706ToC70a": ["0x00", "0x32", "0x0b", "0x0c", "0x19"],
+      "soldiersMidC76aToC76e": ["0x00", "0x00", "0x00", "0x00", "0x00"],
+      "soldiersHighC7ceToC7d2": ["0x00", "0x00", "0x00", "0x00", "0x00"],
+      "provinceCountsC8b5ToC8b6": ["0x04", "0x00"],
+      "battleStateC9d0ToC9d9": ["0x15", "0x00", "0x00", "0x00", "0x00", "0x00", "0x00", "0x02", "0x01", "0x00"],
+      "provinceFlagsC832ToC836": ["0x80", "0x80", "0x11", "0x91", "0x00"]
+    }
+  },
+  "assertionsForPort": [
+    "Hostile royalist attacks are not a one-shot pre-battle event. After battle resolution, main:L4C50 jumps to main:L487E, active owner 0 jumps to $3009, and $3009 enters kampf:L8461 again.",
+    "A resolved hostile royalist battle can therefore trigger another royalist attack before returning to the normal player loop.",
+    "The repeated attack uses the same normal battle resolution and map-capture code as player and computer-baron attacks.",
+    "L8C34 is part of post-battle logic and must not be removed: when the captured target has fortification, it decrements the target fortification before capture-side bookkeeping.",
+    "The visual battle-screen routines patched in this fixture are rendering or delay paths only; source selection, threshold check, casualty calculation, map capture, C832 spent markers, and L4C50 repeat dispatch remain live."
+  ]
+}

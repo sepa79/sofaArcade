@@ -1,0 +1,132 @@
+{
+  "id": "cbaron-l6c49-placement-score-low16-overflow",
+  "type": "derived-vice-monitor-fixture",
+  "source": {
+    "disk": "ERBENT1A.D64",
+    "modules": {
+      "kernal": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+        "loadAddress": "0x0800"
+      },
+      "main": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+        "loadAddress": "0x3000"
+      },
+      "cbaron": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-cbaron.raw",
+        "loadAddress": "0x5800"
+      },
+      "kampf": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-kampf.raw",
+        "loadAddress": "0x7E00"
+      },
+      "sys": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+        "loadAddress": "0x9400"
+      }
+    },
+    "monitorCommands": "docs/war-for-crown/fixtures/cbaron-l6c49-placement-score-low16-overflow.mon",
+    "viceCommand": "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/cbaron-l6c49-placement-score-low16-overflow.mon -limitcycles 1000000"
+  },
+  "routine": {
+    "module": "cbaron",
+    "entry": "0x6C49",
+    "description": "AI surplus placement score low-16 overflow behavior"
+  },
+  "patches": [
+    {
+      "address": "0x6E2C",
+      "bytes": ["0xA9", "0x06", "0x8D", "0x4D", "0x6F", "0x60"],
+      "meaning": "replace L6E2C with class 6 return to isolate placement-score overflow arithmetic"
+    }
+  ],
+  "initialState": {
+    "activePlayer": 1,
+    "playerCount": 1,
+    "provinceCount": 9,
+    "royalistAttitude": 0,
+    "surplusSoldiers": 5,
+    "targetNeed": 1,
+    "targetProvince": 5,
+    "candidateStagingProvinces": [4, 6],
+    "mapCells": {
+      "0xC415": 2,
+      "0xC417": 8,
+      "0xC428": 1,
+      "0xC429": 4,
+      "0xC42A": 5,
+      "0xC42B": 6,
+      "0xC42C": 7,
+      "0xC43D": 3,
+      "0xC43F": 9
+    },
+    "ownersByProvince": {
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 1,
+      "5": 0,
+      "6": 1,
+      "7": 0,
+      "8": 0,
+      "9": 0
+    },
+    "villagesByProvince": {
+      "1": 255,
+      "2": 255,
+      "3": 255,
+      "4": 2,
+      "5": 255,
+      "6": 2,
+      "7": 1,
+      "8": 1,
+      "9": 1
+    },
+    "flagsByProvince": {
+      "4": "0x01",
+      "5": "0x08",
+      "6": "0x01"
+    }
+  },
+  "observed": {
+    "internalBreakpoints": [
+      {
+        "breakpoint": "0x6D88",
+        "stagingProvince": 6,
+        "weightedProductBytes": ["0xA0", "0x50", "0x00", "0x00"],
+        "bestScoreBeforeCandidate": ["0x00", "0x00", "0x00"],
+        "targetNeed": ["0x01", "0x00", "0x00"]
+      },
+      {
+        "breakpoint": "0x6D88",
+        "stagingProvince": 4,
+        "weightedProductBytes": ["0xC0", "0x3E", "0x01", "0x00"],
+        "bestScoreBeforeCandidate": ["0x00", "0x00", "0xA0"],
+        "targetNeed": ["0x01", "0x00", "0x00"]
+      }
+    ],
+    "finalBreakpoint": "0xC003",
+    "chosenAmount": 1,
+    "remainingSurplus": 4,
+    "currentTarget": 5,
+    "selectedStagingProvince": 4,
+    "rememberedTarget": 5,
+    "rememberedTargetSoldiers": 1,
+    "soldiersByProvinceAfter": {
+      "4": 2,
+      "6": 1
+    },
+    "flagsByProvinceAfter": {
+      "4": "0x01",
+      "5": "0x00",
+      "6": "0x01"
+    }
+  },
+  "assertionsForPort": [
+    "After the weighted placement product is calculated, L6C49 copies only product bytes $5F/$60 into dividend bytes $5D/$5E.",
+    "Product bytes $61/$62 are discarded before the division setup; a port must not use the full 32-bit weighted product here.",
+    "In this fixture staging province 4 produces weighted product 0x00013EC0, but the next divide step only sees low 16 bits 0x3EC0 shifted into the dividend.",
+    "The score bytes in $1602..$1604 are clobbered later by the redraw/helper path, so score assertions must be taken at internal breakpoints, not at routine exit.",
+    "With the forced class-6 multiplier, C64 selects staging province 4 and deposits one soldier there."
+  ]
+}

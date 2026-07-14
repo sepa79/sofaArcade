@@ -1,0 +1,120 @@
+{
+  "fixture": "cbaron-l6ac3-post-l63b9-requirement",
+  "type": "derived-vice-monitor-fixture",
+  "entry": "cbaron:L6A64",
+  "breakpoint": "cbaron:$6AD1, immediately after L6AC3 calls L63B9",
+  "monitor": {
+    "monitorCommands": "docs/war-for-crown/fixtures/cbaron-l6ac3-post-l63b9-requirement.mon",
+    "viceCommand": "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/cbaron-l6ac3-post-l63b9-requirement.mon -limitcycles 1000000"
+  },
+  "modules": {
+    "kernal": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+      "loadAddress": "0x0800"
+    },
+    "main": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+      "loadAddress": "0x3000"
+    },
+    "cbaron": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-cbaron.raw",
+      "loadAddress": "0x5800"
+    },
+    "kampf": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-kampf.raw",
+      "loadAddress": "0x7e00"
+    },
+    "sys": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+      "loadAddress": "0x9400"
+    }
+  },
+  "patchedRoutines": {
+    "ui": "$1b69 returns immediately",
+    "kernal:L218B": "returns 0x7b",
+    "simpleRules": "$CA48 is forced to 0 before running L6A64"
+  },
+  "setup": {
+    "activePlayer": 1,
+    "provinceCount": 3,
+    "mapShape": "line: 1-2-3",
+    "ownersByProvince": {
+      "1": 1,
+      "2": 1,
+      "3": 2
+    },
+    "soldiersByProvince": {
+      "1": 1,
+      "2": 10,
+      "3": 3
+    },
+    "initialFlagsByProvince": {
+      "1": "0x00",
+      "2": "0x20",
+      "3": "0x00"
+    }
+  },
+  "observed": {
+    "selectedProvince": 2,
+    "strongestAdjacentMobileSoldiers": 2,
+    "combatContext9400To9408": [
+      "0x19",
+      "0x19",
+      "0x0a",
+      "0x0a",
+      "0x01",
+      "0x00",
+      "0x00",
+      "0x00",
+      "0x00"
+    ],
+    "requirement161aTo161c": [
+      "0x02",
+      "0x00",
+      "0x00"
+    ],
+    "rawMemory": {
+      "$1617..$161f": [
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x02",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x02"
+      ],
+      "$c706..$c70a": [
+        "0x00",
+        "0x01",
+        "0x0a",
+        "0x03",
+        "0x00"
+      ],
+      "$c832..$c836": [
+        "0x80",
+        "0x00",
+        "0x00",
+        "0x80",
+        "0x00"
+      ],
+      "$c9d0..$c9d8": [
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x02",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x01"
+      ]
+    }
+  },
+  "conclusion": [
+    "With simple-rules $CA48 = 0, L6AC3's immediate L63B9 requirement for province 2 is 2 soldiers.",
+    "The earlier frontierRequirement value 4 in the full L6A64 fixture was a later scratch value from redistribution, not the immediate L63B9 result.",
+    "The fixture also proves that direct monitor fixtures for combat setup must force $CA48 to 0 when they intend to model the simple C64 ruleset."
+  ]
+}

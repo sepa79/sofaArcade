@@ -1,0 +1,26 @@
+{
+  "routine": "kampf:L8618",
+  "monitorCommands": "docs/war-for-crown/fixtures/kampf-round-20v6-terrain4-fort0-rng7b.mon",
+  "input": {
+    "attackerSoldiers": 20,
+    "defenderSoldiers": 6,
+    "attackerCombatPercent": 25,
+    "defenderCombatPercent": 35,
+    "attackerHitDenominator": 10,
+    "defenderHitDenominator": 10,
+    "c64TerrainId": 4,
+    "fortification": 0,
+    "rngPatch": {
+      "address": "0x218b",
+      "bytes": ["0xa9", "0x7b", "0x60"]
+    }
+  },
+  "expected": {
+    "attackerSoldiersAfterRound": 19,
+    "defenderSoldiersAfterRound": 0
+  },
+  "observedMemory": {
+    "c9d0_c9d5": ["0x13", "0x00", "0x00", "0x00", "0x00", "0x00"],
+    "note": "L92C2..L92C7 are shifted later by stat-counter accounting, so final soldier memory is the canonical round-result assertion."
+  }
+}

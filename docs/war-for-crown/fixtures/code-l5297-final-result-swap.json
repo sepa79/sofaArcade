@@ -1,0 +1,27 @@
+{
+  "routine": "code:L5297",
+  "purpose": "Prove the final-result bridge used before code:L5960 reads $4DF5.",
+  "input": {
+    "ca74": "0x22",
+    "ca75": "0x03",
+    "ca76": "0x44",
+    "4df4": "0xdd",
+    "4df5": "0xee",
+    "4df6": "0xcc"
+  },
+  "expected": {
+    "ca74": "0xdd",
+    "ca75": "0xee",
+    "ca76": "0xcc",
+    "4df4": "0x22",
+    "4df5": "0x03",
+    "4df6": "0x44"
+  },
+  "evidence": [
+    "code:L5960 starts with JSR code:L5305 before reading $4DF5.",
+    "code:L5305 calls code:L5030 and then jumps to code:L5297.",
+    "code:L5297 swaps the page window $C980..$CA7F with $4D00..$4DFF.",
+    "$CA75 has offset $F5 inside $C980..$CA7F, so the swap moves the final result byte to $4DF5.",
+    "The swap is bidirectional, so the old $4DF5 byte moves back to $CA75."
+  ]
+}

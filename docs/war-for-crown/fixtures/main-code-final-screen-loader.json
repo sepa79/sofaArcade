@@ -1,0 +1,188 @@
+{
+  "fixture": "main-code-final-screen-loader",
+  "entry": "main:L3384/L339B/L36ED and code:L5960",
+  "modules": {
+    "kernal": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+      "loadAddress": "0x0800"
+    },
+    "main": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+      "loadAddress": "0x3000"
+    },
+    "code": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-code.raw",
+      "loadAddress": "0x5000"
+    }
+  },
+  "patchedRoutines": {
+    "main display/input helpers": "$1CA0 and $2AC5 are patched to RTS; $4D45 is patched to return X=0 for the abort confirmation path",
+    "loader side effects": "code:$5003, $5297, $5305, and $9B1D are patched to RTS so filename construction can be observed without disk or screen side effects"
+  },
+  "monitor": {
+    "commands": "docs/war-for-crown/fixtures/main-code-final-screen-loader.mon",
+    "viceCommand": "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/main-code-final-screen-loader.mon -limitcycles 1000000"
+  },
+  "cases": [
+    {
+      "name": "human-player-continent-win",
+      "entry": "main:L3384",
+      "setup": {
+        "activePlayer": 1,
+        "computerFlagC9d9PlusPlayer": 0
+      },
+      "expected": {
+        "resultCodeCA75": 3,
+        "winnerRankC8cfPlusPlayer": 5,
+        "patchedFinalPath1d50To1d52": ["0xa0", "0x00", "0xb1"],
+        "rawMemory": {
+          "$ca75": "0x03",
+          "$c8cf..$c8d3": ["0x00", "0x05", "0x00", "0x00", "0x00"],
+          "$1d50..$1d52": ["0xa0", "0x00", "0xb1"]
+        }
+      }
+    },
+    {
+      "name": "ai-player-continent-win",
+      "entry": "main:L3384",
+      "setup": {
+        "activePlayer": 1,
+        "computerFlagC9d9PlusPlayer": 1
+      },
+      "expected": {
+        "resultCodeCA75": 1,
+        "winnerRankC8cfPlusPlayer": 5,
+        "patchedFinalPath1d50To1d52": ["0xa0", "0x00", "0xb1"],
+        "rawMemory": {
+          "$ca75": "0x01",
+          "$c8cf..$c8d3": ["0x00", "0x05", "0x00", "0x00", "0x00"],
+          "$1d50..$1d52": ["0xa0", "0x00", "0xb1"]
+        }
+      }
+    },
+    {
+      "name": "royalist-continent-win",
+      "entry": "main:L339B",
+      "expected": {
+        "resultCodeCA75": 2,
+        "patchedFinalPath1d50To1d52": ["0xa0", "0x00", "0xb1"],
+        "rawMemory": {
+          "$ca75": "0x02",
+          "$1d50..$1d52": ["0xa0", "0x00", "0xb1"]
+        }
+      }
+    },
+    {
+      "name": "abort-exit-result-code",
+      "entry": "main:L36ED",
+      "setup": {
+        "confirmation": "patched $4D45 returns X=0"
+      },
+      "expected": {
+        "resultCodeCA75": 4,
+        "patchedFinalPath1d50To1d52": ["0xa0", "0x00", "0xb1"],
+        "clearedCountersC9fbToCa09": [
+          "0x00",
+          "0x00",
+          "0x00",
+          "0x00",
+          "0x00",
+          "0x00",
+          "0x00",
+          "0x00",
+          "0x00",
+          "0x00",
+          "0x00",
+          "0x00",
+          "0x00",
+          "0x00",
+          "0x00"
+        ]
+      }
+    },
+    {
+      "name": "loader-result-code-one-loads-txtwin1",
+      "entry": "code:L5960",
+      "setup": {
+        "loaderResult4df5": 1
+      },
+      "expected": {
+        "filenameBytes59d1To59d9": [
+          "0x54",
+          "0x58",
+          "0x54",
+          "0x57",
+          "0x49",
+          "0x4e",
+          "0x31",
+          "0x2a",
+          "0x55"
+        ],
+        "filenameText": "TXTWIN1*"
+      }
+    },
+    {
+      "name": "loader-result-code-two-loads-txtwin2",
+      "entry": "code:L5960",
+      "setup": {
+        "loaderResult4df5": 2
+      },
+      "expected": {
+        "filenameBytes59d1To59d9": [
+          "0x54",
+          "0x58",
+          "0x54",
+          "0x57",
+          "0x49",
+          "0x4e",
+          "0x32",
+          "0x2a",
+          "0x55"
+        ],
+        "filenameText": "TXTWIN2*"
+      }
+    },
+    {
+      "name": "loader-result-code-three-loads-txtwin3",
+      "entry": "code:L5960",
+      "setup": {
+        "loaderResult4df5": 3
+      },
+      "expected": {
+        "filenameBytes59d1To59d9": [
+          "0x54",
+          "0x58",
+          "0x54",
+          "0x57",
+          "0x49",
+          "0x4e",
+          "0x33",
+          "0x2a",
+          "0x55"
+        ],
+        "filenameText": "TXTWIN3*"
+      }
+    },
+    {
+      "name": "loader-result-code-four-skips-txtwin-load",
+      "entry": "code:L5960",
+      "setup": {
+        "loaderResult4df5": 4,
+        "sentinelFilenameDigitBefore": "0x3f"
+      },
+      "expected": {
+        "filenameDigit59d7After": "0x3f",
+        "filenameTextAfter": "TXTWIN?*"
+      }
+    }
+  ],
+  "conclusion": [
+    "main:L3384 writes CA75=3 for a human continent winner and CA75=1 for an AI continent winner; both paths promote C8CF[player] to 5.",
+    "main:L339B writes CA75=2 for royalist continent victory.",
+    "main:L36ED writes CA75=4 for the abort/exit result and clears C9FB..CA09 before entering the same final path.",
+    "All main result paths patch $1D50..$1D52 to A0 00 B1 before the destructive PLA/PLA/RTS exit sequence.",
+    "code:L5960 maps loader result 1, 2, and 3 to TXTWIN1, TXTWIN2, and TXTWIN3 by writing the ASCII digit into $59D7.",
+    "code:L5960 skips the TXTWIN filename path when the loader result is 4.",
+    "The runtime bridge is fixture-backed separately: code:L5960 calls code:L5305 -> code:L5297, and that page swap moves CA75 to $4DF5 before the TXTWIN selector reads it."
+  ]
+}

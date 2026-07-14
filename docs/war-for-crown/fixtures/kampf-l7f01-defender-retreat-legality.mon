@@ -1,0 +1,85 @@
+bload "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw" 0 0800
+bload "/tmp/wfc-c64-logic/disasm/erbent1a-kampf.raw" 0 7e00
+> 7f57 68 68 ad 06 94 8d 20 c0 60
+> c000 20 01 7f ea
+break c003
+
+f c400 c4ff 00
+f c576 c579 00
+f c5da c5dd 00
+f c63e c641 00
+f c832 c835 00
+f c8fb c900 00
+f c9d0 c9da 00
+> c8a1 03
+> 1624 01
+> 161f 00
+> c9d7 02
+> c415 01 02 03
+> c5db 02 02 01
+> c8fd 03
+r SP = ff
+g c000
+m c020 c020
+m 9406 9406
+m c832 c835
+
+f c400 c4ff 00
+f c576 c579 00
+f c5da c5dd 00
+f c63e c641 00
+f c832 c835 00
+f c8fb c900 00
+f c9d0 c9da 00
+> c8a1 03
+> 1624 01
+> 161f 00
+> c9d7 02
+> c415 01 02 03
+> c5db 02 02 01
+> c8fd 02
+r SP = ff
+g c000
+m c020 c020
+m 9406 9406
+m c832 c835
+
+f c400 c4ff 00
+f c576 c579 00
+f c5da c5dd 00
+f c63e c641 00
+f c832 c835 00
+f c8fb c900 00
+f c9d0 c9da 00
+> c8a1 03
+> 1624 01
+> 161f 00
+> c9d7 02
+> c415 01 02 03
+> c5db 01 02 03
+> c8fd 03
+r SP = ff
+g c000
+m c020 c020
+m 9406 9406
+m c832 c835
+
+f c400 c4ff 00
+f c576 c579 00
+f c5da c5dd 00
+f c63e c641 00
+f c832 c835 00
+f c8fb c900 00
+f c9d0 c9da 00
+> c8a1 03
+> 1624 01
+> 161f 00
+> c9d7 02
+> c415 01 02 03
+> c5db 00 00 00
+r SP = ff
+g c000
+m c020 c020
+m 9406 9406
+m c832 c835
+quit

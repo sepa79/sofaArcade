@@ -1,0 +1,107 @@
+bload "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw" 0 0800
+bload "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw" 0 3000
+> 114c 60
+> 1162 60
+> 1ca0 60
+> 2ac5 60
+> 2028 a9 00 a2 00 60
+> c000 20 45 4d 8d 00 16 8e 01 16 08 68 8d 02 16 ea
+break c00e
+r SP = ff
+g c000
+m 1600 1602
+m 02c3 02c4
+> 2028 a9 01 a2 01 60
+r SP = ff
+g c000
+m 1600 1602
+m 02c3 02c4
+> 2028 4c 00 c1
+> c100 ee fb 02 ad fb 02 c9 01 d0 05 a2 07 a9 ff 60 a2 00 a9 00 60
+> 02fb 00
+r SP = ff
+g c000
+m 1600 1602
+m 02fb 02fb
+> c020 20 2b 4d 8d 03 16 8e 04 16 08 68 8d 05 16 ea
+break c02e
+> 2028 a9 00 a2 00 60
+r SP = ff
+g c020
+m 1603 1605
+> 2028 a9 01 a2 01 60
+r SP = ff
+g c020
+m 1603 1605
+> c040 20 38 4d 8d 07 16 8e 08 16 08 68 8d 09 16 ea
+break c04e
+> 2028 a9 00 a2 00 60
+r SP = ff
+g c040
+m 1607 1609
+> 2028 a9 01 a2 01 60
+r SP = ff
+g c040
+m 1607 1609
+> 437b a9 00 8d 06 16 4c 80 c0
+> 446b a9 01 8d 06 16 4c 80 c0
+> 45fe a9 02 8d 06 16 4c 80 c0
+> 42df a9 03 8d 06 16 4c 80 c0
+> 4371 a9 04 8d 06 16 4c 80 c0
+> 4752 a9 05 8d 06 16 4c 80 c0
+> c080 ea
+break c080
+> 2028 a9 00 a2 00 60
+> 1606 ff
+r SP = ff
+g 42b8
+m 1606 1606
+m 0040 0041
+> 2028 a9 01 a2 01 60
+> 1606 ff
+r SP = ff
+g 42b8
+m 1606 1606
+m 0040 0041
+> 2028 a9 02 a2 02 60
+> 1606 ff
+r SP = ff
+g 42b8
+m 1606 1606
+m 0040 0041
+> 2028 a9 03 a2 03 60
+> 1606 ff
+r SP = ff
+g 42b8
+m 1606 1606
+m 0040 0041
+> 2028 a9 04 a2 04 60
+> 1606 ff
+r SP = ff
+g 42b8
+m 1606 1606
+m 0040 0041
+> 2028 a9 05 a2 05 60
+> 1606 ff
+r SP = ff
+g 42b8
+m 1606 1606
+m 0040 0041
+> 4371 e0 00 d0 03 4c 6a 3e 4c a4 3f
+> 3e6a a9 40 8d 0a 16 4c 90 c0
+> 3fa4 a9 41 8d 0a 16 4c 90 c0
+> c090 ea
+break c090
+> 2028 a9 04 a2 00 60
+> 160a ff
+r SP = ff
+g 42b8
+m 160a 160a
+m 0040 0041
+> 2028 a9 04 a2 01 60
+> 160a ff
+r SP = ff
+g 42b8
+m 160a 160a
+m 0040 0041
+quit

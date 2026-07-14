@@ -1,0 +1,86 @@
+{
+  "id": "cbaron-l674a-source-pruning-overkill",
+  "type": "derived-vice-monitor-fixture",
+  "source": {
+    "disk": "ERBENT1A.D64",
+    "modules": {
+      "kernal": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+        "loadAddress": "0x0800"
+      },
+      "main": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+        "loadAddress": "0x3000"
+      },
+      "cbaron": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-cbaron.raw",
+        "loadAddress": "0x5800"
+      },
+      "kampf": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-kampf.raw",
+        "loadAddress": "0x7E00"
+      },
+      "sys": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+        "loadAddress": "0x9400"
+      }
+    },
+    "monitorCommands": "docs/war-for-crown/fixtures/cbaron-l674a-source-pruning-overkill.mon",
+    "viceCommand": "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/cbaron-l674a-source-pruning-overkill.mon -limitcycles 1000000"
+  },
+  "routine": {
+    "module": "cbaron",
+    "entry": "0x674A",
+    "description": "AI attack source pruning after a target has been selected"
+  },
+  "initialState": {
+    "activePlayer": 1,
+    "playerCount": 2,
+    "provinceCount": 3,
+    "terrainEffects": "enabled",
+    "mapCells": {
+      "0xC415": 1,
+      "0xC416": 2,
+      "0xC417": 3
+    },
+    "ownersByProvince": {
+      "1": 1,
+      "2": 2,
+      "3": 1
+    },
+    "soldiersByProvince": {
+      "1": 50,
+      "2": 1,
+      "3": 50
+    },
+    "targetProvince": 2,
+    "sourceFlagsBefore": {
+      "1": "0x10",
+      "2": "0x02",
+      "3": "0x10"
+    },
+    "attackSoldiersBefore": 98,
+    "defenderSoldiersBefore": 1
+  },
+  "observed": {
+    "breakpoint": "0xC003",
+    "attackSoldiersAfter": 49,
+    "defenderSoldiersAfter": 1,
+    "flagsByProvinceAfter": {
+      "1": "0x10",
+      "2": "0x02",
+      "3": "0x00"
+    },
+    "combatPercentBytes": {
+      "0x9400": "0x11",
+      "0x9401": "0x32"
+    }
+  },
+  "assertionsForPort": [
+    "L674A scans candidate targets and adjacent selected source provinces in descending C64 province order.",
+    "When removing a source leaves the reduced attack ratio at or above 0x01B3 (435), the source remains removed.",
+    "When removing the last remaining source leaves no attacking soldiers, L650C returns carry clear and L674A restores that source.",
+    "The pruning subtraction removes only the source's mobile soldiers: province soldiers minus one garrison.",
+    "In this fixture province 3 is pruned first, province 1 is restored, and the committed source set contains only province 1."
+  ]
+}

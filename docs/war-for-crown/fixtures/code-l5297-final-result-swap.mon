@@ -1,0 +1,12 @@
+bload "/tmp/wfc-c64-logic/disasm/erbent1a-code.raw" 0 5000
+> ca75 03
+> 4df5 ee
+> ca74 22
+> 4df4 dd
+> ca76 44
+> 4df6 cc
+break 5304
+g 5297
+m ca74 ca76
+m 4df4 4df6
+quit

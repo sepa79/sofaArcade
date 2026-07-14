@@ -1,0 +1,214 @@
+{
+  "fixture": "main-event-module-effects-money-oneshot",
+  "entry": "event modules at $5504",
+  "modules": {
+    "main": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+      "loadAddress": "0x3000"
+    },
+    "sys": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+      "loadAddress": "0x9400"
+    },
+    "events": {
+      "loadAddress": "0x5500",
+      "paths": [
+        "/tmp/wfc-c64-logic/disasm/erbent1a-za.raw",
+        "/tmp/wfc-c64-logic/disasm/erbent1a-zb.raw",
+        "/tmp/wfc-c64-logic/disasm/erbent1a-zh.raw",
+        "/tmp/wfc-c64-logic/disasm/erbent1a-zd.raw",
+        "/tmp/wfc-c64-logic/disasm/erbent1a-zy.raw",
+        "/tmp/wfc-c64-logic/disasm/erbent1a-zt.raw",
+        "/tmp/wfc-c64-logic/disasm/erbent1a-zw.raw",
+        "/tmp/wfc-c64-logic/disasm/erbent1a-zx.raw",
+        "/tmp/wfc-c64-logic/disasm/erbent1a-zv.raw"
+      ]
+    }
+  },
+  "patchedRoutines": {
+    "ui/display helpers": "$1CA0, $1B69, $1B0D, $1FD5, $2AC5, $2AEF, $305D, and $3060 are patched to RTS",
+    "sys:L982F": "patched per case to return a fixed value in A and store the same value in self-modified byte $9849"
+  },
+  "monitor": {
+    "commands": "docs/war-for-crown/fixtures/main-event-module-effects-money-oneshot.mon",
+    "viceCommand": "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/main-event-module-effects-money-oneshot.mon -limitcycles 2000000"
+  },
+  "cases": [
+    {
+      "name": "za-reduces-player-money-by-random-percent",
+      "module": "za",
+      "input": {
+        "activePlayer": 1,
+        "year": 4,
+        "moneyBefore": 100,
+        "lossRollReturn": "0x02",
+        "lossBasePercent": 5
+      },
+      "expected": {
+        "moneyBytesC8bbC8c0C8c5ForPlayer1": ["0x5d", "0x00", "0x00"],
+        "scratch5bTo62": ["0x5d", "0x00", "0x00", "0x00", "0x07", "0x00", "0x00", "0x00"],
+        "displayAmount1602To1604": ["0x07", "0x00", "0x00"],
+        "lossPercentCA73": 7,
+        "storedRandom9849": "0x02"
+      }
+    },
+    {
+      "name": "zb-adds-money-and-skips-reserve-when-full-rules-disabled",
+      "module": "zb",
+      "input": {
+        "activePlayer": 1,
+        "year": 4,
+        "moneyBefore": 20,
+        "reserveBefore": 68,
+        "fullRulesFlagCA55": 0,
+        "moneyRollReturn": "0x02"
+      },
+      "expected": {
+        "moneyBytesC8bbC8c0C8c5ForPlayer1": ["0x16", "0x00", "0x00"],
+        "reserveLowBytesCA2eToCA30": ["0x00", "0x44", "0x00"],
+        "scratch5fTo62": ["0x02", "0x00", "0x00", "0x00"],
+        "displayAmount1602To1604": ["0x02", "0x00", "0x00"],
+        "storedRandom9849": "0x02"
+      }
+    },
+    {
+      "name": "zh-adds-random-soldiers-to-home-province",
+      "module": "zh",
+      "input": {
+        "activePlayer": 1,
+        "year": 4,
+        "homeProvince": 2,
+        "homeSoldiersBefore": 7,
+        "soldierRollReturn": "0x02"
+      },
+      "expected": {
+        "soldiersLowC706ToC708": ["0x00", "0x00", "0x09"],
+        "soldiersMidC76aToC76c": ["0x00", "0x00", "0x00"],
+        "soldiersHighC7ceToC7d0": ["0x00", "0x00", "0x00"],
+        "scratch5fTo62": ["0x02", "0x00", "0x00", "0x00"],
+        "selectedProvince161f": 2,
+        "storedRandom9849": "0x02"
+      }
+    },
+    {
+      "name": "zd-removes-one-village-from-selected-owned-forest-province",
+      "module": "zd",
+      "input": {
+        "activePlayer": 1,
+        "provinceCount": 4,
+        "ownersByProvince1To4": [2, 1, 1, 2],
+        "terrainByProvince1To4": [3, 4, 4, 4],
+        "villagesByProvince1To4": [2, 4, 4, 5],
+        "moduleRollReturn": "0x03"
+      },
+      "expected": {
+        "villagesC6a2ToC6a6": ["0x00", "0x02", "0x04", "0x03", "0x05"],
+        "selectedProvince161f": 3,
+        "storedRandom9849": "0x03"
+      }
+    },
+    {
+      "name": "zy-decrements-selected-owned-fortification",
+      "module": "zy",
+      "input": {
+        "activePlayer": 1,
+        "provinceCount": 4,
+        "ownersByProvince1To4": [2, 1, 2, 2],
+        "fortificationsByProvince1To4": [0, 2, 0, 3],
+        "moduleRollReturn": "0x02"
+      },
+      "expected": {
+        "fortificationsC63eToC642": ["0x00", "0x00", "0x01", "0x00", "0x03"],
+        "selectedProvince161f": 2,
+        "storedRandom9849": "0x02"
+      }
+    },
+    {
+      "name": "zt-year-twelve-dragon-hoard-sets-once-flag",
+      "module": "zt",
+      "input": {
+        "activePlayer": 1,
+        "year": 12,
+        "moneyBefore": 20,
+        "flagBefore": "0x00",
+        "moneyRollReturn": "0x02"
+      },
+      "expected": {
+        "moneyBytesAfterFirstRun": ["0x16", "0x02", "0x00"],
+        "flagCA61ForPlayer1AfterFirstRun": "0x01",
+        "scratch5fTo62AfterFirstRun": ["0x02", "0x02", "0x00", "0x00"],
+        "displayAmount1602To1604AfterFirstRun": ["0x02", "0x02", "0x00"],
+        "moneyBytesAfterSecondRun": ["0x16", "0x02", "0x00"],
+        "flagCA61ForPlayer1AfterSecondRun": "0x01",
+        "storedRandom9849": "0x02"
+      }
+    },
+    {
+      "name": "zw-year-three-daughter-dowry-loses-money-once",
+      "module": "zw",
+      "input": {
+        "activePlayer": 1,
+        "year": 3,
+        "moneyBefore": 100,
+        "flagBefore": "0x00",
+        "lossRollReturn": "0x02",
+        "lossBasePercent": 1
+      },
+      "expected": {
+        "moneyBytesAfterFirstRun": ["0x61", "0x00", "0x00"],
+        "flagCA61ForPlayer1AfterFirstRun": "0x02",
+        "scratch5bTo62AfterFirstRun": ["0x61", "0x00", "0x00", "0x00", "0x03", "0x00", "0x00", "0x00"],
+        "displayAmount1602To1604AfterFirstRun": ["0x03", "0x00", "0x00"],
+        "lossPercentCA73": 3,
+        "moneyBytesAfterSecondRun": ["0x61", "0x00", "0x00"],
+        "flagCA61ForPlayer1AfterSecondRun": "0x02",
+        "storedRandom9849": "0x02"
+      }
+    },
+    {
+      "name": "zx-year-three-son-dowry-adds-money-once",
+      "module": "zx",
+      "input": {
+        "activePlayer": 1,
+        "year": 3,
+        "moneyBefore": 20,
+        "flagBefore": "0x00",
+        "moneyRollReturn": "0x02"
+      },
+      "expected": {
+        "moneyBytesAfterFirstRun": ["0x16", "0x00", "0x00"],
+        "flagCA61ForPlayer1AfterFirstRun": "0x08",
+        "scratch5fTo62AfterFirstRun": ["0x02", "0x00", "0x00", "0x00"],
+        "displayAmount1602To1604AfterFirstRun": ["0x02", "0x00", "0x00"],
+        "moneyBytesAfterSecondRun": ["0x16", "0x00", "0x00"],
+        "flagCA61ForPlayer1AfterSecondRun": "0x08",
+        "storedRandom9849": "0x02"
+      }
+    },
+    {
+      "name": "zv-bandits-found-is-year-five-gated",
+      "module": "zv",
+      "input": {
+        "activePlayer": 1,
+        "moneyBefore": 20,
+        "fullRulesFlagCA55": 0,
+        "moneyRollReturn": "0x02"
+      },
+      "expected": {
+        "moneyBytesAfterYearFourRun": ["0x14", "0x00", "0x00"],
+        "moneyBytesAfterYearFiveRun": ["0x16", "0x00", "0x00"],
+        "scratch5fTo62AfterYearFiveRun": ["0x02", "0x00", "0x00", "0x00"],
+        "storedRandom9849": "0x02"
+      }
+    }
+  ],
+  "conclusion": [
+    "Money-loss events use main:L3003 and store the reduced value back through main:L3054; the displayed amount is the loss, not the remaining money.",
+    "Money-gain events use main:L305A and add $5F..$61 to player money through main:L3045.",
+    "With $CA55 = 0, zb and zv skip their full-rules reserve branches.",
+    "zt, zw, and zx are one-shot per player through bits $01, $02, and $08 in $CA61 + player.",
+    "zd selects from owned forest provinces with at least one village and decrements exactly one village.",
+    "zy selects from owned provinces with fortification and decrements exactly one fortification level.",
+    "zh adds its generated soldier amount directly to the active player's home province."
+  ]
+}

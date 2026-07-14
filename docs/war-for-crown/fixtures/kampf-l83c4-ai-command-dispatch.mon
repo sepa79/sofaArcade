@@ -1,0 +1,71 @@
+bload "/tmp/wfc-c64-logic/disasm/erbent1a-kampf.raw" 0 7e00
+bload "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw" 0 9400
+> c000 20 c4 83 ad d9 c9 8d 20 c0 ea
+break c009
+
+f c9d9 c9dd 00
+> 1624 01
+> c9d8 02
+> c9da 00
+> c9db 01
+> 9406 03
+> 9486 38 60
+> 946f 38 60
+g c000
+m c020 c020
+
+f c9d9 c9dd 00
+> 1624 01
+> c9d8 02
+> c9da 01
+> c9db 01
+> 9406 03
+> 9486 18 60
+> 946f 18 60
+g c000
+m c020 c020
+
+f c9d9 c9dd 00
+> 1624 01
+> c9d8 02
+> c9da 01
+> c9db 01
+> 9406 03
+> 9486 18 60
+> 946f 38 60
+g c000
+m c020 c020
+
+f c9d9 c9dd 00
+> 1624 01
+> c9d8 02
+> c9da 01
+> c9db 01
+> 9406 00
+> 9486 38 60
+> 946f 38 60
+g c000
+m c020 c020
+
+f c9d9 c9dd 00
+> 1624 01
+> c9d8 00
+> c9da 00
+> c9db 00
+> 9406 03
+> 9486 38 60
+> 946f 38 60
+g c000
+m c020 c020
+
+f c9d9 c9dd 00
+> 1624 00
+> c9d8 02
+> c9da 00
+> c9db 00
+> 9406 00
+> 9486 38 60
+> 946f 18 60
+g c000
+m c020 c020
+quit

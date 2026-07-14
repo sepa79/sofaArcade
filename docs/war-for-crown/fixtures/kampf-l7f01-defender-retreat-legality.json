@@ -1,0 +1,86 @@
+{
+  "id": "kampf-l7f01-defender-retreat-legality",
+  "type": "derived-vice-monitor-fixture",
+  "source": {
+    "disk": "ERBENT1A.D64",
+    "modules": {
+      "kernal": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+        "loadAddress": "0x0800"
+      },
+      "kampf": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-kampf.raw",
+        "loadAddress": "0x7E00"
+      }
+    },
+    "monitorCommands": "docs/war-for-crown/fixtures/kampf-l7f01-defender-retreat-legality.mon",
+    "viceCommand": "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/kampf-l7f01-defender-retreat-legality.mon -limitcycles 1000000"
+  },
+  "routine": {
+    "module": "kampf",
+    "entry": "0x7F01",
+    "description": "Defender retreat target calculation stored in $9406"
+  },
+  "harness": {
+    "patchAt0x7F57": "68 68 ad 06 94 8d 20 c0 60",
+    "meaning": "after L7F01 stores $9406, pop the routine's two saved bytes, copy $9406 to $C020, and return"
+  },
+  "mapShape": {
+    "description": "three provinces in a horizontal line",
+    "c400Writes": {
+      "0xC415": [1, 2, 3]
+    },
+    "targetProvinceC9D7": 2
+  },
+  "observed": {
+    "cases": [
+      {
+        "id": "adjacent-owned-retreat",
+        "ownersC5DBToC5DD": [2, 2, 1],
+        "defenderOwner": 2,
+        "defenderHomeC8FD": 3,
+        "retreatTarget9406": 1,
+        "notes": [
+          "Target province 2 is not owner 2 home.",
+          "Province 1 is adjacent and owned by defender 2."
+        ]
+      },
+      {
+        "id": "home-castle-cannot-retreat",
+        "ownersC5DBToC5DD": [2, 2, 1],
+        "defenderOwner": 2,
+        "defenderHomeC8FD": 2,
+        "retreatTarget9406": 0,
+        "notes": [
+          "The home-castle check exits before adjacency marking, even though province 1 is defender-owned."
+        ]
+      },
+      {
+        "id": "no-adjacent-owned-retreat",
+        "ownersC5DBToC5DD": [1, 2, 3],
+        "defenderOwner": 2,
+        "defenderHomeC8FD": 3,
+        "retreatTarget9406": 0,
+        "notes": [
+          "Adjacent provinces exist but neither is owned by defender 2."
+        ]
+      },
+      {
+        "id": "royalist-owner-zero-retreat",
+        "ownersC5DBToC5DD": [0, 0, 0],
+        "defenderOwner": 0,
+        "retreatTarget9406": 3,
+        "notes": [
+          "Owner 0 skips the player-home check and scans adjacent owner-0 provinces.",
+          "The scan runs high-to-low, so province 3 is selected before province 1."
+        ]
+      }
+    ]
+  },
+  "assertionsForPort": [
+    "Defender retreat legality is the value of $9406, not a generic boolean.",
+    "A nonzero player defending their home province cannot retreat, even when adjacent owned provinces exist.",
+    "If retreat is legal, L7F01 stores the highest-numbered adjacent defender-owned province in $9406.",
+    "Owner 0 can have a legal defender retreat target because the home-castle check is skipped for owner 0."
+  ]
+}

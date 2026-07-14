@@ -1,0 +1,185 @@
+{
+  "fixture": "cbaron-5800-economy-branch-vectors",
+  "entry": "cbaron:$5800 / L5990 and cbaron:L5BC6",
+  "modules": {
+    "kernal": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+      "loadAddress": "0x0800"
+    },
+    "main": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+      "loadAddress": "0x3000"
+    },
+    "cbaron": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-cbaron.raw",
+      "loadAddress": "0x5800"
+    },
+    "kampf": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-kampf.raw",
+      "loadAddress": "0x7e00"
+    },
+    "sys": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+      "loadAddress": "0x9400"
+    }
+  },
+  "monitor": {
+    "commands": "docs/war-for-crown/fixtures/cbaron-5800-economy-branch-vectors.mon",
+    "viceCommand": "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/cbaron-5800-economy-branch-vectors.mon -limitcycles 1000000"
+  },
+  "patchedRoutines": {
+    "kernal:L1B69": "patched to RTS for map redraw avoidance in recruitment and village cases",
+    "main:$3038": "patched to RTS only in direct L5BC6 village-purchase case to isolate spending from stat-counter side effects",
+    "sys:L9A2A": "patched to return village cap 12 only in direct L5BC6 village-purchase case",
+    "kernal:L218B": "patched to return 0x7b in recruitment cases for deterministic downstream combat helper paths"
+  },
+  "cases": [
+    {
+      "name": "debt-underflow-applies-interest-to-restored-money",
+      "routine": "cbaron:L5990",
+      "input": {
+        "activePlayer": 1,
+        "money": 50,
+        "reservedDebt": 80,
+        "interestPercent": 8
+      },
+      "expected": {
+        "money": 54,
+        "reservedDebt": 54,
+        "scratch5bTo5e": [
+          "0x36",
+          "0x00",
+          "0x00",
+          "0x00"
+        ]
+      }
+    },
+    {
+      "name": "base-recruitment-goes-to-home-province",
+      "routine": "cbaron:L5990 stopped at 0x5b68",
+      "input": {
+        "activePlayer": 1,
+        "money": 100,
+        "homeProvince": 1,
+        "ownersByProvince1To3": [
+          1,
+          1,
+          2
+        ],
+        "soldiersByProvince1To3": [
+          10,
+          10,
+          3
+        ],
+        "previousNeighbourHire": 0,
+        "recruitPercentTableValue": 20
+      },
+      "expected": {
+        "moneyAfterRecruitment": 80,
+        "soldiersByProvince1To3": [
+          30,
+          10,
+          3
+        ],
+        "ninetyFivePercentMoneyCap": 95,
+        "baseRecruitBudget": 20,
+        "surplusDiscount": 4,
+        "pressureUsed": false,
+        "hiredSoldiersForActivePlayer": 20,
+        "scratch5bTo5e": [
+          "0x14",
+          "0x00",
+          "0x00",
+          "0x00"
+        ]
+      }
+    },
+    {
+      "name": "neighbour-previous-hire-drives-pressure-recruitment",
+      "routine": "cbaron:L5990 stopped at 0x5b68",
+      "input": {
+        "activePlayer": 1,
+        "money": 100,
+        "homeProvince": 1,
+        "ownersByProvince1To3": [
+          1,
+          1,
+          2
+        ],
+        "soldiersByProvince1To3": [
+          10,
+          10,
+          3
+        ],
+        "previousNeighbourHire": 50,
+        "recruitPercentTableValue": 20
+      },
+      "expected": {
+        "moneyAfterRecruitment": 54,
+        "soldiersByProvince1To3": [
+          56,
+          10,
+          3
+        ],
+        "ninetyFivePercentMoneyCap": 95,
+        "baseRecruitBudget": 20,
+        "surplusDiscount": 4,
+        "pressureUsed": true,
+        "hiredSoldiersForActivePlayer": 46,
+        "neighbourPreviousHireKept": 50,
+        "scratch5bTo5e": [
+          "0x2e",
+          "0x00",
+          "0x00",
+          "0x00"
+        ]
+      }
+    },
+    {
+      "name": "village-purchase-spends-affordable-missing-count",
+      "routine": "cbaron:L5BC6",
+      "input": {
+        "activePlayer": 1,
+        "money": 20,
+        "villageCost": 4,
+        "patchedVillageCap": 12,
+        "ownersByProvince1To3": [
+          1,
+          1,
+          2
+        ],
+        "villagesByProvince1To3": [
+          12,
+          4,
+          2
+        ],
+        "soldiersByProvince1To3": [
+          10,
+          5,
+          3
+        ]
+      },
+      "expected": {
+        "money": 0,
+        "villagesByProvince1To3": [
+          12,
+          9,
+          2
+        ],
+        "selectedProvince": 2,
+        "lastCandidateProvince": 2,
+        "flagsByProvince1To3": [
+          "0x10",
+          "0x90",
+          "0x00"
+        ]
+      }
+    }
+  ],
+  "conclusion": [
+    "When reserved debt cannot be paid, L5990 restores the original money, applies interest, and stores the same result as current money and reserved debt.",
+    "When no neighbouring owner has a previous hire large enough to trigger pressure, recruitment uses the active player's L5BC0 percentage budget and deposits soldiers directly in the home province.",
+    "When an adjacent non-active owner has a previous hire, recruitment uses that hire minus the surplus discount, capped by the 95% money cap, then deposits soldiers directly in the home province.",
+    "L5BC6 buys villages iteratively: affordable count is floor(money / villageCost), capped by the selected province's missing villages, and the money is spent immediately."
+  ]
+}

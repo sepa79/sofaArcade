@@ -1,0 +1,15 @@
+bload "/tmp/wfc-c64-logic/disasm/erbent1a-cbaron.raw" 0 5800
+> c000 20 bc 62 ea
+break c003
+f c832 c835 00
+f c9d3 c9d5 00
+f 161a 161f 00
+> c8a1 02
+> c833 10
+> c834 10
+> 63b9 a9 00 8d 1a 16 a9 00 8d 1b 16 a9 90 8d 1c 16 60
+r SP = ff
+g c000
+m c9d3 c9d5
+m 161a 161c
+quit

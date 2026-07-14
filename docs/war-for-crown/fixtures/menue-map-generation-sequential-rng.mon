@@ -1,0 +1,20 @@
+bload "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw" 0 0800
+bload "/tmp/wfc-c64-logic/disasm/erbent1a-menue.raw" 0 3000
+> 218b ee fb 02 ad fb 02 60
+f c400 c503 00
+f c512 c530 00
+f c576 c594 00
+> 02fb 00
+> c8a1 1e
+> c000 20 01 51 ea
+break c003
+g c000
+m 02fb 02fb
+m c400 c43f
+m c440 c47f
+m c480 c4bf
+m c4c0 c4ff
+m c512 c530
+m c576 c594
+m 520a 520b
+quit

@@ -1,0 +1,204 @@
+{
+  "fixture": "main-l3112-event-loader-boundaries",
+  "entry": "main:L3112",
+  "modules": {
+    "kernal": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+      "loadAddress": "0x0800"
+    },
+    "main": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+      "loadAddress": "0x3000"
+    },
+    "sys": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+      "loadAddress": "0x9400"
+    }
+  },
+  "patchedRoutines": {
+    "kernal:L218B": "returns either 0x0f or 0x10 for the first event gate",
+    "sys:L982F": "returns 0x03 and stores 0x03 in $9849",
+    "sys:L9A5D": "records text range registers $4c..$4f into $1603..$1606",
+    "loader:L9B03": "records selected module id in $1602 and writes text pointers $5520..$5525 into $5500..$5503",
+    "eventCode:$5504": "records module-entry marker 0x77 in $1607 and returns"
+  },
+  "cases": [
+    {
+      "name": "events-disabled",
+      "input": {
+        "activePlayer": 1,
+        "year": 2,
+        "month": 0,
+        "eventGate": 0,
+        "computerFlag": 0,
+        "firstRandomByte": "0x10"
+      },
+      "expected": {
+        "scratch1602To1608": [
+          "0x00",
+          "0x00",
+          "0x00",
+          "0x00",
+          "0x00",
+          "0x00",
+          "0xa1"
+        ],
+        "storedRandom": "0x00",
+        "eventHeader5500To5507": [
+          "0x00",
+          "0x00",
+          "0x00",
+          "0x00",
+          "0xa9",
+          "0x77",
+          "0x8d",
+          "0x07"
+        ]
+      }
+    },
+    {
+      "name": "first-year-before-event-month",
+      "input": {
+        "activePlayer": 1,
+        "year": 1,
+        "month": 6,
+        "eventGate": 7,
+        "computerFlag": 0,
+        "firstRandomByte": "0x10"
+      },
+      "expected": {
+        "scratch1602To1608": [
+          "0x00",
+          "0x00",
+          "0x00",
+          "0x00",
+          "0x00",
+          "0x00",
+          "0xb1"
+        ],
+        "storedRandom": "0x00",
+        "eventHeader5500To5507": [
+          "0x00",
+          "0x00",
+          "0x00",
+          "0x00",
+          "0xa9",
+          "0x77",
+          "0x8d",
+          "0x07"
+        ]
+      }
+    },
+    {
+      "name": "computer-player-skips-human-event-ui",
+      "input": {
+        "activePlayer": 1,
+        "year": 2,
+        "month": 0,
+        "eventGate": 7,
+        "computerFlag": 1,
+        "firstRandomByte": "0x10"
+      },
+      "expected": {
+        "scratch1602To1608": [
+          "0x00",
+          "0x00",
+          "0x00",
+          "0x00",
+          "0x00",
+          "0x00",
+          "0xc1"
+        ],
+        "storedRandom": "0x00",
+        "eventHeader5500To5507": [
+          "0x00",
+          "0x00",
+          "0x00",
+          "0x00",
+          "0xa9",
+          "0x77",
+          "0x8d",
+          "0x07"
+        ]
+      }
+    },
+    {
+      "name": "first-random-byte-below-threshold",
+      "input": {
+        "activePlayer": 1,
+        "year": 2,
+        "month": 0,
+        "eventGate": 7,
+        "computerFlag": 0,
+        "firstRandomByte": "0x0f"
+      },
+      "expected": {
+        "scratch1602To1608": [
+          "0x00",
+          "0x00",
+          "0x00",
+          "0x00",
+          "0x00",
+          "0x00",
+          "0xd1"
+        ],
+        "storedRandom": "0x00",
+        "eventHeader5500To5507": [
+          "0x00",
+          "0x00",
+          "0x00",
+          "0x00",
+          "0xa9",
+          "0x77",
+          "0x8d",
+          "0x07"
+        ]
+      }
+    },
+    {
+      "name": "active-event-dispatch",
+      "input": {
+        "activePlayer": 1,
+        "year": 2,
+        "month": 0,
+        "eventGate": 7,
+        "computerFlag": 0,
+        "firstRandomByte": "0x10",
+        "moduleRollReturn": "0x03"
+      },
+      "expected": {
+        "selectedModuleIdAfterDex": "0x02",
+        "textStart": "0x5520",
+        "textEnd": "0x5525",
+        "moduleEntryMarker": "0x77",
+        "scratch1602To1608": [
+          "0x02",
+          "0x20",
+          "0x55",
+          "0x25",
+          "0x55",
+          "0x77",
+          "0xe1"
+        ],
+        "storedRandom": "0x03",
+        "eventHeader5500To5507": [
+          "0x20",
+          "0x55",
+          "0x25",
+          "0x55",
+          "0xa9",
+          "0x77",
+          "0x8d",
+          "0x07"
+        ]
+      }
+    }
+  ],
+  "conclusion": [
+    "L3112 returns immediately when $C8A4 is zero.",
+    "In year 1, event dispatch is blocked while $C8A3 < $C8A4.",
+    "Owner slot zero and slots with $C9D9,x nonzero do not run the human event dispatcher.",
+    "The first raw RNG byte must be at least 0x10.",
+    "On the active path, L982F($1a) returns a one-based-plus-one value that L3112 decrements before passing the module id to L9B03."
+  ]
+}

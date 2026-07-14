@@ -1,0 +1,103 @@
+{
+  "id": "cbaron-l6808-underpowered-royalist-attitude",
+  "type": "derived-vice-monitor-fixture-pair",
+  "source": {
+    "disk": "ERBENT1A.D64",
+    "modules": {
+      "kernal": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+        "loadAddress": "0x0800"
+      },
+      "main": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+        "loadAddress": "0x3000"
+      },
+      "cbaron": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-cbaron.raw",
+        "loadAddress": "0x5800"
+      },
+      "kampf": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-kampf.raw",
+        "loadAddress": "0x7E00"
+      },
+      "sys": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+        "loadAddress": "0x9400"
+      }
+    },
+    "monitorCommands": [
+      "docs/war-for-crown/fixtures/cbaron-l6808-underpowered-royalist-neutral-skip.mon",
+      "docs/war-for-crown/fixtures/cbaron-l6808-underpowered-royalist-friendly-keep.mon"
+    ],
+    "viceCommands": [
+      "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/cbaron-l6808-underpowered-royalist-neutral-skip.mon -limitcycles 1000000",
+      "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/cbaron-l6808-underpowered-royalist-friendly-keep.mon -limitcycles 1000000"
+    ]
+  },
+  "routine": {
+    "module": "cbaron",
+    "entry": "0x6808",
+    "description": "AI target scoring underpowered owner-0 attitude branch"
+  },
+  "sharedInitialState": {
+    "activePlayer": 1,
+    "playerCount": 1,
+    "provinceCount": 2,
+    "rngPatch": {
+      "address": "0x218B",
+      "bytes": ["0xA9", "0x7B", "0x60"],
+      "meaning": "return fixed RNG value 0x7B"
+    },
+    "mapCells": {
+      "0xC415": 1,
+      "0xC416": 2
+    },
+    "ownersByProvince": {
+      "1": 0,
+      "2": 1
+    },
+    "homeProvinceByPlayer": {
+      "1": 2
+    },
+    "villagesByProvince": {
+      "1": 100,
+      "2": 2
+    },
+    "soldiersByProvince": {
+      "1": 5,
+      "2": 2
+    },
+    "candidateFlagsByProvince": {
+      "1": "0x02",
+      "2": "0x00"
+    },
+    "terrainByProvince": {
+      "1": 1,
+      "2": 1
+    },
+    "mobileArmy": 1,
+    "targetSupportEstimate": 18
+  },
+  "observed": {
+    "neutralRoyalists": {
+      "royalistAttitudeByte": "0x01",
+      "selectedTarget": 0,
+      "scoreBytesLittleEndian": ["0x00", "0x00", "0x00", "0x00"],
+      "mobileArmyBytes": ["0x01", "0x00", "0x00"],
+      "targetSupportEstimateBytes": ["0x12", "0x00", "0x00"]
+    },
+    "friendlyRoyalists": {
+      "royalistAttitudeByte": "0x00",
+      "selectedTarget": 1,
+      "scoreBytesLittleEndian": ["0x8E", "0x00", "0x00", "0x00"],
+      "mobileArmyBytes": ["0x01", "0x00", "0x00"],
+      "targetSupportEstimateBytes": ["0x12", "0x00", "0x00"]
+    }
+  },
+  "assertionsForPort": [
+    "When total mobile army is below the candidate target debt, L6808 calls L699E before scoring the candidate.",
+    "For owner-0 targets, L699E rejects the underpowered candidate when C8A5 is non-zero.",
+    "For owner-0 targets, L699E allows the underpowered candidate when C8A5 is zero; L6808 then scores it with type flag 0.",
+    "The same map, mobile army, and target-support estimate therefore skips the target under neutral royalists but selects it under friendly royalists."
+  ]
+}

@@ -1,0 +1,101 @@
+{
+  "fixture": "menue-terrain-assignment-range-retry",
+  "entry": "menue:L5197",
+  "modules": {
+    "kernal": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+      "loadAddress": "0x0800"
+    },
+    "menue": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-menue.raw",
+      "loadAddress": "0x3000"
+    }
+  },
+  "patchedRoutines": {
+    "kernal:L218B": "patched to read bytes from $02FC + counter and increment $02FB; this fixture patch preserves X because menue:L5197 indexes $C576 by X"
+  },
+  "monitor": {
+    "commands": "docs/war-for-crown/fixtures/menue-terrain-assignment-range-retry.mon",
+    "viceCommand": "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/menue-terrain-assignment-range-retry.mon -limitcycles 1000000"
+  },
+  "cases": [
+    {
+      "provinceIndexX": 1,
+      "rngBytes": ["0x01"],
+      "expected": {
+        "rngReads": 1,
+        "terrainAddress": "0xc577",
+        "terrain": "0x01"
+      }
+    },
+    {
+      "provinceIndexX": 2,
+      "rngBytes": ["0x02"],
+      "expected": {
+        "rngReads": 1,
+        "terrainAddress": "0xc578",
+        "terrain": "0x02"
+      }
+    },
+    {
+      "provinceIndexX": 3,
+      "rngBytes": ["0x03"],
+      "expected": {
+        "rngReads": 1,
+        "terrainAddress": "0xc579",
+        "terrain": "0x03"
+      }
+    },
+    {
+      "provinceIndexX": 4,
+      "rngBytes": ["0x04"],
+      "expected": {
+        "rngReads": 1,
+        "terrainAddress": "0xc57a",
+        "terrain": "0x04"
+      }
+    },
+    {
+      "provinceIndexX": 5,
+      "rngBytes": ["0x05"],
+      "expected": {
+        "rngReads": 1,
+        "terrainAddress": "0xc57b",
+        "terrain": "0x05"
+      }
+    },
+    {
+      "provinceIndexX": 6,
+      "rngBytes": ["0x06"],
+      "expected": {
+        "rngReads": 1,
+        "terrainAddress": "0xc57c",
+        "terrain": "0x06"
+      }
+    },
+    {
+      "provinceIndexX": 7,
+      "rngBytes": ["0x07"],
+      "expected": {
+        "rngReads": 1,
+        "terrainAddress": "0xc57d",
+        "terrain": "0x07"
+      }
+    },
+    {
+      "provinceIndexX": 8,
+      "rngBytes": ["0x08", "0x07"],
+      "expected": {
+        "rngReads": 2,
+        "terrainAddress": "0xc57e",
+        "terrain": "0x07"
+      }
+    }
+  ],
+  "conclusion": [
+    "menue:L5197 computes terrain as rngByte & 7.",
+    "A zero result retries by branching back to menue:L5197.",
+    "Terrain ids 1..7 are the exact non-water province terrain range.",
+    "Terrain is stored per province at $C576 + provinceIndex, not per map tile."
+  ]
+}

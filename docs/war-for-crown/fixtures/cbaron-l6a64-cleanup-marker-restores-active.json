@@ -1,0 +1,98 @@
+{
+  "fixture": "cbaron-l6a64-cleanup-marker-restores-active",
+  "entry": "cbaron:L6A64",
+  "modules": {
+    "kernal": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+      "loadAddress": "0x0800"
+    },
+    "main": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+      "loadAddress": "0x3000"
+    },
+    "cbaron": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-cbaron.raw",
+      "loadAddress": "0x5800"
+    },
+    "kampf": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-kampf.raw",
+      "loadAddress": "0x7e00"
+    },
+    "sys": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+      "loadAddress": "0x9400"
+    }
+  },
+  "patchedRoutines": {
+    "ui": "$1b69 returns immediately",
+    "kernal:L218B": "returns 0x7b",
+    "$CA48": "forced to 0 so sys:L949D uses the simple combat-context path"
+  },
+  "setup": {
+    "activePlayer": 1,
+    "provinceCount": 2,
+    "mapShape": "line: 1-2",
+    "ownersByProvince": {
+      "1": 5,
+      "2": 2
+    },
+    "soldiersByProvince": {
+      "1": 0,
+      "2": 3
+    },
+    "initialFlagsByProvince": {
+      "1": "0x04",
+      "2": "0x00"
+    }
+  },
+  "expected": {
+    "finalOwnersByProvince": {
+      "1": 1,
+      "2": 2
+    },
+    "finalSoldiersByProvince": {
+      "1": 1,
+      "2": 3
+    },
+    "finalFlagsByProvince": {
+      "1": "0x04",
+      "2": "0x00"
+    },
+    "computedRequirement": {
+      "$161a": "0x02",
+      "$161b": "0x00",
+      "$161c": "0x00"
+    },
+    "rawMemory": {
+      "$c5da..$c5dd": [
+        "0x00",
+        "0x01",
+        "0x02",
+        "0x00"
+      ],
+      "$c706..$c709": [
+        "0x00",
+        "0x01",
+        "0x03",
+        "0x00"
+      ],
+      "$c832..$c835": [
+        "0x80",
+        "0x04",
+        "0x00",
+        "0x00"
+      ],
+      "$161a..$161c": [
+        "0x02",
+        "0x00",
+        "0x00"
+      ]
+    }
+  },
+  "conclusion": [
+    "A $04 cleanup marker with fewer than two soldiers is processed by L6A64 and then restored through L618D when there is no $20 surplus marker.",
+    "With $CA48 forced to 0, the simple combat-context requirement is 2 before the final L618D restore.",
+    "L618D sets the province owner to the active player and leaves exactly one soldier.",
+    "The $04 marker itself is not cleared by this path."
+  ]
+}

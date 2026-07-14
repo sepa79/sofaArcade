@@ -1,0 +1,138 @@
+{
+  "fixture": "cbaron-5806-movement-entry-underpowered-single-home-money",
+  "entry": "cbaron:$5806 -> L5D7F -> L5EA4 -> L5FD2",
+  "modules": {
+    "kernal": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+      "loadAddress": "0x0800"
+    },
+    "main": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+      "loadAddress": "0x3000"
+    },
+    "cbaron": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-cbaron.raw",
+      "loadAddress": "0x5800"
+    },
+    "kampf": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-kampf.raw",
+      "loadAddress": "0x7e00"
+    },
+    "sys": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+      "loadAddress": "0x9400"
+    }
+  },
+  "patchedRoutines": {
+    "ui": "$1b69 returns immediately",
+    "kernal:L218B": "returns 0x7b"
+  },
+  "setup": {
+    "activePlayer": 1,
+    "provinceCount": 2,
+    "mapShape": "line: 1-2",
+    "ownersByProvince": {
+      "1": 1,
+      "2": 2
+    },
+    "soldiersByProvince": {
+      "1": 2,
+      "2": 20
+    },
+    "activeMoney": 5,
+    "pressureSetupEnabled": false
+  },
+  "expected": {
+    "returnsToHarness": true,
+    "pulledMobileSoldiersBeforeHomeMoney": 1,
+    "c9d0AfterHomeMoney": 6,
+    "defensiveRequirement": 21,
+    "deficitTwosComplement24": "0xffffec",
+    "finalSoldiersByProvince": {
+      "1": 7,
+      "2": 20
+    },
+    "activeMoneyAfterMovement": 0,
+    "rememberedTarget": 0,
+    "finalFlagsByProvince": {
+      "1": "0x00",
+      "2": "0x00"
+    },
+    "rawMemory": {
+      "$1617..$161f": [
+        "0xec",
+        "0xff",
+        "0xff",
+        "0x15",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x01"
+      ],
+      "$c8bb..$c8c5": [
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00"
+      ],
+      "$c9d0..$c9d8": [
+        "0x06",
+        "0x00",
+        "0x00",
+        "0x15",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x01",
+        "0x01"
+      ],
+      "$c706..$c709": [
+        "0x00",
+        "0x07",
+        "0x14",
+        "0x00"
+      ],
+      "$c832..$c835": [
+        "0x80",
+        "0x00",
+        "0x00",
+        "0x00"
+      ],
+      "$c9de..$c9ed": [
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00"
+      ],
+      "$ca61..$ca62": [
+        "0xff",
+        "0x00"
+      ]
+    }
+  },
+  "conclusion": [
+    "When the only marked deficit province is the active home province, L5FD2 adds active money into C9D0..C9D2 and zeroes active money.",
+    "The final home soldiers become original soldiers plus active money: 2 + 5 = 7.",
+    "This path still writes no remembered target memory."
+  ]
+}

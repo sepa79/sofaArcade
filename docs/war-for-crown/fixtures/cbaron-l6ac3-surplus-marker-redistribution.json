@@ -1,0 +1,128 @@
+{
+  "fixture": "cbaron-l6ac3-surplus-marker-redistribution",
+  "entry": "cbaron:L6A64",
+  "coveredBranch": "cbaron:L6AC3",
+  "modules": {
+    "kernal": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+      "loadAddress": "0x0800"
+    },
+    "main": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+      "loadAddress": "0x3000"
+    },
+    "cbaron": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-cbaron.raw",
+      "loadAddress": "0x5800"
+    },
+    "kampf": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-kampf.raw",
+      "loadAddress": "0x7e00"
+    },
+    "sys": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+      "loadAddress": "0x9400"
+    }
+  },
+  "patchedRoutines": {
+    "ui": "$1b69 returns immediately",
+    "kernal:L218B": "returns 0x7b",
+    "simpleRules": "$CA48 is forced to 0 before running L6A64"
+  },
+  "setup": {
+    "activePlayer": 1,
+    "provinceCount": 3,
+    "mapShape": "line: 1-2-3",
+    "ownersByProvince": {
+      "1": 1,
+      "2": 1,
+      "3": 2
+    },
+    "soldiersByProvince": {
+      "1": 1,
+      "2": 10,
+      "3": 3
+    },
+    "initialFlagsByProvince": {
+      "1": "0x00",
+      "2": "0x20",
+      "3": "0x00"
+    }
+  },
+  "expected": {
+    "frontierRequirement": 2,
+    "finalSoldiersByProvince": {
+      "1": 1,
+      "2": 10,
+      "3": 3
+    },
+    "rememberedTarget": 3,
+    "rememberedTargetSoldiers": 3,
+    "finalFlagsByProvince": {
+      "1": "0x00",
+      "2": "0x00",
+      "3": "0x00"
+    },
+    "rawMemory": {
+      "$1617..$161f": [
+        "0x06",
+        "0x00",
+        "0x00",
+        "0x01",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x02"
+      ],
+      "$c9d0..$c9d8": [
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x02",
+        "0x00",
+        "0x00",
+        "0x03",
+        "0x02",
+        "0x02"
+      ],
+      "$c706..$c70a": [
+        "0x00",
+        "0x01",
+        "0x0a",
+        "0x03",
+        "0x00"
+      ],
+      "$c832..$c836": [
+        "0x80",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00"
+      ],
+      "$c9de..$c9ed": [
+        "0x00",
+        "0x03",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x03",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00"
+      ]
+    }
+  },
+  "conclusion": [
+    "The $20 branch enters L6AC3, clears the marker, computes the local requirement, and tracks post-redistribution surplus in $1617..$1619.",
+    "The same routine can then route the surplus back into the selected staging province, so final soldier count may match the initial count even though the branch executed.",
+    "The branch also stores the adjacent non-owned target in $C9DE/$C9E2 for later attack planning."
+  ]
+}

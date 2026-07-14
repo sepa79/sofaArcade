@@ -1,0 +1,127 @@
+{
+  "fixture": "cbaron-5806-movement-entry-simple-return",
+  "entry": "cbaron:$5806 -> L5D7F",
+  "modules": {
+    "kernal": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+      "loadAddress": "0x0800"
+    },
+    "main": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+      "loadAddress": "0x3000"
+    },
+    "cbaron": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-cbaron.raw",
+      "loadAddress": "0x5800"
+    },
+    "kampf": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-kampf.raw",
+      "loadAddress": "0x7e00"
+    },
+    "sys": {
+      "path": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+      "loadAddress": "0x9400"
+    }
+  },
+  "patchedRoutines": {
+    "ui": "$1b69 returns immediately",
+    "kernal:L218B": "returns 0x7b"
+  },
+  "setup": {
+    "activePlayer": 1,
+    "provinceCount": 3,
+    "mapShape": "line: 1-2-3",
+    "ownersByProvince": {
+      "1": 1,
+      "2": 1,
+      "3": 2
+    },
+    "soldiersByProvince": {
+      "1": 5,
+      "2": 6,
+      "3": 3
+    },
+    "pressureSetupEnabled": false
+  },
+  "expected": {
+    "returnsToHarness": true,
+    "pulledMobileSoldiers": 9,
+    "defensiveRequirement": 2,
+    "remainingSurplus": 6,
+    "finalSoldiersByProvince": {
+      "1": 1,
+      "2": 10,
+      "3": 3
+    },
+    "rememberedTarget": 3,
+    "rememberedTargetSoldiers": 3,
+    "finalFlagsByProvince": {
+      "1": "0x00",
+      "2": "0x00",
+      "3": "0x00"
+    },
+    "rawMemory": {
+      "$1617..$161f": [
+        "0x06",
+        "0x00",
+        "0x00",
+        "0x01",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x02"
+      ],
+      "$c9d0..$c9d8": [
+        "0x09",
+        "0x00",
+        "0x00",
+        "0x02",
+        "0x00",
+        "0x00",
+        "0x03",
+        "0x02",
+        "0x02"
+      ],
+      "$c706..$c709": [
+        "0x00",
+        "0x01",
+        "0x0a",
+        "0x03"
+      ],
+      "$c832..$c835": [
+        "0x80",
+        "0x00",
+        "0x00",
+        "0x00"
+      ],
+      "$c9de..$c9ed": [
+        "0x00",
+        "0x03",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x03",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00",
+        "0x00"
+      ],
+      "$ca61..$ca62": [
+        "0xff",
+        "0x00"
+      ]
+    }
+  },
+  "conclusion": [
+    "Full cbaron:$5806 can return cleanly on a small initialized line map.",
+    "The movement routine pulls mobile soldiers from a connected component, computes a frontier requirement, deposits surplus into an owned staging province, and stores the adjacent non-owned target for later attack planning.",
+    "This is not an adjacent source-destination move; the source component and final staging province are selected through the C64 worklist flags."
+  ]
+}

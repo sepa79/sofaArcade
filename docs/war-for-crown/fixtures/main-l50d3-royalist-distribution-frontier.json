@@ -1,0 +1,89 @@
+{
+  "id": "main-l50d3-royalist-distribution-frontier",
+  "type": "derived-vice-monitor-fixture",
+  "source": {
+    "disk": "ERBENT1A.D64",
+    "modules": {
+      "kernal": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw",
+        "loadAddress": "0x0800"
+      },
+      "main": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-main.raw",
+        "loadAddress": "0x3000"
+      },
+      "sys": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+        "loadAddress": "0x9400"
+      }
+    },
+    "monitorCommands": "docs/war-for-crown/fixtures/main-l50d3-royalist-distribution-frontier.mon",
+    "viceCommand": "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/main-l50d3-royalist-distribution-frontier.mon -limitcycles 1000000"
+  },
+  "routine": {
+    "module": "main",
+    "entry": "0x50D3",
+    "description": "Royalist connected-component soldier redistribution, frontier mode"
+  },
+  "patches": [
+    {
+      "address": "0x1B69",
+      "bytes": ["0x60"],
+      "meaning": "stub province redraw side effect; distribution state logic is unchanged"
+    }
+  ],
+  "initialState": {
+    "activeOwner": 0,
+    "royalistAttitude": 1,
+    "distributionMode": 2,
+    "provinceCount": 4,
+    "royalistProvinceCount": 3,
+    "mapCells": {
+      "0xC415": 1,
+      "0xC416": 2,
+      "0xC417": 3,
+      "0xC418": 4
+    },
+    "ownersByProvince": {
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 1
+    },
+    "soldiersByProvince": {
+      "1": 1,
+      "2": 4,
+      "3": 7,
+      "4": 1
+    }
+  },
+  "observed": {
+    "breakpoint": "0xC003",
+    "mobileSoldiersPulled": 9,
+    "distributionRegisters": {
+      "C9D0": 9,
+      "C9D1": 0,
+      "C9D2": 0,
+      "C9D3": 9,
+      "C9D4": 0,
+      "C9D5": 0
+    },
+    "soldiersByProvinceAfter": {
+      "1": 1,
+      "2": 1,
+      "3": 10,
+      "4": 1
+    },
+    "flagsByProvinceAfter": {
+      "1": "0x01",
+      "2": "0x01",
+      "3": "0x01",
+      "4": "0x00"
+    }
+  },
+  "assertionsForPort": [
+    "Mode 2 pulls all mobile soldiers from the connected royalist component, leaving one garrison per province.",
+    "Mode 2 uses L514A to keep only component frontier provinces as redistribution targets.",
+    "In this map, only province 3 borders a non-royalist province, so all pulled mobile soldiers are deposited there."
+  ]
+}

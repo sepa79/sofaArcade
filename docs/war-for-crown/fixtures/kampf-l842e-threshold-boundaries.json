@@ -1,0 +1,85 @@
+{
+  "id": "kampf-l842e-threshold-boundaries",
+  "type": "derived-vice-monitor-fixture-suite",
+  "source": {
+    "disk": "ERBENT1A.D64",
+    "modules": {
+      "kampf": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-kampf.raw",
+        "loadAddress": "0x7E00"
+      },
+      "sys": {
+        "raw": "/tmp/wfc-c64-logic/disasm/erbent1a-sys.raw",
+        "loadAddress": "0x9400"
+      }
+    },
+    "monitorCommands": [
+      "docs/war-for-crown/fixtures/kampf-l842e-threshold-loose-255-reject.mon",
+      "docs/war-for-crown/fixtures/kampf-l842e-threshold-loose-256-accept.mon",
+      "docs/war-for-crown/fixtures/kampf-l842e-threshold-strict-332-reject.mon",
+      "docs/war-for-crown/fixtures/kampf-l842e-threshold-strict-333-accept.mon"
+    ],
+    "viceCommands": [
+      "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/kampf-l842e-threshold-loose-255-reject.mon -limitcycles 1000000",
+      "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/kampf-l842e-threshold-loose-256-accept.mon -limitcycles 1000000",
+      "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/kampf-l842e-threshold-strict-332-reject.mon -limitcycles 1000000",
+      "timeout 20 x64sc -default -sounddev dummy -warp -nativemonitor -initbreak reset -moncommands docs/war-for-crown/fixtures/kampf-l842e-threshold-strict-333-accept.mon -limitcycles 1000000"
+    ]
+  },
+  "routine": {
+    "module": "kampf",
+    "entry": "0x842E",
+    "description": "Hostile royalist attack acceptance threshold selection"
+  },
+  "patches": [
+    {
+      "address": "0x949D",
+      "bytes": ["0x60"],
+      "meaning": "skip combat-percent setup so the fixture isolates threshold comparison"
+    },
+    {
+      "address": "0x9426",
+      "meaning": "replace ratio helper with a deterministic write to $60..$62 and RTS; exact bytes differ by case"
+    }
+  ],
+  "cases": [
+    {
+      "id": "loose-255-reject",
+      "royalistSuccessEvaluation": 0,
+      "ratio": 255,
+      "threshold": 256,
+      "observedAccepted": false,
+      "observedResultByte": "0x00"
+    },
+    {
+      "id": "loose-256-accept",
+      "royalistSuccessEvaluation": 0,
+      "ratio": 256,
+      "threshold": 256,
+      "observedAccepted": true,
+      "observedResultByte": "0x01"
+    },
+    {
+      "id": "strict-332-reject",
+      "royalistSuccessEvaluation": 1,
+      "ratio": 332,
+      "threshold": 333,
+      "observedAccepted": false,
+      "observedResultByte": "0x00"
+    },
+    {
+      "id": "strict-333-accept",
+      "royalistSuccessEvaluation": 1,
+      "ratio": 333,
+      "threshold": 333,
+      "observedAccepted": true,
+      "observedResultByte": "0x01"
+    }
+  ],
+  "assertionsForPort": [
+    "L842E accepts hostile royalist attacks when the computed ratio is greater than or equal to the selected threshold.",
+    "When C8A7 == 0, L842E compares against 256 from 0x7E37..0x7E39.",
+    "When C8A7 != 0, L842E compares against 333 from 0x7E34..0x7E36.",
+    "The threshold decision is returned in the 6502 carry flag; the fixture harness stores that carry as 1 for accepted and 0 for rejected."
+  ]
+}

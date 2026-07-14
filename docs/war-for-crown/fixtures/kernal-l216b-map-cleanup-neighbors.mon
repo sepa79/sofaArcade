@@ -1,0 +1,28 @@
+bload "/tmp/wfc-c64-logic/disasm/erbent1a-kernal.raw" 0 0800
+> c000 a0 35 20 6b 21 8d 00 16 8c 01 16 ea
+break c00b
+f c400 c4ff 00
+> c435 ff
+g c000
+m 1600 1601
+f c400 c4ff 00
+> c435 ff
+> c434 ff
+g c000
+m 1600 1601
+f c400 c4ff 00
+> c435 ff
+> c436 02
+g c000
+m 1600 1601
+f c400 c4ff 00
+> c435 ff
+> c449 80
+g c000
+m 1600 1601
+f c400 c4ff 00
+> c435 ff
+> c421 07
+g c000
+m 1600 1601
+quit
