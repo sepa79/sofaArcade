@@ -21,7 +21,7 @@ const arcadeGames = [
     route: 'TunnelInvaders',
     title: 'Tunnel Invaders',
     description: 'Szybka wyprawa przez tunel pełen przeszkód i przeciwników.',
-    players: '1–4 graczy'
+    players: '1 gracz'
   },
   {
     id: 'war-for-crown',

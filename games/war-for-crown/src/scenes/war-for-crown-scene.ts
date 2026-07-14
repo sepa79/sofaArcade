@@ -1,13 +1,7 @@
 import Phaser from 'phaser';
-import {
-  hasPersistentValue,
-  loadPersistentJson,
-  savePersistentJson
-} from '@light80/core';
 
 import {
   DEFAULT_GAME_CONFIG,
-  FORTIFICATION_LEVELS,
   PLAYER_DEFINITIONS,
   PLAYER_HOME_FORTIFICATION_LEVEL,
   TERRAIN_DEFINITIONS,
@@ -29,7 +23,6 @@ import {
 import { isPlayerOwner, isRoyalistOwner } from '../game/owners';
 import { createPlayerView } from '../game/player-view';
 import {
-  C64_AI_NAME_CHOICES,
   PLAYER_COLOR_CHOICES,
   PLAYER_CREST_CHOICES,
   type CrestChoice
@@ -40,9 +33,6 @@ import {
 } from '../game/rules';
 import { createInitialState } from '../game/state';
 import {
-  createWarForCrownSaveGame,
-  parseWarForCrownSaveGame,
-  type SavedPlayerSetup,
   type WarForCrownSaveGame
 } from '../game/save-game';
 import { createPlayerStatusSummary } from '../game/status';
@@ -64,7 +54,13 @@ import type {
 } from '../game/types';
 import { battleUiCommand, type BattleUiIntent } from './battle-command';
 import { aiActionCues, type AiActionCue } from './ai-action-cue';
+import { runWarForCrownAiAutoplay } from './ai-autoplay';
 import { c64RandomEventCopy } from './c64-event-copy';
+import {
+  cycleWarForCrownConfigOption,
+  nextOption,
+  type WarForCrownConfigOptionId
+} from './config-options';
 import { changeHireSelection, selectedHireSoldiers } from './hire-selection';
 import { createMapDisplayFrame } from './map-display-frame';
 import {
@@ -83,6 +79,23 @@ import {
 } from './map-visuals';
 import { parseMapSeedInput } from './map-seed-input';
 import { resolvePointerIntent } from './pointer-intent';
+import {
+  appendPlayerNameCharacter,
+  playerNamesAreComplete
+} from './player-name';
+import {
+  HUMAN_PLAYER_COUNT_OPTIONS,
+  humanSetupButtonCommand,
+  humanSetupButtonId,
+  type HumanSetupButtonId
+} from './player-setup-controls';
+import {
+  configuredPlayerCount,
+  synchronizePlayerSetups,
+  updatePlayerSetup as updatePlayerSetupModel,
+  type AiPlayerSetup,
+  type PlayerSetup
+} from './player-setup-model';
 import { WAR_FOR_CROWN_RENDER_SCALE } from './render-scale';
 import { parseWarForCrownReturnUrl, parseWarForCrownSeed } from './scene-data';
 import {
@@ -90,6 +103,12 @@ import {
   errorMessage,
   readWarForCrownSaveFile
 } from './save-file';
+import {
+  createWarForCrownSaveSnapshot,
+  hasWarForCrownBrowserSave,
+  loadWarForCrownFromBrowser,
+  saveWarForCrownToBrowser
+} from './save-storage';
 import { UI_COPY, type Language } from './ui-copy';
 import {
   BACKGROUND_COLOR,
@@ -145,8 +164,6 @@ interface MapDragState {
 
 
 type SceneMode = 'main-menu' | 'rules' | 'map-select' | 'player-setup' | 'game';
-
-type PlayerController = 'human' | 'ai';
 
 type ButtonId =
   | 'advance-step'
@@ -205,12 +222,7 @@ type ButtonId =
   | 'setup-ai-mode-p3'
   | 'setup-ai-mode-p4'
   | 'setup-back'
-  | 'setup-color-p1'
-  | 'setup-color-p2'
-  | 'setup-crest-p1'
-  | 'setup-crest-p2'
-  | 'setup-name-p1'
-  | 'setup-name-p2'
+  | HumanSetupButtonId
   | 'setup-start'
   | 'setup-human-count'
   | 'upgrade-fort';
@@ -269,9 +281,6 @@ interface TurnUiCopy {
   readonly instruction: string;
   readonly advanceLabel: string;
 }
-
-type PlayerSetup = SavedPlayerSetup;
-type AiPlayerSetup = Extract<PlayerSetup, { readonly controller: 'ai' }>;
 
 interface AiModeChoice {
   readonly mode: WarForCrownAiMode;
@@ -338,27 +347,14 @@ const MAP_EDGE_SCROLL_SPEED = 540;
 const MAP_DRAG_THRESHOLD = 6;
 const EVENT_LOG_LIMIT = 5;
 const PHASE_OVERLAY_MS = 4000;
-const MAX_PLAYER_NAME_LENGTH = 12;
 const AI_AUTOPLAY_STEP_LIMIT = 80;
 const AI_ACTION_CUE_MS = 1800;
 const AI_ACTION_FLASH_MS = 220;
-const WAR_FOR_CROWN_BROWSER_SAVE_KEY = 'sofa-arcade.war-for-crown.save.v1';
-const HUMAN_PLAYER_COUNT_OPTIONS: ReadonlyArray<number> = [1, 2];
 const AI_PLAYER_COUNT_OPTIONS: ReadonlyArray<number> = Array.from(
   { length: PLAYER_DEFINITIONS.length },
   (_value, index) => index
 );
 const PLAYER_FACING_AI_MODES: ReadonlyArray<WarForCrownAiMode> = ['c64-original', 'c64-workbench'];
-const PROVINCE_COUNT_OPTIONS: ReadonlyArray<number> = [16, 20, 24, 30];
-const MAX_VILLAGE_OPTIONS: ReadonlyArray<number> = [5, 8, 12, 16];
-const VILLAGE_COST_OPTIONS: ReadonlyArray<number> = [2, 4, 8, 12];
-const INTEREST_RATE_OPTIONS: ReadonlyArray<number> = [0, 4, 8, 12];
-const PERCENT_OPTIONS: ReadonlyArray<number> = [0, 20, 40, 60, 80];
-const STARTING_SOLDIER_OPTIONS: ReadonlyArray<number> = [10, 20, 30, 40];
-const STARTING_MONEY_OPTIONS: ReadonlyArray<number> = [10, 20, 30, 40];
-const HOME_FORTIFICATION_LEVEL_OPTIONS: ReadonlyArray<StandardFortificationLevel> = FORTIFICATION_LEVELS.filter(
-  (level) => ruleFortificationIndex(level) >= ruleFortificationIndex(PLAYER_HOME_FORTIFICATION_LEVEL)
-);
 
 const AI_MODE_CHOICES: ReadonlyArray<AiModeChoice> = [
   { mode: 'c64-original', pl: 'C64', en: 'C64' },
@@ -546,19 +542,6 @@ function formatFortification(province: ProvinceState, language: Language): strin
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
-}
-
-function nextOption<T>(values: ReadonlyArray<T>, current: T): T {
-  const index = values.indexOf(current);
-  if (index === -1) {
-    throw new Error(`Current option is not in configured option list: ${String(current)}.`);
-  }
-
-  const next = values[(index + 1) % values.length];
-  if (next === undefined) {
-    throw new Error('Configured option list is empty.');
-  }
-  return next;
 }
 
 function booleanLabel(value: boolean, language: Language): string {
@@ -835,16 +818,11 @@ export class WarForCrownScene extends Phaser.Scene {
       return;
     }
 
-    if (event.key.length !== 1 || event.ctrlKey || event.metaKey || event.altKey) {
+    if (event.ctrlKey || event.metaKey || event.altKey || Array.from(event.key).length !== 1) {
       return;
     }
-
-    if (!/^[a-zA-Z0-9 _-]$/.test(event.key)) {
-      return;
-    }
-
     this.updatePlayerName(this.editingNamePlayerId, (current) =>
-      `${current}${event.key}`.slice(0, MAX_PLAYER_NAME_LENGTH)
+      appendPlayerNameCharacter(current, event.key)
     );
   };
   private readonly onPointerDown = (pointer: Phaser.Input.Pointer): void => {
@@ -1041,7 +1019,7 @@ export class WarForCrownScene extends Phaser.Scene {
     }
     const seed = parseWarForCrownSeed(rawData);
     this.returnUrl = parseWarForCrownReturnUrl(rawData);
-    this.hasBrowserSave = hasPersistentValue(WAR_FOR_CROWN_BROWSER_SAVE_KEY);
+    this.hasBrowserSave = hasWarForCrownBrowserSave();
     this.syncPlayerSetupsWithConfig();
     this.state = createInitialState(seed, this.gameConfig);
     this.mode = 'main-menu';
@@ -1267,81 +1245,8 @@ export class WarForCrownScene extends Phaser.Scene {
     return UI_COPY[this.language];
   }
 
-  private totalConfiguredPlayers(config: GameConfig = this.gameConfig): number {
-    return config.humanPlayerCount + config.aiPlayerCount;
-  }
-
-  private c64AiName(aiIndex: number): string {
-    const name = C64_AI_NAME_CHOICES[aiIndex - 1];
-    if (name === undefined) {
-      throw new Error(`Missing C64 AI name for AI index ${aiIndex}.`);
-    }
-    return name;
-  }
-
-  private defaultPlayerSetup(index: number, controller: PlayerController): PlayerSetup {
-    const playerId = `p${index + 1}`;
-    const aiIndex = index - this.gameConfig.humanPlayerCount + 1;
-    const base = {
-      playerId,
-      name: controller === 'human' ? `P${index + 1}` : this.c64AiName(aiIndex),
-      colorIndex: index % PLAYER_COLOR_CHOICES.length,
-      crestIndex: index % PLAYER_CREST_CHOICES.length
-    };
-
-    if (controller === 'human') {
-      return {
-        ...base,
-        controller
-      };
-    }
-
-    return {
-      ...base,
-      controller,
-      aiMode: 'c64-original'
-    };
-  }
-
-  private syncExistingPlayerSetup(current: PlayerSetup, index: number, controller: PlayerController): PlayerSetup {
-    const fallback = this.defaultPlayerSetup(index, controller);
-    const base = {
-      playerId: fallback.playerId,
-      name: controller === 'human' && current.controller === 'human' ? current.name : fallback.name,
-      colorIndex: current.colorIndex,
-      crestIndex: current.crestIndex
-    };
-
-    if (controller === 'human') {
-      return {
-        ...base,
-        controller
-      };
-    }
-
-    return {
-      ...base,
-      controller,
-      aiMode: current.controller === 'ai' ? current.aiMode : 'c64-original'
-    };
-  }
-
   private syncPlayerSetupsWithConfig(): void {
-    const existing = new Map(this.playerSetups.map((setup) => [setup.playerId, setup]));
-    const nextSetups: PlayerSetup[] = [];
-    const totalPlayers = this.totalConfiguredPlayers();
-
-    for (let index = 0; index < totalPlayers; index += 1) {
-      const playerId = `p${index + 1}`;
-      const controller: PlayerController = index < this.gameConfig.humanPlayerCount ? 'human' : 'ai';
-      const current = existing.get(playerId);
-      nextSetups.push(
-        current === undefined
-          ? this.defaultPlayerSetup(index, controller)
-          : this.syncExistingPlayerSetup(current, index, controller)
-      );
-    }
-
+    const nextSetups = synchronizePlayerSetups(this.gameConfig, this.playerSetups);
     this.playerSetups = nextSetups;
     if (
       this.editingNamePlayerId !== null &&
@@ -1353,8 +1258,8 @@ export class WarForCrownScene extends Phaser.Scene {
 
   private updateGameConfig(update: (config: GameConfig) => GameConfig, regenerateMap: boolean): void {
     const nextConfig = update(this.gameConfig);
-    if (this.totalConfiguredPlayers(nextConfig) > PLAYER_COLOR_CHOICES.length) {
-      throw new Error(`Configured players exceed available colors: ${this.totalConfiguredPlayers(nextConfig)}.`);
+    if (configuredPlayerCount(nextConfig) > PLAYER_COLOR_CHOICES.length) {
+      throw new Error(`Configured players exceed available colors: ${configuredPlayerCount(nextConfig)}.`);
     }
 
     this.gameConfig = nextConfig;
@@ -1386,30 +1291,10 @@ export class WarForCrownScene extends Phaser.Scene {
     );
   }
 
-  private cycleConfigOption(buttonId: ButtonId): void {
+  private cycleConfigOption(
+    buttonId: WarForCrownConfigOptionId | 'setup-ai-count' | 'setup-human-count'
+  ): void {
     switch (buttonId) {
-      case 'map-province-count':
-        this.updateGameConfig(
-          (config) => ({ ...config, provinceCount: nextOption(PROVINCE_COUNT_OPTIONS, config.provinceCount) }),
-          true
-        );
-        return;
-      case 'map-max-villages':
-        this.updateGameConfig(
-          (config) => ({ ...config, maxVillages: nextOption(MAX_VILLAGE_OPTIONS, config.maxVillages) }),
-          true
-        );
-        return;
-      case 'map-village-mode':
-        this.updateGameConfig(
-          (config) => ({
-            ...config,
-            maxVillagesMode:
-              config.maxVillagesMode === 'per-province' ? 'largest-province' : 'per-province'
-          }),
-          true
-        );
-        return;
       case 'setup-human-count':
         {
           const humanPlayerCount = nextOption(
@@ -1436,110 +1321,11 @@ export class WarForCrownScene extends Phaser.Scene {
           );
         }
         return;
-      case 'rules-village-cost':
-        this.updateGameConfig(
-          (config) => ({ ...config, villageCost: nextOption(VILLAGE_COST_OPTIONS, config.villageCost) }),
-          false
-        );
-        return;
-      case 'rules-interest':
-        this.updateGameConfig(
-          (config) => ({
-            ...config,
-            interestRatePercent: nextOption(INTEREST_RATE_OPTIONS, config.interestRatePercent)
-          }),
-          false
-        );
-        return;
-      case 'rules-start-soldiers':
-        this.updateGameConfig(
-          (config) => ({
-            ...config,
-            startingSoldiers: nextOption(STARTING_SOLDIER_OPTIONS, config.startingSoldiers)
-          }),
-          false
-        );
-        return;
-      case 'rules-start-money':
-        this.updateGameConfig(
-          (config) => ({ ...config, startingMoney: nextOption(STARTING_MONEY_OPTIONS, config.startingMoney) }),
-          false
-        );
-        return;
-      case 'rules-home-max-fort':
-        this.updateGameConfig(
-          (config) => ({
-            ...config,
-            maxHomeFortificationLevel: nextOption(
-              HOME_FORTIFICATION_LEVEL_OPTIONS,
-              config.maxHomeFortificationLevel
-            )
-          }),
-          false
-        );
-        return;
-      case 'rules-province-max-fort':
-        this.updateGameConfig(
-          (config) => ({
-            ...config,
-            maxProvinceFortificationLevel: nextOption(FORTIFICATION_LEVELS, config.maxProvinceFortificationLevel)
-          }),
-          false
-        );
-        return;
-      case 'rules-royalist-growth':
-        this.updateGameConfig(
-          (config) => ({
-            ...config,
-            royalistGrowthPercent: nextOption(PERCENT_OPTIONS, config.royalistGrowthPercent)
-          }),
-          false
-        );
-        return;
-      case 'rules-royalist-investment':
-        this.updateGameConfig(
-          (config) => ({
-            ...config,
-            royalistInvestmentPercent: nextOption(PERCENT_OPTIONS, config.royalistInvestmentPercent)
-          }),
-          false
-        );
-        return;
-      case 'rules-terrain-influence':
-        this.updateGameConfig(
-          (config) => ({
-            ...config,
-            terrainInfluence: nextOption(['none', 'income', 'combat', 'both'] as const, config.terrainInfluence)
-          }),
-          false
-        );
-        return;
-      case 'rules-royalist-attitude':
-        this.updateGameConfig(
-          (config) => ({
-            ...config,
-            royalistAttitude: nextOption(['friendly', 'neutral', 'hostile'] as const, config.royalistAttitude)
-          }),
-          false
-        );
-        return;
-      case 'rules-royalist-distribution':
-        this.updateGameConfig(
-          (config) => ({
-            ...config,
-            royalistDistribution: nextOption(['none', 'even', 'border'] as const, config.royalistDistribution)
-          }),
-          false
-        );
-        return;
-      case 'rules-show-computer-battles':
-        this.updateGameConfig(
-          (config) => ({ ...config, showComputerBattles: !config.showComputerBattles }),
-          false
-        );
-        return;
       default:
-        throw new Error(`Button ${buttonId} is not a config option.`);
+        {
+          const result = cycleWarForCrownConfigOption(this.gameConfig, buttonId);
+          this.updateGameConfig(() => result.config, result.regenerateMap);
+        }
     }
   }
 
@@ -1587,9 +1373,7 @@ export class WarForCrownScene extends Phaser.Scene {
   }
 
   private updatePlayerSetup(playerId: PlayerId, update: (setup: PlayerSetup) => PlayerSetup): void {
-    this.playerSetups = this.playerSetups.map((setup) =>
-      setup.playerId === playerId ? update(setup) : setup
-    );
+    this.playerSetups = updatePlayerSetupModel(this.playerSetups, playerId, update);
     this.renderScene();
   }
 
@@ -1628,8 +1412,7 @@ export class WarForCrownScene extends Phaser.Scene {
   }
 
   private playerNamesAreValid(): boolean {
-    const names = this.playerSetups.map((setup) => setup.name.trim());
-    return names.every((name) => name.length > 0) && new Set(names).size === names.length;
+    return playerNamesAreComplete(this.playerSetups.map((setup) => setup.name));
   }
 
   private startMapSelection(seed: number = this.state.seed + 1): void {
@@ -1693,7 +1476,7 @@ export class WarForCrownScene extends Phaser.Scene {
 
   private startHomeSelection(): void {
     if (!this.playerNamesAreValid()) {
-      this.message = this.copy().duplicateNames;
+      this.message = this.copy().playerNameRequired;
       this.renderScene();
       return;
     }
@@ -1806,7 +1589,7 @@ export class WarForCrownScene extends Phaser.Scene {
   }
 
   private currentSaveGame(): WarForCrownSaveGame {
-    return createWarForCrownSaveGame({
+    return createWarForCrownSaveSnapshot({
       language: this.language,
       config: this.gameConfig,
       playerSetups: this.playerSetups,
@@ -1815,7 +1598,7 @@ export class WarForCrownScene extends Phaser.Scene {
   }
 
   private saveGameToBrowser(): void {
-    savePersistentJson(WAR_FOR_CROWN_BROWSER_SAVE_KEY, this.currentSaveGame());
+    saveWarForCrownToBrowser(this.currentSaveGame());
     this.hasBrowserSave = true;
     this.message = this.copy().savedLocal;
     this.renderScene();
@@ -1850,8 +1633,7 @@ export class WarForCrownScene extends Phaser.Scene {
 
   private loadGameFromBrowser(): void {
     try {
-      const rawSave = loadPersistentJson(WAR_FOR_CROWN_BROWSER_SAVE_KEY);
-      const save = parseWarForCrownSaveGame(rawSave);
+      const save = loadWarForCrownFromBrowser();
       this.applyLoadedSave(save, save.language === 'pl' ? UI_COPY.pl.loadedLocal : UI_COPY.en.loadedLocal);
     } catch (error) {
       this.message = errorMessage(error);
@@ -1990,29 +1772,28 @@ export class WarForCrownScene extends Phaser.Scene {
   }
 
   private playAiUntilHumanTurn(): void {
-    let steps = 0;
-    while (
-      this.mode === 'game' &&
-      this.state.phase !== 'game-over' &&
-      this.state.battle === null &&
-      this.battleSummary === null &&
-      this.isAiPlayer(this.state.activePlayerId)
-    ) {
-      if (steps >= AI_AUTOPLAY_STEP_LIMIT) {
-        throw new Error(`AI autoplay exceeded ${AI_AUTOPLAY_STEP_LIMIT} steps.`);
-      }
-
-      const playerId = this.state.activePlayerId;
-      const view = createPlayerView(this.state, playerId, this.gameConfig);
-      const action = chooseAiAction(view, this.gameConfig, this.playerAiMode(playerId));
-      const events = this.applyJournaledActionForPlayer(playerId, action);
-      this.captureBattleSummary(events);
-      const battleStarted = this.battleStartedEvent(events);
-      if (battleStarted !== null) {
-        this.updateBattleStartMessage(battleStarted);
-      }
-      steps += 1;
+    if (this.mode !== 'game') {
+      return;
     }
+    runWarForCrownAiAutoplay({
+      applyAction: (playerId, action) => this.applyJournaledActionForPlayer(playerId, action),
+      battleSummaryVisible: () => this.battleSummary !== null,
+      chooseAction: (playerId) => chooseAiAction(
+        createPlayerView(this.state, playerId, this.gameConfig),
+        this.gameConfig,
+        this.playerAiMode(playerId)
+      ),
+      getState: () => this.state,
+      isAiPlayer: (playerId) => this.isAiPlayer(playerId),
+      onActionApplied: (events) => {
+        this.captureBattleSummary(events);
+        const battleStarted = this.battleStartedEvent(events);
+        if (battleStarted !== null) {
+          this.updateBattleStartMessage(battleStarted);
+        }
+      },
+      stepLimit: AI_AUTOPLAY_STEP_LIMIT
+    });
   }
 
   private appendEventLog(events: ReadonlyArray<WarForCrownEvent>): void {
@@ -2305,10 +2086,6 @@ export class WarForCrownScene extends Phaser.Scene {
       return;
     }
 
-    if (this.battleSummary !== null && button.id !== 'battle-summary-confirm') {
-      return;
-    }
-
     switch (button.id) {
       case 'advance-step':
         this.applyActiveAction({
@@ -2495,25 +2272,28 @@ export class WarForCrownScene extends Phaser.Scene {
         this.renderScene();
         break;
       case 'setup-color-p1':
-        this.cyclePlayerColor('p1');
-        break;
       case 'setup-color-p2':
-        this.cyclePlayerColor('p2');
-        break;
+      case 'setup-color-p3':
+      case 'setup-color-p4':
       case 'setup-crest-p1':
-        this.cyclePlayerCrest('p1');
-        break;
       case 'setup-crest-p2':
-        this.cyclePlayerCrest('p2');
-        break;
+      case 'setup-crest-p3':
+      case 'setup-crest-p4':
       case 'setup-name-p1':
-        this.editingNamePlayerId = 'p1';
-        this.renderScene();
-        break;
       case 'setup-name-p2':
-        this.editingNamePlayerId = 'p2';
-        this.renderScene();
+      case 'setup-name-p3':
+      case 'setup-name-p4': {
+        const command = humanSetupButtonCommand(button.id);
+        if (command.control === 'color') {
+          this.cyclePlayerColor(command.playerId);
+        } else if (command.control === 'crest') {
+          this.cyclePlayerCrest(command.playerId);
+        } else {
+          this.editingNamePlayerId = command.playerId;
+          this.renderScene();
+        }
         break;
+      }
       case 'setup-start':
         this.startHomeSelection();
         break;
@@ -2648,10 +2428,16 @@ export class WarForCrownScene extends Phaser.Scene {
       case 'setup-ai-mode-p4':
       case 'setup-color-p1':
       case 'setup-color-p2':
+      case 'setup-color-p3':
+      case 'setup-color-p4':
       case 'setup-crest-p1':
       case 'setup-crest-p2':
+      case 'setup-crest-p3':
+      case 'setup-crest-p4':
       case 'setup-name-p1':
       case 'setup-name-p2':
+      case 'setup-name-p3':
+      case 'setup-name-p4':
       case 'setup-start':
       case 'setup-human-count':
         return this.copy().setupInstruction;
@@ -3589,10 +3375,10 @@ export class WarForCrownScene extends Phaser.Scene {
     this.drawOptionButton('setup-human-count', copy.humanPlayers, `${this.gameConfig.humanPlayerCount}`, 952, 144, 268);
     this.drawOptionButton('setup-ai-count', copy.aiBarons, `${this.gameConfig.aiPlayerCount}`, 952, 180, 268);
 
-    let rowY = 236;
+    let rowY = 230;
     for (const setup of this.playerSetups.filter((candidate) => candidate.controller === 'human')) {
       this.drawPlayerSetupRow(setup.playerId, 952, rowY);
-      rowY += 132;
+      rowY += 74;
     }
 
     const aiSetups = this.aiSetups();
@@ -3728,35 +3514,37 @@ export class WarForCrownScene extends Phaser.Scene {
     const setup = this.playerSetup(playerId);
     const color = this.playerColor(playerId);
     const crest = this.playerCrest(playerId);
-    const colorButtonId: ButtonId = playerId === 'p1' ? 'setup-color-p1' : 'setup-color-p2';
-    const crestButtonId: ButtonId = playerId === 'p1' ? 'setup-crest-p1' : 'setup-crest-p2';
-    const nameButtonId: ButtonId = playerId === 'p1' ? 'setup-name-p1' : 'setup-name-p2';
+    const colorButtonId = humanSetupButtonId('color', playerId);
+    const crestButtonId = humanSetupButtonId('crest', playerId);
+    const nameButtonId = humanSetupButtonId('name', playerId);
     const nameLabel = this.editingNamePlayerId === playerId ? `${setup.name}_` : setup.name;
 
     this.uiGraphics.fillStyle(color, 1);
-    this.uiGraphics.fillRect(x, y + 4, 16, 16);
-    this.addText(x + 26, y, playerId.toUpperCase(), {
-      fontSize: '14px',
+    this.uiGraphics.fillRect(x, y + 2, 14, 14);
+    this.addText(x + 22, y - 2, playerId.toUpperCase(), {
+      fontSize: '12px',
       color: TEXT_COLOR
     });
 
-    this.addText(x, y + 34, copy.name, {
-      fontSize: '12px',
+    this.drawButton(nameButtonId, nameLabel, x + 54, y - 6, 214, 26, true);
+    this.addText(x, y + 34, copy.color, {
+      fontSize: '10px',
       color: MUTED_TEXT_COLOR
     });
-    this.drawButton(nameButtonId, nameLabel, x + 78, y + 26, 156, 30, true);
-
-    this.addText(x, y + 72, copy.color, {
-      fontSize: '12px',
+    this.drawButton(colorButtonId, cssColor(color), x + 48, y + 28, 82, 26, true);
+    this.addText(x + 138, y + 34, copy.crest, {
+      fontSize: '10px',
       color: MUTED_TEXT_COLOR
     });
-    this.drawButton(colorButtonId, cssColor(color), x + 78, y + 64, 156, 30, true);
-
-    this.addText(x, y + 110, copy.crest, {
-      fontSize: '12px',
-      color: MUTED_TEXT_COLOR
-    });
-    this.drawButton(crestButtonId, this.language === 'pl' ? crest.pl : crest.en, x + 78, y + 102, 156, 30, true);
+    this.drawButton(
+      crestButtonId,
+      this.language === 'pl' ? crest.pl : crest.en,
+      x + 184,
+      y + 28,
+      84,
+      26,
+      true
+    );
   }
 
   private drawAiSetupRow(setup: AiPlayerSetup, x: number, y: number): void {

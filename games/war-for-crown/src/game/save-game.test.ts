@@ -91,4 +91,43 @@ describe('War for Crown save game', () => {
       'Map has 240 tiles; expected 228.'
     );
   });
+
+  it('rejects AI modes inherited from the strategy registry prototype', () => {
+    const save = structuredClone(validSave()) as unknown as {
+      playerSetups: Array<{ aiMode?: string }>;
+    };
+    save.playerSetups[2] = { ...save.playerSetups[2], aiMode: 'toString' };
+
+    expect(() => parseWarForCrownSaveGame(save)).toThrow('has an invalid AI mode');
+  });
+
+  it('rejects terrain ids inherited from the terrain registry prototype', () => {
+    const save = structuredClone(validSave()) as unknown as {
+      state: { map: { provinces: Array<{ terrainId: string }> } };
+    };
+    save.state.map.provinces[0] = {
+      ...save.state.map.provinces[0],
+      terrainId: 'toString'
+    };
+
+    expect(() => parseWarForCrownSaveGame(save)).toThrow('has unknown terrain id');
+  });
+
+  it('rejects RNG state outside the uint32 range', () => {
+    const save = structuredClone(validSave()) as unknown as { state: { rngState: number } };
+    save.state.rngState = 0x100000000;
+
+    expect(() => parseWarForCrownSaveGame(save)).toThrow('must be at most 0xffffffff');
+  });
+
+  it('allows players to use the same name', () => {
+    const save = structuredClone(validSave()) as unknown as {
+      playerSetups: Array<{ name: string }>;
+      state: { players: Array<{ label: string }> };
+    };
+    save.playerSetups[1] = { ...save.playerSetups[1], name: 'P1' };
+    save.state.players[1] = { ...save.state.players[1], label: 'P1' };
+
+    expect(parseWarForCrownSaveGame(save).playerSetups[1]?.name).toBe('P1');
+  });
 });

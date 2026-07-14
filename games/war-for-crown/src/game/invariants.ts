@@ -55,8 +55,11 @@ function requireEnum(value: unknown, values: ReadonlyArray<string>, label: strin
 
 function validateStateStructure(state: GameState): void {
   const rawState = requireRecord(state, 'Game state');
-  requireNonNegativeInteger(rawState.seed as number, 'Game seed');
+  requirePositiveInteger(rawState.seed as number, 'Game seed');
   requireNonNegativeInteger(rawState.rngState as number, 'Game RNG state');
+  if ((rawState.rngState as number) > 0xffffffff) {
+    throw new Error(`Game RNG state must be at most 0xffffffff, got ${String(rawState.rngState)}.`);
+  }
   requireEnum(rawState.phase, GAME_PHASES, 'Game phase');
   requireEnum(rawState.turnStep, TURN_STEPS, 'Turn step');
   requirePositiveInteger(rawState.turnNumber as number, 'Turn number');
@@ -229,7 +232,7 @@ function validateProvince(
   playerIds: ReadonlySet<PlayerId>,
   provincesById: ReadonlyMap<ProvinceId, ProvinceState>
 ): void {
-  if (TERRAIN_DEFINITIONS[province.terrainId] === undefined) {
+  if (!Object.hasOwn(TERRAIN_DEFINITIONS, province.terrainId)) {
     throw new Error(`Province ${province.id} has unknown terrain id: ${province.terrainId}.`);
   }
 

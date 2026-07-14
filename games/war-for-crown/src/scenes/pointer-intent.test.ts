@@ -21,8 +21,13 @@ describe('War for Crown pointer priority', () => {
     })).toBe('button');
     expect(resolvePointerIntent({
       ...BASE_INPUT,
-      battleActive: true,
+      battleSummaryVisible: true,
       buttonId: 'save-game-json'
+    })).toBe('button');
+    expect(resolvePointerIntent({
+      ...BASE_INPUT,
+      battleSummaryVisible: true,
+      buttonId: 'new-map'
     })).toBe('button');
   });
 
@@ -36,5 +41,14 @@ describe('War for Crown pointer priority', () => {
       battleSummaryVisible: true,
       buttonId: 'advance-step'
     })).toBe('ignore');
+  });
+
+  it('allows leaving the victory screen when a final-battle summary still exists', () => {
+    expect(resolvePointerIntent({
+      ...BASE_INPUT,
+      battleSummaryVisible: true,
+      buttonId: 'victory-menu',
+      gameOver: true
+    })).toBe('button');
   });
 });

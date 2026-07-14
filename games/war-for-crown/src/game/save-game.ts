@@ -153,7 +153,7 @@ function parsePlayerSetups(
       throw new Error(`Saved player setup ${index + 1} must be human-controlled.`);
     }
     const aiMode = requireNonEmptyString(setup.aiMode, `Saved player setup ${index + 1} AI mode`);
-    if (!(aiMode in WAR_FOR_CROWN_AI_STRATEGIES)) {
+    if (!Object.hasOwn(WAR_FOR_CROWN_AI_STRATEGIES, aiMode)) {
       throw new Error(`Saved player setup ${index + 1} has an invalid AI mode.`);
     }
     return { ...base, controller: 'ai', aiMode: aiMode as WarForCrownAiMode };
@@ -164,10 +164,6 @@ function parsePlayerSetups(
   }
   if (setups.filter((setup) => setup.controller === 'ai').length !== config.aiPlayerCount) {
     throw new Error('Saved game AI player count does not match game config.');
-  }
-  const normalizedNames = setups.map((setup) => setup.name.trim().toLocaleLowerCase('en'));
-  if (new Set(normalizedNames).size !== normalizedNames.length) {
-    throw new Error('Saved game player names must be unique.');
   }
   return setups;
 }
