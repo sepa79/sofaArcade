@@ -11,15 +11,11 @@ import {
 } from '../game/constants';
 import { applyPlayerAction, type WarForCrownAction } from '../game/actions';
 import { chooseAiAction, type WarForCrownAiMode } from '../game/ai';
-import { c64CombatSetupForProvince, type C64CombatSetup } from '../game/c64-battle';
+import { c64CombatSetupForProvince } from '../game/c64-battle';
 import { c64TerrainIncomePercentForTerrainId } from '../game/c64-economy';
 import { requireC64PlayerMemory } from '../game/c64-state';
-import { calculateProvinceIncome } from '../game/economy';
 import { defenderRetreatProvinceId } from '../game/logic';
-import {
-  c64HumanMovementRange,
-  c64HumanMovementTargetIds
-} from '../game/human-movement';
+import { c64HumanMovementTargetIds } from '../game/human-movement';
 import { isPlayerOwner, isRoyalistOwner } from '../game/owners';
 import { createPlayerView } from '../game/player-view';
 import {
@@ -27,10 +23,6 @@ import {
   PLAYER_CREST_CHOICES,
   type CrestChoice
 } from '../game/player-presentation';
-import {
-  fortificationIndex as ruleFortificationIndex,
-  provinceFortificationLimit
-} from '../game/rules';
 import { createInitialState } from '../game/state';
 import {
   type WarForCrownSaveGame
@@ -38,31 +30,41 @@ import {
 import { createPlayerStatusSummary } from '../game/status';
 import { createJournalEntry, snapshotJournalValue, type WarForCrownJournalEntry } from '../game/journal';
 import type { WarForCrownEvent } from '../game/events';
-import type { OwnerId } from '../game/owners';
 import type {
   BattleResult,
   FortificationLevel,
   GameConfig,
   GameState,
   PlayerId,
-  PlayerState,
   ProvinceId,
   ProvinceState,
-  StandardFortificationLevel,
   TerrainId,
   TileState
 } from '../game/types';
 import { battleUiCommand, type BattleUiIntent } from './battle-command';
+import { battleStartedEvent, createBattleSummary } from './battle-summary';
 import { aiActionCues, type AiActionCue } from './ai-action-cue';
 import { runWarForCrownAiAutoplay } from './ai-autoplay';
-import { c64RandomEventCopy } from './c64-event-copy';
 import {
   cycleWarForCrownConfigOption,
   nextOption,
   type WarForCrownConfigOptionId
 } from './config-options';
 import { changeHireSelection, selectedHireSoldiers } from './hire-selection';
-import { createMapDisplayFrame } from './map-display-frame';
+import { disabledButtonMessage as createDisabledButtonMessage } from './disabled-button-message';
+import {
+  clampMapViewport,
+  initialMapViewport,
+  mapEdgeVelocity,
+  mapTileAtGrid,
+  mapTileAtPoint,
+  mapTileHeight,
+  mapTileRect,
+  mapTileWidth,
+  mapViewportLabel,
+  panMapViewport,
+  zoomMapViewport
+} from './map-viewport';
 import {
   WAR_FOR_CROWN_SOLDIER_ICON_KEY,
   WAR_FOR_CROWN_SOLDIER_ICON_URL
@@ -86,8 +88,7 @@ import {
 import {
   HUMAN_PLAYER_COUNT_OPTIONS,
   humanSetupButtonCommand,
-  humanSetupButtonId,
-  type HumanSetupButtonId
+  humanSetupButtonId
 } from './player-setup-controls';
 import {
   configuredPlayerCount,
@@ -97,7 +98,77 @@ import {
   type PlayerSetup
 } from './player-setup-model';
 import { WAR_FOR_CROWN_RENDER_SCALE } from './render-scale';
+import {
+  AI_ACTION_CUE_MS,
+  AI_ACTION_FLASH_MS,
+  AI_AUTOPLAY_STEP_LIMIT,
+  AI_PLAYER_COUNT_OPTIONS,
+  EVENT_LOG_LIMIT,
+  FOOTER_RECT,
+  HEADER_RECT,
+  isBattleButtonId,
+  MAIN_MENU_RECT,
+  MAP_DRAG_THRESHOLD,
+  MAP_EDGE_EPSILON,
+  MAP_RECT,
+  MAP_ZOOM_LEVELS,
+  PANEL_RECT,
+  PANEL_TEXT_WIDTH,
+  PLAYER_FACING_AI_MODES,
+  RULES_MENU_RECT,
+  type BattleSummary,
+  type ButtonId,
+  type CommandButton,
+  type MapDragState,
+  type MapViewport,
+  type PhaseOverlay,
+  type Point,
+  type Rect,
+  type SceneMode,
+  type SkinFrameOptions,
+  type SliderDragState,
+  type SliderRegion,
+  type TerrainTooltipContent,
+  type TooltipRegion,
+  type TooltipState,
+  type WarForCrownSceneJournal
+} from './scene-contracts';
 import { parseWarForCrownReturnUrl, parseWarForCrownSeed } from './scene-data';
+import {
+  createPhaseOverlay,
+  phaseKey,
+  phaseOverlayAllowed
+} from './phase-overlay';
+import {
+  BATTLE_WINNER_LABELS,
+  ROYALIST_ATTITUDE_LABELS,
+  ROYALIST_DISTRIBUTION_LABELS,
+  TERRAIN_INFLUENCE_LABELS,
+  WEATHER_LABELS,
+  aiModeButtonId,
+  aiModeLabelForLanguage,
+  booleanLabel,
+  clamp,
+  createAttackPreview,
+  cssColor,
+  formatEventForLog,
+  formatFortification,
+  formatFortificationLevel,
+  formatTerrain,
+  fortificationIndex,
+  fortificationLabelForLanguage,
+  ownerColor,
+  ownerLabelForLanguage,
+  playerIdFromAiModeButton,
+  provinceIncome,
+  provinceLabelForLanguage,
+  provinceOwnerColor,
+  provinceOwnerLabel,
+  requirePlayer,
+  requireProvince,
+  terrainLabelForLanguage,
+  turnUiCopy
+} from './scene-presentation';
 import {
   downloadWarForCrownSaveFile,
   errorMessage,
@@ -119,7 +190,6 @@ import {
   MAP_LINE_COLOR,
   MUTED_TEXT_COLOR,
   MUTED_TEXT_NUMERIC_COLOR,
-  NEUTRAL_COLOR,
   PANEL_COLOR,
   PANEL_LINE_COLOR,
   SELECTED_COLOR,
@@ -132,192 +202,9 @@ import {
   WATER_COLOR
 } from './ui-skin';
 import { titleForRank } from './title-copy';
+import * as turnSelection from './turn-selection';
 
 export const WAR_FOR_CROWN_SCENE_KEY = 'war-for-crown';
-
-interface Rect {
-  readonly x: number;
-  readonly y: number;
-  readonly width: number;
-  readonly height: number;
-}
-
-interface Point {
-  readonly x: number;
-  readonly y: number;
-}
-
-interface MapViewport {
-  readonly zoom: number;
-  readonly offsetX: number;
-  readonly offsetY: number;
-}
-
-interface MapDragState {
-  readonly pointerId: number;
-  readonly startPoint: Point;
-  readonly startOffsetX: number;
-  readonly startOffsetY: number;
-  readonly startedAt: Point;
-  readonly hasDragged: boolean;
-}
-
-
-type SceneMode = 'main-menu' | 'rules' | 'map-select' | 'player-setup' | 'game';
-
-type ButtonId =
-  | 'advance-step'
-  | 'attack'
-  | 'battle-retreat-attacker'
-  | 'battle-retreat-defender'
-  | 'battle-round'
-  | 'battle-summary-confirm'
-  | 'battle-view'
-  | 'build-village'
-  | 'confirm-home'
-  | 'end-turn'
-  | 'hire-soldiers'
-  | 'hire-max'
-  | 'hire-minus'
-  | 'hire-plus'
-  | 'language-toggle'
-  | 'main-load'
-  | 'main-load-json'
-  | 'main-new-game'
-  | 'main-rules'
-  | 'main-sofa-arcade'
-  | 'map-accept'
-  | 'map-back'
-  | 'map-max-villages'
-  | 'map-province-count'
-  | 'map-regenerate'
-  | 'map-seed'
-  | 'map-village-mode'
-  | 'move-equal'
-  | 'move-max'
-  | 'move-minus'
-  | 'move-plus'
-  | 'move-soldiers'
-  | 'new-map'
-  | 'save-game'
-  | 'save-game-json'
-  | 'victory-menu'
-  | 'rules-home-max-fort'
-  | 'rules-interest'
-  | 'rules-province-max-fort'
-  | 'rules-royalist-attitude'
-  | 'rules-royalist-distribution'
-  | 'rules-royalist-growth'
-  | 'rules-royalist-investment'
-  | 'rules-back'
-  | 'rules-new-game'
-  | 'rules-show-computer-battles'
-  | 'rules-start-money'
-  | 'rules-start-soldiers'
-  | 'rules-terrain-influence'
-  | 'rules-village-cost'
-  | 'setup-ai-count'
-  | 'setup-ai-mode-p1'
-  | 'setup-ai-mode-p2'
-  | 'setup-ai-mode-p3'
-  | 'setup-ai-mode-p4'
-  | 'setup-back'
-  | HumanSetupButtonId
-  | 'setup-start'
-  | 'setup-human-count'
-  | 'upgrade-fort';
-
-interface CommandButton extends Rect {
-  readonly id: ButtonId;
-  readonly enabled: boolean;
-}
-
-function isBattleButtonId(buttonId: ButtonId): boolean {
-  return buttonId === 'battle-retreat-attacker' ||
-    buttonId === 'battle-retreat-defender' ||
-    buttonId === 'battle-round' ||
-    buttonId === 'battle-view';
-}
-
-interface TextTooltipContent {
-  readonly kind: 'text';
-  readonly text: string;
-}
-
-interface TerrainTooltipContent {
-  readonly kind: 'terrain';
-  readonly terrainId: TerrainId | null;
-  readonly label: string;
-  readonly color: number;
-  readonly income: string;
-  readonly defence: string;
-}
-
-type TooltipContent = TextTooltipContent | TerrainTooltipContent;
-
-interface TooltipRegion extends Rect {
-  readonly id: string;
-  readonly content: TooltipContent;
-}
-
-interface TooltipState {
-  readonly id: string;
-  readonly content: TooltipContent;
-  readonly x: number;
-  readonly y: number;
-}
-
-interface SliderRegion extends Rect {
-  readonly id: 'move-soldiers';
-}
-
-interface SliderDragState {
-  readonly pointerId: number;
-  readonly region: SliderRegion;
-}
-
-interface TurnUiCopy {
-  readonly title: string;
-  readonly instruction: string;
-  readonly advanceLabel: string;
-}
-
-interface AiModeChoice {
-  readonly mode: WarForCrownAiMode;
-  readonly pl: string;
-  readonly en: string;
-}
-
-interface AiModeButtonChoice {
-  readonly buttonId: ButtonId;
-  readonly playerId: PlayerId;
-}
-
-interface PhaseOverlay {
-  readonly title: string;
-  readonly subtitle: string;
-  readonly hideAtMs: number | null;
-}
-
-interface BattleSummary {
-  readonly attackerId: PlayerId;
-  readonly defenderId: OwnerId;
-  readonly fromProvinceIds: ReadonlyArray<ProvinceId>;
-  readonly targetProvinceId: ProvinceId;
-  readonly attackingSoldiers: number;
-  readonly round: number;
-  readonly attackerLosses: number;
-  readonly defenderLosses: number;
-  readonly result: BattleResult;
-}
-
-interface WarForCrownSceneJournal {
-  readonly seed: number;
-  readonly config: GameConfig;
-  readonly playerSetups: ReadonlyArray<PlayerSetup>;
-  readonly currentState: GameState;
-  readonly entries: ReadonlyArray<WarForCrownJournalEntry>;
-}
 
 declare global {
   interface Window {
@@ -325,407 +212,7 @@ declare global {
   }
 }
 
-interface SkinFrameOptions {
-  readonly fillColor?: number;
-  readonly fillAlpha?: number;
-  readonly lineColor?: number;
-  readonly lineAlpha?: number;
-  readonly decorative?: boolean;
-}
 
-const MAP_RECT: Rect = { x: 42, y: 76, width: 864, height: 548 };
-const PANEL_RECT: Rect = { x: 932, y: 76, width: 306, height: 548 };
-const HEADER_RECT: Rect = { x: 0, y: 0, width: WORLD_WIDTH, height: 56 };
-const FOOTER_RECT: Rect = { x: 0, y: 646, width: WORLD_WIDTH, height: 74 };
-const MAIN_MENU_RECT: Rect = { x: 300, y: 64, width: 680, height: 568 };
-const RULES_MENU_RECT: Rect = { x: 120, y: 34, width: 1040, height: 604 };
-const PANEL_TEXT_WIDTH = PANEL_RECT.width - 58;
-const MAP_ZOOM_LEVELS: ReadonlyArray<number> = [1, 1.35, 1.8, 2.4, 3.2];
-const MAP_EDGE_EPSILON = 0.5;
-const MAP_EDGE_SCROLL_SIZE = 52;
-const MAP_EDGE_SCROLL_SPEED = 540;
-const MAP_DRAG_THRESHOLD = 6;
-const EVENT_LOG_LIMIT = 5;
-const PHASE_OVERLAY_MS = 4000;
-const AI_AUTOPLAY_STEP_LIMIT = 80;
-const AI_ACTION_CUE_MS = 1800;
-const AI_ACTION_FLASH_MS = 220;
-const AI_PLAYER_COUNT_OPTIONS: ReadonlyArray<number> = Array.from(
-  { length: PLAYER_DEFINITIONS.length },
-  (_value, index) => index
-);
-const PLAYER_FACING_AI_MODES: ReadonlyArray<WarForCrownAiMode> = ['c64-original', 'c64-workbench'];
-
-const AI_MODE_CHOICES: ReadonlyArray<AiModeChoice> = [
-  { mode: 'c64-original', pl: 'C64', en: 'C64' },
-  { mode: 'c64-workbench', pl: 'Nasze', en: 'Our AI' },
-  { mode: 'deterministic-debug', pl: 'Test', en: 'Test' }
-];
-
-const AI_MODE_BUTTONS: ReadonlyArray<AiModeButtonChoice> = [
-  { buttonId: 'setup-ai-mode-p1', playerId: 'p1' },
-  { buttonId: 'setup-ai-mode-p2', playerId: 'p2' },
-  { buttonId: 'setup-ai-mode-p3', playerId: 'p3' },
-  { buttonId: 'setup-ai-mode-p4', playerId: 'p4' }
-];
-
-const TERRAIN_LABELS: Readonly<Record<TerrainId, Record<Language, string>>> = {
-  plains: { pl: 'trawa', en: 'grass' },
-  brushland: { pl: 'krzaki', en: 'bushes' },
-  desert: { pl: 'pustynia', en: 'desert' },
-  marshland: { pl: 'bagna', en: 'swamp' },
-  forest: { pl: 'las', en: 'forest' },
-  hills: { pl: 'wzgorza', en: 'hills' },
-  mountains: { pl: 'gory', en: 'mountain chain' }
-};
-
-const FORTIFICATION_LABELS: Readonly<Record<StandardFortificationLevel, Record<Language, string>>> = {
-  none: { pl: 'brak', en: 'none' },
-  watchtower: { pl: 'wieza', en: 'watchtower' },
-  fort: { pl: 'fort', en: 'fort' },
-  castle: { pl: 'zamek', en: 'castle' },
-  stronghold: { pl: 'warownia', en: 'stronghold' },
-  fortress: { pl: 'twierdza', en: 'fortress' },
-  citadel: { pl: 'cytadela', en: 'citadel' }
-};
-
-const TERRAIN_INFLUENCE_LABELS: Readonly<Record<GameConfig['terrainInfluence'], Record<Language, string>>> = {
-  none: { pl: 'Nic', en: 'None' },
-  income: { pl: 'Dochody', en: 'Income' },
-  combat: { pl: 'Walki', en: 'Combat' },
-  both: { pl: 'Oba', en: 'Both' }
-};
-
-const ROYALIST_ATTITUDE_LABELS: Readonly<Record<GameConfig['royalistAttitude'], Record<Language, string>>> = {
-  friendly: { pl: 'Przyjazni', en: 'Friendly' },
-  neutral: { pl: 'Neutralni', en: 'Neutral' },
-  hostile: { pl: 'Wrodzy', en: 'Hostile' }
-};
-
-const ROYALIST_DISTRIBUTION_LABELS: Readonly<Record<GameConfig['royalistDistribution'], Record<Language, string>>> = {
-  none: { pl: 'Brak', en: 'None' },
-  even: { pl: 'Rowno', en: 'Even' },
-  border: { pl: 'Przy granicach', en: 'Border' }
-};
-
-const BATTLE_WINNER_LABELS: Readonly<Record<BattleResult['winner'], Record<Language, string>>> = {
-  attacker: { pl: 'atakujacy', en: 'attacker' },
-  defender: { pl: 'obronca', en: 'defender' }
-};
-
-const WEATHER_LABELS: ReadonlyArray<Readonly<Record<Language, string>>> = [
-  { pl: 'doskonala', en: 'excellent' },
-  { pl: 'sloneczna', en: 'sunny' },
-  { pl: 'ciepla', en: 'warm' },
-  { pl: 'pochmurna', en: 'cloudy' },
-  { pl: 'chlodna', en: 'cool' },
-  { pl: 'zimna', en: 'cold' },
-  { pl: 'burzowa', en: 'stormy' }
-];
-
-function cssColor(color: number): string {
-  return `#${color.toString(16).padStart(6, '0')}`;
-}
-
-function requireProvince(state: GameState, provinceId: ProvinceId): ProvinceState {
-  const province = state.map.provinces.find((candidate) => candidate.id === provinceId);
-  if (province === undefined) {
-    throw new Error(`Unknown province id: ${provinceId}.`);
-  }
-  return province;
-}
-
-function requirePlayer(state: GameState, playerId: PlayerId): PlayerState {
-  const player = state.players.find((candidate) => candidate.id === playerId);
-  if (player === undefined) {
-    throw new Error(`Unknown player id: ${playerId}.`);
-  }
-  return player;
-}
-
-function provinceOwnerColor(state: GameState, province: ProvinceState): number {
-  if (isRoyalistOwner(province.ownerId)) {
-    return NEUTRAL_COLOR;
-  }
-
-  return requirePlayer(state, province.ownerId).color;
-}
-
-function terrainLabelForLanguage(terrainId: TerrainId, language: Language): string {
-  return TERRAIN_LABELS[terrainId][language];
-}
-
-function aiModeChoice(mode: WarForCrownAiMode): AiModeChoice {
-  const choice = AI_MODE_CHOICES.find((candidate) => candidate.mode === mode);
-  if (choice === undefined) {
-    throw new Error(`Missing UI label for AI mode ${mode}.`);
-  }
-  return choice;
-}
-
-function aiModeLabelForLanguage(mode: WarForCrownAiMode, language: Language): string {
-  return aiModeChoice(mode)[language];
-}
-
-function aiModeButtonId(playerId: PlayerId): ButtonId {
-  const choice = AI_MODE_BUTTONS.find((candidate) => candidate.playerId === playerId);
-  if (choice === undefined) {
-    throw new Error(`Missing AI mode button for player ${playerId}.`);
-  }
-  return choice.buttonId;
-}
-
-function playerIdFromAiModeButton(buttonId: ButtonId): PlayerId {
-  const choice = AI_MODE_BUTTONS.find((candidate) => candidate.buttonId === buttonId);
-  if (choice === undefined) {
-    throw new Error(`Button ${buttonId} is not an AI mode button.`);
-  }
-  return choice.playerId;
-}
-
-function provinceLabelForLanguage(provinceId: ProvinceId, language: Language): string {
-  const match = /^province-(\d+)$/.exec(provinceId);
-  if (match === null) {
-    throw new Error(`Cannot localize province id: ${provinceId}.`);
-  }
-
-  return language === 'pl' ? `prow. ${match[1]}` : `province ${match[1]}`;
-}
-
-function provinceOwnerLabel(state: GameState, province: ProvinceState, language: Language): string {
-  if (isRoyalistOwner(province.ownerId)) {
-    return UI_COPY[language].neutral;
-  }
-
-  return requirePlayer(state, province.ownerId).label;
-}
-
-function ownerLabelForLanguage(state: GameState, ownerId: OwnerId, language: Language): string {
-  return isRoyalistOwner(ownerId)
-    ? UI_COPY[language].neutral
-    : requirePlayer(state, ownerId).label;
-}
-
-function ownerColor(state: GameState, ownerId: OwnerId): number {
-  return isRoyalistOwner(ownerId) ? NEUTRAL_COLOR : requirePlayer(state, ownerId).color;
-}
-
-function tileIndex(width: number, x: number, y: number): number {
-  return y * width + x;
-}
-
-function formatTerrain(terrainId: TerrainId, config: GameConfig, language: Language): string {
-  const combat = c64CombatSetupForProvince(
-    { terrainId, fortificationLevel: 'none' },
-    config
-  );
-  return `${terrainLabelForLanguage(terrainId, language)}, ` +
-    `${UI_COPY[language].defenceColumn.toLowerCase()} ${combat.defenderCombatPercent}%`;
-}
-
-function fortificationLabelForLanguage(level: FortificationLevel, language: Language): string {
-  const standard = FORTIFICATION_LABELS[level as StandardFortificationLevel];
-  return standard === undefined ? `C64 ${ruleFortificationIndex(level)}` : standard[language];
-}
-
-function formatFortificationLevel(
-  level: FortificationLevel,
-  language: Language,
-  label: string
-): string {
-  return `${label}: ${fortificationLabelForLanguage(level, language)}`;
-}
-
-function formatFortification(province: ProvinceState, language: Language): string {
-  return formatFortificationLevel(province.fortificationLevel, language, UI_COPY[language].fort);
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-function booleanLabel(value: boolean, language: Language): string {
-  return value ? UI_COPY[language].yes : UI_COPY[language].no;
-}
-
-function createAttackPreview(
-  province: ProvinceState,
-  config: GameConfig
-): C64CombatSetup {
-  return c64CombatSetupForProvince(province, config);
-}
-
-function provinceIncome(province: ProvinceState, config: GameConfig): number {
-  return calculateProvinceIncome(province, config);
-}
-
-function fortificationIndex(province: ProvinceState): number {
-  return ruleFortificationIndex(province.fortificationLevel);
-}
-
-function maxFortificationIndex(province: ProvinceState, state: GameState, config: GameConfig): number {
-  return ruleFortificationIndex(
-    provinceFortificationLimit(
-      province,
-      config,
-      state.players.some((player) => player.homeProvinceId === province.id)
-    )
-  );
-}
-
-function turnUiCopy(state: GameState, language: Language): TurnUiCopy {
-  const active = requirePlayer(state, state.activePlayerId);
-
-  if (state.phase === 'home-selection') {
-    return {
-      title: language === 'pl' ? 'WYBOR STOLICY' : 'CAPITAL SELECTION',
-      instruction:
-        language === 'pl'
-          ? `Kliknij neutralna prowincje dla ${active.label}.`
-          : `Click a neutral province for ${active.label}.`,
-      advanceLabel: language === 'pl' ? 'WYBIERZ STOLICE' : 'CHOOSE CAPITAL'
-    };
-  }
-
-  if (state.phase === 'game-over') {
-    return {
-      title: UI_COPY[language].gameOver,
-      instruction: language === 'pl' ? 'Korona zostala zdobyta.' : 'The crown has been claimed.',
-      advanceLabel: UI_COPY[language].gameOver
-    };
-  }
-
-  switch (state.turnStep) {
-    case 'new-month':
-      return {
-        title: language === 'pl' ? 'NOWY MIESIAC' : 'NEW MONTH',
-        instruction: language === 'pl' ? 'Pogoda, dochod i zdarzenia.' : 'Weather, income, and events.',
-        advanceLabel: language === 'pl' ? 'DALEJ' : 'NEXT'
-      };
-    case 'attack':
-      return {
-        title: language === 'pl' ? 'ATAK' : 'ATTACK',
-        instruction:
-          language === 'pl'
-            ? 'Kliknij cel, potem swoje prowincje przy celu.'
-            : 'Click a target, then your provinces next to it.',
-        advanceLabel: language === 'pl' ? 'KONIEC ATAKU' : 'END ATTACK'
-      };
-    case 'movement':
-      return {
-        title: language === 'pl' ? 'RUCH' : 'MOVE',
-        instruction:
-          language === 'pl'
-            ? 'Przesun wojsko miedzy swoimi prowincjami.'
-            : 'Move soldiers between your provinces.',
-        advanceLabel: language === 'pl' ? 'KONIEC RUCHU' : 'END MOVE'
-      };
-    case 'investment':
-      return {
-        title: language === 'pl' ? 'BUDOWA' : 'BUILD',
-        instruction:
-          language === 'pl'
-            ? 'Buduj w prowincji albo najmij wojsko.'
-            : 'Build in a province or recruit soldiers.',
-        advanceLabel: language === 'pl' ? 'KONIEC TURY' : 'END TURN'
-      };
-    default:
-      state.turnStep satisfies never;
-      throw new Error('Unhandled turn step.');
-  }
-}
-
-function formatEventForLog(
-  state: GameState,
-  event: WarForCrownEvent,
-  language: Language
-): string | null {
-  const copy = UI_COPY[language];
-
-  switch (event.type) {
-    case 'home-selected':
-      return language === 'pl'
-        ? `${requirePlayer(state, event.playerId).label} stolica ${provinceLabelForLanguage(event.provinceId, language)}`
-        : `${requirePlayer(state, event.playerId).label} capital ${provinceLabelForLanguage(event.provinceId, language)}`;
-    case 'turn-step-advanced':
-      return null;
-    case 'income-collected':
-      return language === 'pl'
-        ? `${requirePlayer(state, event.playerId).label} kasa +${event.money}`
-        : `${requirePlayer(state, event.playerId).label} income +${event.money}`;
-    case 'c64-random-event':
-      return `${requirePlayer(state, event.playerId).label}: ${c64RandomEventCopy({
-        eventId: event.eventId,
-        amount: event.amount,
-        provinceId: event.provinceId,
-        provinceLabel: event.provinceId === null
-          ? null
-          : provinceLabelForLanguage(event.provinceId, language)
-      }, language)}`;
-    case 'player-title-changed': {
-      const player = requirePlayer(state, event.playerId);
-      const title = titleForRank(event.rank, language);
-      return event.rank > event.previousRank
-        ? language === 'pl' ? `${player.label} otrzymuje tytul: ${title}` : `${player.label} is granted the title: ${title}`
-        : language === 'pl' ? `${player.label} traci tytul i zostaje: ${title}` : `${player.label} loses rank and becomes: ${title}`;
-    }
-    case 'soldiers-recruited':
-      return language === 'pl'
-        ? `${requirePlayer(state, event.playerId).label} najmuje ${event.soldiers} ${provinceLabelForLanguage(event.provinceId, language)}`
-        : `${requirePlayer(state, event.playerId).label} recruits ${event.soldiers} ${provinceLabelForLanguage(event.provinceId, language)}`;
-    case 'village-built':
-      return language === 'pl'
-        ? `${requirePlayer(state, event.playerId).label} buduje wies ${provinceLabelForLanguage(event.provinceId, language)}`
-        : `${requirePlayer(state, event.playerId).label} builds village ${provinceLabelForLanguage(event.provinceId, language)}`;
-    case 'fortification-upgraded':
-      return language === 'pl'
-        ? `${requirePlayer(state, event.playerId).label} fort ${provinceLabelForLanguage(event.provinceId, language)} ${fortificationLabelForLanguage(event.level, language)}`
-        : `${requirePlayer(state, event.playerId).label} fort ${provinceLabelForLanguage(event.provinceId, language)} ${fortificationLabelForLanguage(event.level, language)}`;
-    case 'c64-baron-economy-resolved':
-      return language === 'pl'
-        ? `${requirePlayer(state, event.playerId).label} gospodarka: +${event.recruitedSoldiers} zoln., +${event.villagesBought} wsi, kasa ${event.finalMoney}`
-        : `${requirePlayer(state, event.playerId).label} economy: +${event.recruitedSoldiers} soldiers, +${event.villagesBought} villages, money ${event.finalMoney}`;
-    case 'c64-baron-movement-resolved': {
-      const target = event.rememberedTargetProvinceId === null
-        ? ''
-        : ` ${provinceLabelForLanguage(event.rememberedTargetProvinceId, language)}`;
-      return language === 'pl'
-        ? `${requirePlayer(state, event.playerId).label} ruch AI: ${event.pulledMobileSoldiers}/${event.defensiveRequirement}${target}`
-        : `${requirePlayer(state, event.playerId).label} AI movement: ${event.pulledMobileSoldiers}/${event.defensiveRequirement}${target}`;
-    }
-    case 'soldiers-moved':
-      return language === 'pl'
-        ? `${requirePlayer(state, event.playerId).label} ruch ${event.soldiers} ${provinceLabelForLanguage(event.fromProvinceId, language)}->${provinceLabelForLanguage(event.targetProvinceId, language)}`
-        : `${requirePlayer(state, event.playerId).label} moves ${event.soldiers} ${provinceLabelForLanguage(event.fromProvinceId, language)}->${provinceLabelForLanguage(event.targetProvinceId, language)}`;
-    case 'battle-resolved':
-      return language === 'pl'
-        ? `${requirePlayer(state, event.attackerId).label} atak ${provinceLabelForLanguage(event.targetProvinceId, language)} z ${event.fromProvinceIds.length}: ${BATTLE_WINNER_LABELS[event.result.winner][language]}`
-        : `${requirePlayer(state, event.attackerId).label} attacks ${provinceLabelForLanguage(event.targetProvinceId, language)} from ${event.fromProvinceIds.length}: ${BATTLE_WINNER_LABELS[event.result.winner][language]}`;
-    case 'battle-started':
-      return language === 'pl'
-        ? `${requirePlayer(state, event.attackerId).label} zaczyna walke ${provinceLabelForLanguage(event.targetProvinceId, language)}`
-        : `${requirePlayer(state, event.attackerId).label} starts battle ${provinceLabelForLanguage(event.targetProvinceId, language)}`;
-    case 'battle-round-resolved':
-      return language === 'pl'
-        ? `Runda ${event.round}: -${event.attackerLosses}/-${event.defenderLosses}`
-        : `Round ${event.round}: -${event.attackerLosses}/-${event.defenderLosses}`;
-    case 'royalist-battle-resolved':
-      return language === 'pl'
-        ? `Krolewscy atak ${provinceLabelForLanguage(event.targetProvinceId, language)} z ${event.fromProvinceIds.length}: ${BATTLE_WINNER_LABELS[event.result.winner][language]}`
-        : `Royalists attack ${provinceLabelForLanguage(event.targetProvinceId, language)} from ${event.fromProvinceIds.length}: ${BATTLE_WINNER_LABELS[event.result.winner][language]}`;
-    case 'turn-ended':
-      return language === 'pl'
-        ? `${requirePlayer(state, event.endedPlayerId).label} koniec tury`
-        : `${requirePlayer(state, event.endedPlayerId).label} ends turn`;
-    case 'game-won':
-      return language === 'pl'
-        ? `${ownerLabelForLanguage(state, event.winnerId, language)} ${copy.takes} korone`
-        : `${ownerLabelForLanguage(state, event.winnerId, language)} wins the crown`;
-    default:
-      event satisfies never;
-      throw new Error('Unhandled War for Crown event.');
-  }
-}
 
 export class WarForCrownScene extends Phaser.Scene {
   private state!: GameState;
@@ -1536,7 +1023,7 @@ export class WarForCrownScene extends Phaser.Scene {
   }
 
   private canShowPhaseOverlay(): boolean {
-    return this.state.battle === null && this.battleSummary === null;
+    return phaseOverlayAllowed(this.state.battle !== null, this.battleSummary !== null);
   }
 
   private showCurrentPhaseOverlay(subtitle: string = this.phaseOverlaySubtitle()): void {
@@ -1546,22 +1033,16 @@ export class WarForCrownScene extends Phaser.Scene {
     }
 
     this.announcedPhaseKey = this.currentPhaseKey();
-    this.phaseOverlay = {
-      title: turnUiCopy(this.state, this.language).title,
-      subtitle,
-      hideAtMs:
-        this.state.phase === 'turn' && this.state.turnStep === 'new-month'
-          ? null
-          : Date.now() + PHASE_OVERLAY_MS
-    };
+    this.phaseOverlay = createPhaseOverlay({
+      language: this.language,
+      nowMs: Date.now(),
+      state: this.state,
+      subtitle
+    });
   }
 
   private currentPhaseKey(): string | null {
-    if (this.mode !== 'game') {
-      return null;
-    }
-
-    return `${this.state.activePlayerId}:${this.state.phase}:${this.state.turnStep}:${this.state.turnNumber}`;
+    return phaseKey(this.mode, this.state);
   }
 
   private ensurePhaseOverlay(): void {
@@ -1709,33 +1190,6 @@ export class WarForCrownScene extends Phaser.Scene {
     return this.applyJournaledActionForPlayer(this.state.activePlayerId, action);
   }
 
-  private battleStartedEvent(
-    events: ReadonlyArray<WarForCrownEvent>
-  ): Extract<WarForCrownEvent, { readonly type: 'battle-started' }> | null {
-    return events.find(
-      (event): event is Extract<WarForCrownEvent, { readonly type: 'battle-started' }> =>
-        event.type === 'battle-started'
-    ) ?? null;
-  }
-
-  private battleRoundEvent(
-    events: ReadonlyArray<WarForCrownEvent>
-  ): Extract<WarForCrownEvent, { readonly type: 'battle-round-resolved' }> | null {
-    return events.find(
-      (event): event is Extract<WarForCrownEvent, { readonly type: 'battle-round-resolved' }> =>
-        event.type === 'battle-round-resolved'
-    ) ?? null;
-  }
-
-  private battleResolvedEvent(
-    events: ReadonlyArray<WarForCrownEvent>
-  ): Extract<WarForCrownEvent, { readonly type: 'battle-resolved' }> | null {
-    return events.find(
-      (event): event is Extract<WarForCrownEvent, { readonly type: 'battle-resolved' }> =>
-        event.type === 'battle-resolved'
-    ) ?? null;
-  }
-
   private updateBattleStartMessage(event: Extract<WarForCrownEvent, { readonly type: 'battle-started' }>): void {
     const attacker = requirePlayer(this.state, event.attackerId);
     const target = requireProvince(this.state, event.targetProvinceId);
@@ -1744,27 +1198,10 @@ export class WarForCrownScene extends Phaser.Scene {
   }
 
   private captureBattleSummary(events: ReadonlyArray<WarForCrownEvent>): void {
-    const battleResult = this.battleResolvedEvent(events);
-    if (battleResult === null) {
-      return;
+    const summary = createBattleSummary(events);
+    if (summary !== null) {
+      this.battleSummary = summary;
     }
-
-    const round = this.battleRoundEvent(events);
-    if (round === null) {
-      throw new Error('Battle resolution requires a battle-round-resolved event.');
-    }
-
-    this.battleSummary = {
-      attackerId: battleResult.attackerId,
-      defenderId: battleResult.defenderId,
-      fromProvinceIds: battleResult.fromProvinceIds,
-      targetProvinceId: battleResult.targetProvinceId,
-      attackingSoldiers: battleResult.attackingSoldiers,
-      round: round.round,
-      attackerLosses: battleResult.result.attackerLosses,
-      defenderLosses: battleResult.result.defenderLosses,
-      result: battleResult.result
-    };
   }
 
   private isAiPlayer(playerId: PlayerId): boolean {
@@ -1787,7 +1224,7 @@ export class WarForCrownScene extends Phaser.Scene {
       isAiPlayer: (playerId) => this.isAiPlayer(playerId),
       onActionApplied: (events) => {
         this.captureBattleSummary(events);
-        const battleStarted = this.battleStartedEvent(events);
+        const battleStarted = battleStartedEvent(events);
         if (battleStarted !== null) {
           this.updateBattleStartMessage(battleStarted);
         }
@@ -1821,88 +1258,31 @@ export class WarForCrownScene extends Phaser.Scene {
   }
 
   private tileAtGrid(x: number, y: number): TileState | null {
-    if (x < 0 || y < 0 || x >= this.state.map.width || y >= this.state.map.height) {
-      return null;
-    }
-
-    return this.state.map.tiles[tileIndex(this.state.map.width, x, y)] ?? null;
+    return mapTileAtGrid(this.state.map, x, y);
   }
 
   private tileWidth(): number {
-    return (MAP_RECT.width / createMapDisplayFrame(this.state.map).width) * this.mapViewport.zoom;
+    return mapTileWidth(this.state.map, this.mapViewport);
   }
 
   private tileHeight(): number {
-    return (MAP_RECT.height / createMapDisplayFrame(this.state.map).height) * this.mapViewport.zoom;
+    return mapTileHeight(this.state.map, this.mapViewport);
   }
 
   private tileRect(tile: TileState): Rect {
-    const frame = createMapDisplayFrame(this.state.map);
-    return {
-      x: MAP_RECT.x + (tile.x - frame.x) * this.tileWidth() - this.mapViewport.offsetX,
-      y: MAP_RECT.y + (tile.y - frame.y) * this.tileHeight() - this.mapViewport.offsetY,
-      width: this.tileWidth(),
-      height: this.tileHeight()
-    };
-  }
-
-  private mapContentWidth(zoom: number = this.mapViewport.zoom): number {
-    return MAP_RECT.width * zoom;
-  }
-
-  private mapContentHeight(zoom: number = this.mapViewport.zoom): number {
-    return MAP_RECT.height * zoom;
-  }
-
-  private maxMapOffsetX(zoom: number = this.mapViewport.zoom): number {
-    return Math.max(0, this.mapContentWidth(zoom) - MAP_RECT.width);
-  }
-
-  private maxMapOffsetY(zoom: number = this.mapViewport.zoom): number {
-    return Math.max(0, this.mapContentHeight(zoom) - MAP_RECT.height);
+    return mapTileRect(this.state.map, this.mapViewport, tile);
   }
 
   private clampMapViewport(viewport: MapViewport): MapViewport {
-    return {
-      zoom: viewport.zoom,
-      offsetX: clamp(viewport.offsetX, 0, this.maxMapOffsetX(viewport.zoom)),
-      offsetY: clamp(viewport.offsetY, 0, this.maxMapOffsetY(viewport.zoom))
-    };
+    return clampMapViewport(viewport);
   }
 
   private tileAt(x: number, y: number): TileState | null {
-    if (!this.contains(MAP_RECT, x, y)) {
-      return null;
-    }
-
-    const frame = createMapDisplayFrame(this.state.map);
-    const tileX = frame.x + Math.floor((x - MAP_RECT.x + this.mapViewport.offsetX) / this.tileWidth());
-    const tileY = frame.y + Math.floor((y - MAP_RECT.y + this.mapViewport.offsetY) / this.tileHeight());
-
-    return this.tileAtGrid(tileX, tileY);
+    return mapTileAtPoint(this.state.map, this.mapViewport, { x, y });
   }
 
   private mapEdgeVelocity(point: Point): Point {
-    const left = point.x - MAP_RECT.x;
-    const right = MAP_RECT.x + MAP_RECT.width - point.x;
-    const top = point.y - MAP_RECT.y;
-    const bottom = MAP_RECT.y + MAP_RECT.height - point.y;
-    let x = 0;
-    let y = 0;
-
-    if (left < MAP_EDGE_SCROLL_SIZE && this.canPanLeft()) {
-      x = -MAP_EDGE_SCROLL_SPEED * ((MAP_EDGE_SCROLL_SIZE - left) / MAP_EDGE_SCROLL_SIZE);
-    } else if (right < MAP_EDGE_SCROLL_SIZE && this.canPanRight()) {
-      x = MAP_EDGE_SCROLL_SPEED * ((MAP_EDGE_SCROLL_SIZE - right) / MAP_EDGE_SCROLL_SIZE);
-    }
-
-    if (top < MAP_EDGE_SCROLL_SIZE && this.canPanUp()) {
-      y = -MAP_EDGE_SCROLL_SPEED * ((MAP_EDGE_SCROLL_SIZE - top) / MAP_EDGE_SCROLL_SIZE);
-    } else if (bottom < MAP_EDGE_SCROLL_SIZE && this.canPanDown()) {
-      y = MAP_EDGE_SCROLL_SPEED * ((MAP_EDGE_SCROLL_SIZE - bottom) / MAP_EDGE_SCROLL_SIZE);
-    }
-
-    return { x, y };
+    return mapEdgeVelocity(this.mapViewport, point);
   }
 
   private handleMapClick(worldPoint: Point): void {
@@ -2306,168 +1686,13 @@ export class WarForCrownScene extends Phaser.Scene {
   }
 
   private disabledButtonMessage(id: ButtonId): string {
-    switch (id) {
-      case 'advance-step':
-        return this.state.phase === 'home-selection'
-          ? this.copy().noHomePending
-          : turnUiCopy(this.state, this.language).instruction;
-      case 'attack':
-        if (this.state.turnStep !== 'attack') {
-          return this.copy().attackStep;
-        }
-        if (this.selectedTargetId === null) {
-          return this.copy().chooseTarget;
-        }
-        if (this.selectedAttackSourceIds.length < 1) {
-          return this.copy().chooseAttackSource;
-        }
-        return this.copy().notEnoughSoldiers;
-      case 'battle-retreat-attacker':
-      case 'battle-retreat-defender':
-      case 'battle-round':
-      case 'battle-view':
-        return this.copy().battle;
-      case 'battle-summary-confirm':
-        return this.copy().battleSummaryTitle;
-      case 'build-village':
-        if (this.selectedFromId === null) {
-          return this.copy().selectOwnProvince;
-        }
-        if (this.state.phase !== 'turn' || this.state.turnStep !== 'investment') {
-          return this.copy().buildStep;
-        }
-        if (requireProvince(this.state, this.selectedFromId).ownerId !== this.state.activePlayerId) {
-          return this.copy().selectOwnProvince;
-        }
-        if (requireProvince(this.state, this.selectedFromId).villages >= this.gameConfig.maxVillages) {
-          return this.copy().villageLimit;
-        }
-        if (requirePlayer(this.state, this.state.activePlayerId).money < this.gameConfig.villageCost) {
-          return this.copy().notEnoughMoney;
-        }
-        return this.copy().buildStep;
-      case 'confirm-home':
-        return this.copy().noHomePending;
-      case 'end-turn':
-        return this.state.phase === 'home-selection'
-          ? this.copy().noHomePending
-          : turnUiCopy(this.state, this.language).instruction;
-      case 'hire-soldiers':
-        if (this.state.phase !== 'turn' || this.state.turnStep !== 'investment') {
-          return this.copy().hireStep;
-        }
-        if (requirePlayer(this.state, this.state.activePlayerId).homeProvinceId === null) {
-          return this.copy().noHomePending;
-        }
-        return this.copy().notEnoughMoney;
-      case 'hire-minus':
-      case 'hire-plus':
-      case 'hire-max':
-        return this.copy().recruit;
-      case 'language-toggle':
-        return this.copy().language;
-      case 'main-load':
-        return this.copy().loadMissing;
-      case 'main-load-json':
-        return this.copy().loadJson;
-      case 'main-new-game':
-      case 'main-rules':
-      case 'main-sofa-arcade':
-      case 'map-accept':
-      case 'map-back':
-      case 'map-max-villages':
-      case 'map-province-count':
-      case 'map-regenerate':
-      case 'map-seed':
-      case 'map-village-mode':
-        return this.copy().chooseMapInstruction;
-      case 'move-equal':
-      case 'move-max':
-      case 'move-minus':
-      case 'move-plus':
-      case 'move-soldiers':
-        if (this.state.phase !== 'turn' || this.state.turnStep !== 'movement') {
-          return this.copy().moveStep;
-        }
-        if (this.selectedFromId === null) {
-          return this.copy().selectOwnProvince;
-        }
-        if (this.selectedTargetId === null) {
-          return this.copy().chooseMoveTarget;
-        }
-        if (id === 'move-equal') {
-          return this.copy().cannotEqualizeMove;
-        }
-        return this.copy().notEnoughSoldiers;
-      case 'new-map':
-      case 'victory-menu':
-        return this.copy().menu;
-      case 'save-game':
-      case 'save-game-json':
-        return this.copy().save;
-      case 'rules-back':
-      case 'rules-new-game':
-      case 'rules-home-max-fort':
-      case 'rules-interest':
-      case 'rules-province-max-fort':
-      case 'rules-royalist-attitude':
-      case 'rules-royalist-distribution':
-      case 'rules-royalist-growth':
-      case 'rules-royalist-investment':
-      case 'rules-start-money':
-      case 'rules-start-soldiers':
-      case 'rules-show-computer-battles':
-      case 'rules-terrain-influence':
-      case 'rules-village-cost':
-        return this.copy().rulesTitle;
-      case 'setup-back':
-      case 'setup-ai-count':
-      case 'setup-ai-mode-p1':
-      case 'setup-ai-mode-p2':
-      case 'setup-ai-mode-p3':
-      case 'setup-ai-mode-p4':
-      case 'setup-color-p1':
-      case 'setup-color-p2':
-      case 'setup-color-p3':
-      case 'setup-color-p4':
-      case 'setup-crest-p1':
-      case 'setup-crest-p2':
-      case 'setup-crest-p3':
-      case 'setup-crest-p4':
-      case 'setup-name-p1':
-      case 'setup-name-p2':
-      case 'setup-name-p3':
-      case 'setup-name-p4':
-      case 'setup-start':
-      case 'setup-human-count':
-        return this.copy().setupInstruction;
-      case 'upgrade-fort':
-        if (this.selectedFromId === null) {
-          return this.copy().selectOwnProvince;
-        }
-        if (this.state.phase !== 'turn' || this.state.turnStep !== 'investment') {
-          return this.copy().fortStep;
-        }
-        if (requireProvince(this.state, this.selectedFromId).ownerId !== this.state.activePlayerId) {
-          return this.copy().selectOwnProvince;
-        }
-        if (requireProvince(this.state, this.selectedFromId).upgradedFortificationThisTurn) {
-          return this.copy().fortAlready;
-        }
-        if (
-          fortificationIndex(requireProvince(this.state, this.selectedFromId)) >=
-          maxFortificationIndex(requireProvince(this.state, this.selectedFromId), this.state, this.gameConfig)
-        ) {
-          return this.copy().fortMaxed;
-        }
-        if (requirePlayer(this.state, this.state.activePlayerId).money < this.gameConfig.fortificationUpgradeCost) {
-          return this.copy().notEnoughMoney;
-        }
-        return this.copy().fortStep;
-      default:
-        id satisfies never;
-        throw new Error('Unhandled disabled button id.');
-    }
+    return createDisabledButtonMessage({
+      config: this.gameConfig,
+      id,
+      language: this.language,
+      selection: this.currentTurnSelection(),
+      state: this.state
+    });
   }
 
   private confirmPendingHome(): void {
@@ -2490,33 +1715,10 @@ export class WarForCrownScene extends Phaser.Scene {
     this.showCurrentPhaseOverlay();
   }
 
-  private canPanLeft(): boolean {
-    return this.mapViewport.offsetX > MAP_EDGE_EPSILON;
-  }
-
-  private canPanRight(): boolean {
-    return this.mapViewport.offsetX < this.maxMapOffsetX() - MAP_EDGE_EPSILON;
-  }
-
-  private canPanUp(): boolean {
-    return this.mapViewport.offsetY > MAP_EDGE_EPSILON;
-  }
-
-  private canPanDown(): boolean {
-    return this.mapViewport.offsetY < this.maxMapOffsetY() - MAP_EDGE_EPSILON;
-  }
-
   private panMapBy(deltaX: number, deltaY: number): boolean {
-    const nextViewport = this.clampMapViewport({
-      ...this.mapViewport,
-      offsetX: this.mapViewport.offsetX + deltaX,
-      offsetY: this.mapViewport.offsetY + deltaY
-    });
-    const moved =
-      Math.abs(nextViewport.offsetX - this.mapViewport.offsetX) > MAP_EDGE_EPSILON ||
-      Math.abs(nextViewport.offsetY - this.mapViewport.offsetY) > MAP_EDGE_EPSILON;
-    this.mapViewport = nextViewport;
-    return moved;
+    const result = panMapViewport(this.mapViewport, deltaX, deltaY);
+    this.mapViewport = result.viewport;
+    return result.moved;
   }
 
   private trySetMapZoomIndex(index: number, anchor: Point): boolean {
@@ -2536,29 +1738,19 @@ export class WarForCrownScene extends Phaser.Scene {
       return false;
     }
 
-    const previousZoom = this.mapViewport.zoom;
-    const nextZoom = MAP_ZOOM_LEVELS[index];
-    const anchorX = anchor.x;
-    const anchorY = anchor.y;
-    const baseAnchorX = (anchorX - MAP_RECT.x + this.mapViewport.offsetX) / previousZoom;
-    const baseAnchorY = (anchorY - MAP_RECT.y + this.mapViewport.offsetY) / previousZoom;
-
+    const nextViewport = zoomMapViewport(this.mapViewport, this.mapZoomIndex, index, anchor);
     this.mapZoomIndex = index;
-    this.mapViewport = this.clampMapViewport({
-      zoom: nextZoom,
-      offsetX: baseAnchorX * nextZoom - (anchorX - MAP_RECT.x),
-      offsetY: baseAnchorY * nextZoom - (anchorY - MAP_RECT.y)
-    });
+    this.mapViewport = nextViewport;
     return true;
   }
 
   private resetMapView(): void {
     this.mapZoomIndex = 0;
-    this.mapViewport = { zoom: MAP_ZOOM_LEVELS[0], offsetX: 0, offsetY: 0 };
+    this.mapViewport = initialMapViewport();
   }
 
   private mapViewMessage(): string {
-    return `Map ${Math.round(this.mapViewport.zoom * 100)}%`;
+    return mapViewportLabel(this.mapViewport);
   }
 
   private clearMapSelection(): void {
@@ -2569,112 +1761,60 @@ export class WarForCrownScene extends Phaser.Scene {
     this.pendingHomeProvinceId = null;
   }
 
+  private currentTurnSelection(): turnSelection.TurnSelection {
+    return {
+      attackSourceIds: this.selectedAttackSourceIds,
+      fromId: this.selectedFromId,
+      movementTargetSoldiers: this.selectedMovementTargetSoldiers,
+      targetId: this.selectedTargetId
+    };
+  }
+
   private isAttackStep(): boolean {
-    return this.state.phase === 'turn' && this.state.turnStep === 'attack';
+    return turnSelection.isAttackTurn(this.state);
   }
 
   private isMovementStep(): boolean {
-    return this.state.phase === 'turn' && this.state.turnStep === 'movement';
-  }
-
-  private mobileAttackSoldiers(province: ProvinceState): number {
-    if (province.ownerId !== this.state.activePlayerId) {
-      return 0;
-    }
-
-    if (this.state.attackSpentProvinceIds.includes(province.id)) {
-      return 0;
-    }
-
-    return Math.max(0, province.soldiers - 1);
+    return turnSelection.isMovementTurn(this.state);
   }
 
   private validAttackSourceIds(targetProvinceId: ProvinceId): ReadonlyArray<ProvinceId> {
-    return this.state.map.provinces
-      .filter(
-        (province) =>
-          province.ownerId === this.state.activePlayerId &&
-          province.neighbours.includes(targetProvinceId) &&
-          this.mobileAttackSoldiers(province) > 0
-      )
-      .map((province) => province.id);
+    return turnSelection.validAttackSourceIds(this.state, targetProvinceId);
   }
 
   private attackTargetIds(): ReadonlyArray<ProvinceId> {
-    if (!this.isAttackStep()) {
-      return [];
-    }
-
-    return this.state.map.provinces
-      .filter(
-        (province) =>
-          province.ownerId !== this.state.activePlayerId &&
-          this.validAttackSourceIds(province.id).length > 0
-      )
-      .map((province) => province.id);
+    return turnSelection.attackTargetIds(this.state);
   }
 
   private selectedAttackSoldiers(): number {
-    return this.selectedAttackSourceIds.reduce((total, provinceId) => {
-      const province = requireProvince(this.state, provinceId);
-      return total + this.mobileAttackSoldiers(province);
-    }, 0);
+    return turnSelection.selectedAttackSoldiers(this.state, this.selectedAttackSourceIds);
   }
 
   private canConfirmAttack(): boolean {
-    return (
-      this.isAttackStep() &&
-      this.selectedTargetId !== null &&
-      this.selectedAttackSourceIds.length > 0 &&
-      this.selectedAttackSoldiers() > 0
-    );
+    return turnSelection.canConfirmAttack(this.state, this.currentTurnSelection());
   }
 
   private movementTargetSoldiers(): number {
-    const max = this.maximumMovementTargetSoldiers();
-    if (max < 1 || this.selectedMovementTargetSoldiers === null) {
-      return 0;
-    }
-
-    return clamp(this.selectedMovementTargetSoldiers, 1, max);
+    return turnSelection.movementTargetSoldiers(this.state, this.currentTurnSelection());
   }
 
   private maximumMovementTargetSoldiers(): number {
-    if (this.selectedFromId === null || this.selectedTargetId === null) {
-      return 0;
-    }
-
-    const from = requireProvince(this.state, this.selectedFromId);
-    const target = requireProvince(this.state, this.selectedTargetId);
-    return c64HumanMovementRange(from, target).maximumTargetSoldiers;
+    return turnSelection.maximumMovementTargetSoldiers(this.state, this.currentTurnSelection());
   }
 
   private syncSelectedMovementTargetSoldiers(): void {
-    const max = this.maximumMovementTargetSoldiers();
-    if (max < 1) {
-      this.selectedMovementTargetSoldiers = null;
-      return;
-    }
-
-    const target = this.selectedTargetId === null
-      ? null
-      : requireProvince(this.state, this.selectedTargetId);
-    if (target === null) {
-      throw new Error('Cannot initialize movement target soldiers without a target province.');
-    }
-    this.selectedMovementTargetSoldiers = this.selectedMovementTargetSoldiers === null
-      ? target.soldiers
-      : clamp(this.selectedMovementTargetSoldiers, 1, max);
+    this.selectedMovementTargetSoldiers = turnSelection.synchronizeMovementTargetSoldiers(
+      this.state,
+      this.currentTurnSelection()
+    );
   }
 
   private setSelectedMovementTargetSoldiers(soldiers: number): void {
-    const max = this.maximumMovementTargetSoldiers();
-    if (max < 1) {
-      this.selectedMovementTargetSoldiers = null;
-      return;
-    }
-
-    this.selectedMovementTargetSoldiers = clamp(Math.round(soldiers), 1, max);
+    this.selectedMovementTargetSoldiers = turnSelection.setMovementTargetSoldiers(
+      this.state,
+      this.currentTurnSelection(),
+      soldiers
+    );
   }
 
   private changeSelectedMovementTargetSoldiers(delta: number): void {
@@ -2683,32 +1823,16 @@ export class WarForCrownScene extends Phaser.Scene {
   }
 
   private setMovementTargetSoldiersFromSlider(pointerX: number, region: SliderRegion): void {
-    const max = this.maximumMovementTargetSoldiers();
-    if (max < 1) {
-      this.selectedMovementTargetSoldiers = null;
-      this.renderScene();
-      return;
-    }
-
-    if (max === 1) {
-      this.selectedMovementTargetSoldiers = 1;
-      this.renderScene();
-      return;
-    }
-
-    const ratio = clamp((pointerX - region.x) / region.width, 0, 1);
-    this.selectedMovementTargetSoldiers = Math.round(1 + ratio * (max - 1));
+    this.selectedMovementTargetSoldiers = turnSelection.movementSliderSoldiers(
+      this.state,
+      this.currentTurnSelection(),
+      (pointerX - region.x) / region.width
+    );
     this.renderScene();
   }
 
   private equalizedMovementTargetSoldiers(): number | null {
-    if (this.selectedFromId === null || this.selectedTargetId === null) {
-      return null;
-    }
-
-    const from = requireProvince(this.state, this.selectedFromId);
-    const target = requireProvince(this.state, this.selectedTargetId);
-    return Math.floor((from.soldiers + target.soldiers) / 2);
+    return turnSelection.equalizedMovementTargetSoldiers(this.state, this.currentTurnSelection());
   }
 
   private canEqualizeMove(): boolean {
@@ -2716,72 +1840,31 @@ export class WarForCrownScene extends Phaser.Scene {
   }
 
   private canConfirmMove(): boolean {
-    if (!this.isMovementStep() || this.selectedFromId === null || this.selectedTargetId === null) {
-      return false;
-    }
-
-    const activePlayerId = this.state.activePlayerId;
-    const from = requireProvince(this.state, this.selectedFromId);
-    const target = requireProvince(this.state, this.selectedTargetId);
-    return (
-      from.ownerId === activePlayerId &&
-      target.ownerId === activePlayerId &&
-      from.id !== target.id &&
-      c64HumanMovementTargetIds(this.state.map, activePlayerId, from.id).has(target.id) &&
-      this.movementTargetSoldiers() > 0
-    );
-  }
-
-  private selectedProvince(): ProvinceState | null {
-    if (this.selectedFromId === null) {
-      return null;
-    }
-
-    return requireProvince(this.state, this.selectedFromId);
+    return turnSelection.canConfirmMove(this.state, this.currentTurnSelection());
   }
 
   private isInvestmentStep(): boolean {
-    return this.state.phase === 'turn' && this.state.turnStep === 'investment';
+    return turnSelection.isInvestmentTurn(this.state);
   }
 
   private canBuildSelectedVillage(): boolean {
-    const province = this.selectedProvince();
-    if (province === null) {
-      return false;
-    }
-
-    const active = requirePlayer(this.state, this.state.activePlayerId);
-    return (
-      this.isInvestmentStep() &&
-      province.ownerId === active.id &&
-      active.money >= this.gameConfig.villageCost &&
-      province.villages < this.gameConfig.maxVillages
+    return turnSelection.canBuildSelectedVillage(
+      this.state,
+      this.gameConfig,
+      this.currentTurnSelection()
     );
   }
 
   private canUpgradeSelectedFortification(): boolean {
-    const province = this.selectedProvince();
-    if (province === null) {
-      return false;
-    }
-
-    const active = requirePlayer(this.state, this.state.activePlayerId);
-    return (
-      this.isInvestmentStep() &&
-      province.ownerId === active.id &&
-      active.money >= this.gameConfig.fortificationUpgradeCost &&
-      !province.upgradedFortificationThisTurn &&
-      fortificationIndex(province) < maxFortificationIndex(province, this.state, this.gameConfig)
+    return turnSelection.canUpgradeSelectedFortification(
+      this.state,
+      this.gameConfig,
+      this.currentTurnSelection()
     );
   }
 
   private affordableHireSoldiers(): number {
-    const active = requirePlayer(this.state, this.state.activePlayerId);
-    if (active.homeProvinceId === null) {
-      return 0;
-    }
-
-    return Math.floor(active.money / this.gameConfig.soldierCost);
+    return turnSelection.affordableHireSoldiers(this.state, this.gameConfig);
   }
 
   private canHireSoldiers(): boolean {
