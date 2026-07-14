@@ -1,74 +1,132 @@
 import type { ArcadeGame } from './catalog';
+import { createLauncherSelection, moveLauncherSelection, type LauncherSelection } from './selection';
 
-function createGameCard(game: ArcadeGame): HTMLAnchorElement {
-  const link = document.createElement('a');
-  link.className = 'game-card';
-  link.href = game.href;
-  link.dataset.gameId = game.id;
+export interface LauncherAssets {
+  readonly logoUrl: string;
+  readonly joystickUrl: string;
+  readonly speakerUrl: string;
+}
 
-  const image = document.createElement('img');
-  image.className = 'game-card__image';
-  image.src = game.thumbnailUrl;
-  image.alt = '';
+function element<K extends keyof HTMLElementTagNameMap>(
+  tagName: K,
+  className: string
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tagName);
+  node.className = className;
+  return node;
+}
 
-  const content = document.createElement('span');
-  content.className = 'game-card__content';
-
-  const meta = document.createElement('span');
-  meta.className = 'game-card__meta';
-  meta.textContent = game.players;
-
-  const title = document.createElement('strong');
-  title.className = 'game-card__title';
-  title.textContent = game.title;
-
-  const description = document.createElement('span');
-  description.className = 'game-card__description';
-  description.textContent = game.description;
-
-  const action = document.createElement('span');
-  action.className = 'game-card__action';
-  action.textContent = 'GRAJ';
-
-  content.append(meta, title, description, action);
-  link.append(image, content);
-  return link;
+function button(className: string, label: string): HTMLButtonElement {
+  const node = element('button', className);
+  node.type = 'button';
+  node.textContent = label;
+  return node;
 }
 
 export function renderArcadeLauncher(
   container: HTMLElement,
-  logoUrl: string,
+  assets: LauncherAssets,
   games: readonly ArcadeGame[]
 ): void {
-  const header = document.createElement('header');
-  header.className = 'hero';
+  if (games.length === 0) {
+    throw new Error('Sofa Arcade launcher requires at least one game.');
+  }
 
-  const logo = document.createElement('img');
-  logo.className = 'hero__logo';
-  logo.src = logoUrl;
+  const backdrop = element('div', 'arcade-backdrop');
+  backdrop.ariaHidden = 'true';
+  for (let index = 0; index < 72; index += 1) {
+    const star = element('i', `arcade-star arcade-star--${index % 4}`);
+    star.style.setProperty('--star-x', `${(index * 37) % 101}%`);
+    star.style.setProperty('--star-y', `${(index * 61) % 83}%`);
+    star.style.setProperty('--star-delay', `${-(index % 9)}s`);
+    backdrop.append(star);
+  }
+
+  const header = element('header', 'launcher-header');
+  const logo = element('img', 'launcher-logo');
+  logo.src = assets.logoUrl;
   logo.alt = 'Sofa Arcade';
+  const subtitle = element('p', 'launcher-subtitle');
+  subtitle.textContent = 'Bierz kontroler. Gramy.';
+  header.append(logo, subtitle);
 
-  const intro = document.createElement('div');
-  intro.className = 'hero__intro';
+  const shell = element('section', 'launcher-shell');
+  shell.ariaLabel = 'Wybór gry';
+  const gamePanel = element('div', 'launcher-game-panel');
+  const previousButton = button('launcher-arrow', '‹');
+  previousButton.ariaLabel = 'Poprzednia gra';
+  const nextButton = button('launcher-arrow', '›');
+  nextButton.ariaLabel = 'Następna gra';
 
-  const eyebrow = document.createElement('p');
-  eyebrow.className = 'hero__eyebrow';
-  eyebrow.textContent = 'KANAPOWE GRANIE';
+  const card = element('article', 'launcher-game-card');
+  const gameCopy = element('div', 'launcher-game-copy');
+  const title = element('h1', 'launcher-game-title');
+  const description = element('p', 'launcher-game-description');
+  const playerCount = element('p', 'launcher-player-count');
+  const start = element('a', 'launcher-start-button');
+  start.textContent = 'START';
+  const previewFrame = element('div', 'launcher-preview-frame');
+  const preview = element('img', 'launcher-preview-image');
+  preview.alt = '';
+  previewFrame.append(preview);
+  gameCopy.append(title, description, playerCount, start);
+  card.append(gameCopy, previewFrame);
+  gamePanel.append(previousButton, card, nextButton);
 
-  const title = document.createElement('h1');
-  title.textContent = 'Wybierz grę';
+  const infoPanel = element('aside', 'launcher-info-panel');
+  const joystick = element('img', 'launcher-info-icon');
+  joystick.src = assets.joystickUrl;
+  joystick.alt = '';
+  const infoCopy = element('div', 'launcher-info-copy');
+  const infoTitle = element('strong', 'launcher-info-title');
+  infoTitle.textContent = 'SOFA ARCADE';
+  const infoText = element('span', 'launcher-info-text');
+  infoText.textContent = 'Wybierz grę strzałkami. Sterowanie ustawisz po jej uruchomieniu.';
+  infoCopy.append(infoTitle, infoText);
+  const speaker = element('img', 'launcher-info-icon launcher-info-icon--speaker');
+  speaker.src = assets.speakerUrl;
+  speaker.alt = '';
+  infoPanel.append(joystick, infoCopy, speaker);
+  shell.append(gamePanel, infoPanel);
 
-  const subtitle = document.createElement('p');
-  subtitle.className = 'hero__subtitle';
-  subtitle.textContent = 'Jedna sofa, jeden ekran, kilka dobrych powodów do rewanżu.';
+  const hint = element('p', 'launcher-hint');
+  hint.textContent = 'LEWO/PRAWO: gra  ENTER: start';
 
-  intro.append(eyebrow, title, subtitle);
-  header.append(logo, intro);
+  let selection: LauncherSelection = createLauncherSelection();
 
-  const grid = document.createElement('section');
-  grid.className = 'game-grid';
-  grid.ariaLabel = 'Gry Sofa Arcade';
-  grid.append(...games.map(createGameCard));
+  const renderSelection = (): void => {
+    const game = games[selection.gameIndex];
+    if (game === undefined) {
+      throw new Error(`Sofa Arcade game is missing for index ${selection.gameIndex}.`);
+    }
+    title.textContent = game.title;
+    description.textContent = game.description;
+    playerCount.textContent = game.players;
+    preview.src = game.thumbnailUrl;
+    start.href = game.href;
+    start.ariaLabel = `Uruchom ${game.title}`;
+  };
 
-  container.replaceChildren(header, grid);
+  const move = (delta: number): void => {
+    selection = moveLauncherSelection(selection, delta, games.length);
+    renderSelection();
+  };
+
+  previousButton.addEventListener('click', () => move(-1));
+  nextButton.addEventListener('click', () => move(1));
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      move(-1);
+    } else if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      move(1);
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      start.click();
+    }
+  });
+
+  renderSelection();
+  container.replaceChildren(backdrop, header, shell, hint);
 }
