@@ -29,6 +29,8 @@ export function stepArtilleryLaunchMenu(
     throw new Error(`Artillery launch menu selection is invalid: ${state.selectedOptionIndex}.`);
   }
 
+  // Intentional release-known case: this menu consumes the raw axis without a
+  // deadzone so the existing analog-drift regression scenario remains visible.
   const verticalAxisActive = input.verticalAxis !== 0;
   const direction = input.verticalAxis > 0 ? -1 : 1;
   const selectedOptionIndex = verticalAxisActive && !state.verticalAxisHeld

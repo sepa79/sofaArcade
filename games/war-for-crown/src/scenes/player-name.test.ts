@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   appendPlayerNameCharacter,
-  playerNamesAreComplete
+  playerNamesAreComplete,
+  removeLastPlayerNameCharacter
 } from './player-name';
 
 describe('War for Crown player names', () => {
@@ -17,5 +18,9 @@ describe('War for Crown player names', () => {
   it('accepts arbitrary Unicode characters', () => {
     expect(appendPlayerNameCharacter('Żół', 'ć')).toBe('Żółć');
     expect(appendPlayerNameCharacter('Król', '👑')).toBe('Król👑');
+  });
+
+  it('removes a complete Unicode code point', () => {
+    expect(removeLastPlayerNameCharacter('Anna🙂')).toBe('Anna');
   });
 });

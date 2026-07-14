@@ -32,7 +32,6 @@ import { createJournalEntry, snapshotJournalValue, type WarForCrownJournalEntry 
 import type { WarForCrownEvent } from '../game/events';
 import type {
   BattleResult,
-  FortificationLevel,
   GameConfig,
   GameState,
   PlayerId,
@@ -52,6 +51,7 @@ import {
 } from './config-options';
 import { changeHireSelection, selectedHireSoldiers } from './hire-selection';
 import { disabledButtonMessage as createDisabledButtonMessage } from './disabled-button-message';
+import { resumeLoadedGame } from './loaded-game-resume';
 import {
   clampMapViewport,
   initialMapViewport,
@@ -80,10 +80,19 @@ import {
   WAR_FOR_CROWN_MAP_SKIN
 } from './map-visuals';
 import { parseMapSeedInput } from './map-seed-input';
+import { createNewMonthSummary } from './new-month-summary';
 import { resolvePointerIntent } from './pointer-intent';
 import {
+  drawMainMenuScreen,
+  drawMapSelectionScreen as drawMapSelectionOverlay,
+  drawPlayerSetupScreen as drawPlayerSetupOverlay,
+  drawRulesScreen as drawRulesMenu,
+  type PreGameScreenBoundary
+} from './pre-game-screens';
+import {
   appendPlayerNameCharacter,
-  playerNamesAreComplete
+  playerNamesAreComplete,
+  removeLastPlayerNameCharacter
 } from './player-name';
 import {
   HUMAN_PLAYER_COUNT_OPTIONS,
@@ -107,7 +116,6 @@ import {
   FOOTER_RECT,
   HEADER_RECT,
   isBattleButtonId,
-  MAIN_MENU_RECT,
   MAP_DRAG_THRESHOLD,
   MAP_EDGE_EPSILON,
   MAP_RECT,
@@ -115,7 +123,6 @@ import {
   PANEL_RECT,
   PANEL_TEXT_WIDTH,
   PLAYER_FACING_AI_MODES,
-  RULES_MENU_RECT,
   type BattleSummary,
   type ButtonId,
   type CommandButton,
@@ -141,13 +148,8 @@ import {
 } from './phase-overlay';
 import {
   BATTLE_WINNER_LABELS,
-  ROYALIST_ATTITUDE_LABELS,
-  ROYALIST_DISTRIBUTION_LABELS,
-  TERRAIN_INFLUENCE_LABELS,
-  WEATHER_LABELS,
   aiModeButtonId,
   aiModeLabelForLanguage,
-  booleanLabel,
   clamp,
   createAttackPreview,
   cssColor,
@@ -156,7 +158,6 @@ import {
   formatFortificationLevel,
   formatTerrain,
   fortificationIndex,
-  fortificationLabelForLanguage,
   ownerColor,
   ownerLabelForLanguage,
   playerIdFromAiModeButton,
@@ -301,7 +302,7 @@ export class WarForCrownScene extends Phaser.Scene {
 
     if (event.key === 'Backspace') {
       event.preventDefault();
-      this.updatePlayerName(this.editingNamePlayerId, (current) => current.slice(0, -1));
+      this.updatePlayerName(this.editingNamePlayerId, removeLastPlayerNameCharacter);
       return;
     }
 
@@ -988,30 +989,7 @@ export class WarForCrownScene extends Phaser.Scene {
   }
 
   private newMonthSummary(): string {
-    const preview = applyPlayerAction(
-      this.state,
-      this.state.activePlayerId,
-      { type: 'advance-step' },
-      this.gameConfig
-    );
-    const incomeEvent = preview.events.find((event) => event.type === 'income-collected');
-    if (incomeEvent === undefined) {
-      throw new Error('New-month preview did not emit income-collected.');
-    }
-    const weather = WEATHER_LABELS[preview.state.c64.calendar.weatherIndex];
-    if (weather === undefined) {
-      throw new Error(
-        `Missing weather label for index ${preview.state.c64.calendar.weatherIndex}.`
-      );
-    }
-    const randomEvent = preview.events.find((event) => event.type === 'c64-random-event');
-    const eventLabel = randomEvent === undefined
-      ? (this.language === 'pl' ? 'brak' : 'none')
-      : `${randomEvent.eventId} (${randomEvent.effect})`;
-
-    return this.language === 'pl'
-      ? `Miesiac ${this.state.turnNumber}. Pogoda: ${weather.pl}. Dochod: +${incomeEvent.money}. Zdarzenie: ${eventLabel}.`
-      : `Month ${this.state.turnNumber}. Weather: ${weather.en}. Income: +${incomeEvent.money}. Event: ${eventLabel}.`;
+    return createNewMonthSummary(this.state, this.gameConfig, this.language);
   }
 
   private phaseOverlaySubtitle(): string {
@@ -1106,9 +1084,18 @@ export class WarForCrownScene extends Phaser.Scene {
     this.aiActionCue = null;
     this.aiActionCueQueue = [];
     this.aiActionCueElapsedMs = 0;
-    this.announcedPhaseKey = this.currentPhaseKey();
+    this.announcedPhaseKey = null;
     this.resetMapView();
     this.message = message;
+    resumeLoadedGame({
+      battleSummaryVisible: () => this.battleSummary !== null,
+      getState: () => this.state,
+      markCurrentPhaseAnnounced: () => {
+        this.announcedPhaseKey = this.currentPhaseKey();
+      },
+      playAiUntilHumanTurn: () => this.playAiUntilHumanTurn(),
+      showCurrentPhaseOverlay: () => this.showCurrentPhaseOverlay()
+    });
     this.renderScene();
   }
 
@@ -2239,27 +2226,12 @@ export class WarForCrownScene extends Phaser.Scene {
   }
 
   private drawMenuScreen(): void {
-    const copy = this.copy();
-    this.drawMenuBase(MAIN_MENU_RECT);
-    this.addText(WORLD_WIDTH / 2, 112, copy.mainMenuTitle, {
-      fontSize: '32px',
-      color: TEXT_COLOR
-    }).setOrigin(0.5, 0).setShadow(2, 2, '#000000', 1);
-    this.drawTitleDivider(390, 166, 500);
-    this.addText(WORLD_WIDTH / 2, 202, this.message, {
-      fontSize: '17px',
-      color: MUTED_TEXT_COLOR,
-      align: 'center'
-    }).setOrigin(0.5, 0);
-
-    this.drawButton('main-new-game', copy.newGame, 430, 282, 420, 48, true);
-    this.drawButton('main-rules', copy.rules, 430, 354, 420, 48, true);
-    this.drawButton('main-load', copy.load, 430, 426, 420, 48, this.hasBrowserSave);
-    this.drawButton('main-load-json', copy.loadJson, 430, 498, 420, 48, true);
-    if (this.returnUrl !== null) {
-      this.drawButton('main-sofa-arcade', copy.sofaArcade, 430, 570, 420, 48, true);
-    }
-
+    drawMainMenuScreen(this.preGameScreenBoundary(), {
+      copy: this.copy(),
+      hasBrowserSave: this.hasBrowserSave,
+      message: this.message,
+      returnUrl: this.returnUrl
+    });
   }
 
   private drawOptionButton(
@@ -2296,200 +2268,47 @@ export class WarForCrownScene extends Phaser.Scene {
     });
   }
 
-  private fortificationLabel(level: FortificationLevel): string {
-    return fortificationLabelForLanguage(level, this.language);
-  }
-
-  private terrainInfluenceLabel(): string {
-    return TERRAIN_INFLUENCE_LABELS[this.gameConfig.terrainInfluence][this.language];
-  }
-
-  private royalistAttitudeLabel(): string {
-    return ROYALIST_ATTITUDE_LABELS[this.gameConfig.royalistAttitude][this.language];
-  }
-
-  private royalistDistributionLabel(): string {
-    return ROYALIST_DISTRIBUTION_LABELS[this.gameConfig.royalistDistribution][this.language];
-  }
-
-  private maxVillagesModeLabel(): string {
-    return this.gameConfig.maxVillagesMode === 'per-province'
-      ? this.copy().perProvince
-      : this.copy().largestProvince;
-  }
-
   private drawRulesScreen(): void {
-    const copy = this.copy();
-    this.drawMenuBase(RULES_MENU_RECT);
-    this.addText(WORLD_WIDTH / 2, 68, copy.rulesTitle, {
-      fontSize: '28px',
-      color: TEXT_COLOR
-    }).setOrigin(0.5, 0).setShadow(2, 2, '#000000', 1);
-    this.drawTitleDivider(190, 108, 900);
-    this.drawOptionButton('rules-village-cost', copy.villageCost, `${this.gameConfig.villageCost}`, 190, 148, 390, copy.rulesTooltips.villageCost);
-    this.drawOptionButton('rules-interest', copy.interestRate, `${this.gameConfig.interestRatePercent}%`, 190, 194, 390, copy.rulesTooltips.interestRate);
-    this.drawOptionButton('rules-start-soldiers', copy.startingSoldiers, `${this.gameConfig.startingSoldiers}`, 190, 240, 390, copy.rulesTooltips.startingSoldiers);
-    this.drawOptionButton('rules-start-money', copy.startingMoney, `${this.gameConfig.startingMoney}`, 190, 286, 390, copy.rulesTooltips.startingMoney);
-    this.drawOptionButton(
-      'rules-home-max-fort',
-      copy.homeMaxFort,
-      this.fortificationLabel(this.gameConfig.maxHomeFortificationLevel),
-      190,
-      332,
-      390,
-      copy.rulesTooltips.homeMaxFort
-    );
-    this.drawOptionButton(
-      'rules-province-max-fort',
-      copy.provinceMaxFort,
-      this.fortificationLabel(this.gameConfig.maxProvinceFortificationLevel),
-      190,
-      378,
-      390,
-      copy.rulesTooltips.provinceMaxFort
-    );
-
-    this.drawOptionButton(
-      'rules-royalist-attitude',
-      copy.royalistAttitude,
-      this.royalistAttitudeLabel(),
-      700,
-      148,
-      390,
-      copy.rulesTooltips.royalistAttitude
-    );
-    this.drawOptionButton(
-      'rules-royalist-growth',
-      copy.royalistGrowth,
-      `${this.gameConfig.royalistGrowthPercent}%`,
-      700,
-      194,
-      390,
-      copy.rulesTooltips.royalistGrowth
-    );
-    this.drawOptionButton(
-      'rules-royalist-investment',
-      copy.royalistInvestment,
-      `${this.gameConfig.royalistInvestmentPercent}%`,
-      700,
-      240,
-      390,
-      copy.rulesTooltips.royalistInvestment
-    );
-    this.drawOptionButton(
-      'rules-royalist-distribution',
-      copy.royalistDistribution,
-      this.royalistDistributionLabel(),
-      700,
-      286,
-      390,
-      copy.rulesTooltips.royalistDistribution
-    );
-    this.drawOptionButton(
-      'rules-terrain-influence',
-      copy.terrainInfluence,
-      this.terrainInfluenceLabel(),
-      700,
-      332,
-      390,
-      copy.rulesTooltips.terrainInfluence
-    );
-    this.drawOptionButton(
-      'rules-show-computer-battles',
-      copy.showComputerBattles,
-      booleanLabel(this.gameConfig.showComputerBattles, this.language),
-      700,
-      378,
-      390,
-      copy.rulesTooltips.showComputerBattles
-    );
-
-    this.drawTitleDivider(190, 452, 900);
-    this.drawButton('rules-back', copy.back, 392, 500, 210, 40, true);
-    this.drawButton('rules-new-game', copy.newGame, 678, 500, 210, 40, true);
+    drawRulesMenu(this.preGameScreenBoundary(), {
+      config: this.gameConfig,
+      copy: this.copy(),
+      language: this.language
+    });
   }
 
   private drawMapSelectionScreen(): void {
-    const copy = this.copy();
-    this.drawLanguageToggle();
-    this.addText(42, 17, copy.chooseMapTitle, {
-      fontSize: '22px',
-      color: TEXT_COLOR
-    }).setShadow(2, 2, '#000000', 1);
-    const seedLabel = this.editingSeed === null ? String(this.state.seed) : `${this.editingSeed}_`;
-    this.drawButton('map-seed', `${copy.seed} ${seedLabel}`, 276, 12, 220, 32, true);
-
-    this.addText(952, 102, copy.mapInfo, {
-      fontSize: '15px',
-      color: TEXT_COLOR
+    drawMapSelectionOverlay(this.preGameScreenBoundary(), {
+      config: this.gameConfig,
+      copy: this.copy(),
+      editingSeed: this.editingSeed,
+      seed: this.state.seed
     });
-    this.addText(952, 136, copy.chooseMapInstruction, {
-      fontSize: '13px',
-      color: TEXT_COLOR,
-      wordWrap: { width: PANEL_TEXT_WIDTH }
-    });
-    this.drawOptionButton('map-province-count', copy.continentProvinces, `${this.gameConfig.provinceCount}`, 952, 204, 268);
-    this.drawOptionButton('map-max-villages', copy.maxVillages, `${this.gameConfig.maxVillages}`, 952, 252, 268);
-    this.drawOptionButton('map-village-mode', copy.maxVillagesMode, this.maxVillagesModeLabel(), 952, 300, 268);
-    this.drawTerrainLegend(952, 354);
-
-    this.drawButton('map-back', copy.back, 730, 666, 106, 34, true);
-    this.drawButton('map-regenerate', copy.regenerateMap, 852, 666, 138, 34, true);
-    this.drawButton('map-accept', copy.acceptMap, 1006, 666, 138, 34, true);
   }
 
   private drawPlayerSetupScreen(): void {
-    const copy = this.copy();
-    this.drawLanguageToggle();
-    this.addText(42, 17, copy.setupTitle, {
-      fontSize: '22px',
-      color: TEXT_COLOR
-    }).setShadow(2, 2, '#000000', 1);
-    this.addText(290, 20, copy.setupInstruction, {
-      fontSize: '14px',
-      color: MUTED_TEXT_COLOR
+    drawPlayerSetupOverlay(this.preGameScreenBoundary(), {
+      config: this.gameConfig,
+      copy: this.copy(),
+      playerNamesValid: this.playerNamesAreValid(),
+      playerSetups: this.playerSetups
     });
-
-    this.addText(952, 102, copy.players, {
-      fontSize: '15px',
-      color: TEXT_COLOR
-    });
-
-    this.drawOptionButton('setup-human-count', copy.humanPlayers, `${this.gameConfig.humanPlayerCount}`, 952, 144, 268);
-    this.drawOptionButton('setup-ai-count', copy.aiBarons, `${this.gameConfig.aiPlayerCount}`, 952, 180, 268);
-
-    let rowY = 230;
-    for (const setup of this.playerSetups.filter((candidate) => candidate.controller === 'human')) {
-      this.drawPlayerSetupRow(setup.playerId, 952, rowY);
-      rowY += 74;
-    }
-
-    const aiSetups = this.aiSetups();
-    if (aiSetups.length > 0) {
-      this.addText(952, rowY + 4, copy.computer, {
-        fontSize: '12px',
-        color: MUTED_TEXT_COLOR
-      });
-      this.addText(1110, rowY + 4, copy.aiMode, {
-        fontSize: '12px',
-        color: MUTED_TEXT_COLOR
-      });
-      this.drawTooltipMarker(1170, rowY + 4, copy.aiModeTooltip);
-      rowY += 26;
-
-      for (const setup of aiSetups) {
-        this.drawAiSetupRow(setup, 952, rowY);
-        rowY += 30;
-      }
-    }
-
-    this.drawButton('setup-back', copy.back, 808, 666, 106, 34, true);
-    this.drawButton('setup-start', copy.start, 930, 666, 138, 34, this.playerNamesAreValid());
   }
 
-  private aiSetups(): ReadonlyArray<AiPlayerSetup> {
-    return this.playerSetups
-      .filter((setup): setup is AiPlayerSetup => setup.controller === 'ai');
+  private preGameScreenBoundary(): PreGameScreenBoundary {
+    return {
+      addText: (x, y, text, style) => this.addText(x, y, text, style),
+      drawAiSetupRow: (setup, x, y) => this.drawAiSetupRow(setup, x, y),
+      drawButton: (id, label, x, y, width, height, enabled) =>
+        this.drawButton(id, label, x, y, width, height, enabled),
+      drawLanguageToggle: () => this.drawLanguageToggle(),
+      drawMenuBase: (rect) => this.drawMenuBase(rect),
+      drawOptionButton: (id, label, value, x, y, width, tooltip) =>
+        this.drawOptionButton(id, label, value, x, y, width, tooltip),
+      drawPlayerSetupRow: (playerId, x, y) => this.drawPlayerSetupRow(playerId, x, y),
+      drawTerrainLegend: (x, y) => this.drawTerrainLegend(x, y),
+      drawTitleDivider: (x, y, width) => this.drawTitleDivider(x, y, width),
+      drawTooltipMarker: (x, y, text) => this.drawTooltipMarker(x, y, text)
+    };
   }
 
   private drawTerrainLegend(x: number, y: number): void {

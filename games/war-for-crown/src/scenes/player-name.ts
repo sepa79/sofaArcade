@@ -12,3 +12,7 @@ export function appendPlayerNameCharacter(current: string, character: string): s
     .slice(0, WAR_FOR_CROWN_PLAYER_NAME_MAX_LENGTH)
     .join('');
 }
+
+export function removeLastPlayerNameCharacter(current: string): string {
+  return Array.from(current).slice(0, -1).join('');
+}

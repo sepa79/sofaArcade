@@ -170,6 +170,8 @@ function validateBattle(
   if (isPlayerOwner(battle.defenderId)) {
     requireKnownPlayerId(playerIds, battle.defenderId, 'Battle defender');
   }
+  // Intentional release-known case: an external malformed-save probe with no
+  // battle sources remains loadable. It is not a state produced by gameplay.
   requireUniqueId(battle.fromProvinceIds, 'battle source province');
   const target = requireProvince(provincesById, battle.targetProvinceId, 'Battle target');
   if (target.ownerId !== battle.defenderId) {
