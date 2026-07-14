@@ -3,16 +3,19 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
-    "dev": "pnpm --filter pixel-invaders dev",
+    "dev": "pnpm dev:arcade-launcher",
+    "dev:arcade-launcher": "BASE_PATH=/ pnpm build:pages && pnpm --filter arcade-launcher exec vite preview --host 0.0.0.0 --outDir ../../dist/pages",
+    "dev:pixel-invaders": "pnpm --filter pixel-invaders dev",
     "dev:artillery-duel": "pnpm --filter artillery-duel dev",
     "dev:tunnel-invaders": "pnpm --filter tunnel-invaders dev",
     "dev:war-for-crown": "pnpm --filter war-for-crown dev",
     "dev:web-portal": "pnpm --filter web-portal dev",
     "dev:signal-server": "pnpm --filter signal-server dev",
     "package:distro": "node scripts/package-distro.mjs",
-    "build": "pnpm --filter @light80/core build && pnpm --filter @light80/game-sdk build && pnpm --filter signal-server build && pnpm --filter web-portal build && pnpm --filter pixel-invaders build && pnpm --filter artillery-duel build && pnpm --filter tunnel-invaders build && pnpm --filter war-for-crown build",
-    "lint": "pnpm --filter @light80/core lint && pnpm --filter @light80/game-sdk lint && pnpm --filter signal-server lint && pnpm --filter web-portal lint && pnpm --filter pixel-invaders lint && pnpm --filter artillery-duel lint && pnpm --filter tunnel-invaders lint && pnpm --filter war-for-crown lint",
-    "test": "pnpm --filter @light80/core test && pnpm --filter @light80/game-sdk test && pnpm --filter signal-server test && pnpm --filter web-portal test && pnpm --filter pixel-invaders test && pnpm --filter artillery-duel test && pnpm --filter tunnel-invaders test && pnpm --filter war-for-crown test"
+    "build:pages": "node scripts/build-pages.mjs",
+    "build": "pnpm --filter @light80/core build && pnpm --filter @light80/game-sdk build && pnpm --filter signal-server build && pnpm --filter web-portal build && pnpm --filter arcade-launcher build && pnpm --filter pixel-invaders build && pnpm --filter artillery-duel build && pnpm --filter tunnel-invaders build && pnpm --filter war-for-crown build",
+    "lint": "pnpm --filter @light80/core lint && pnpm --filter @light80/game-sdk lint && pnpm --filter signal-server lint && pnpm --filter web-portal lint && pnpm --filter arcade-launcher lint && pnpm --filter pixel-invaders lint && pnpm --filter artillery-duel lint && pnpm --filter tunnel-invaders lint && pnpm --filter war-for-crown lint",
+    "test": "pnpm --filter @light80/core test && pnpm --filter @light80/game-sdk test && pnpm --filter signal-server test && pnpm --filter web-portal test && pnpm --filter arcade-launcher test && pnpm --filter pixel-invaders test && pnpm --filter artillery-duel test && pnpm --filter tunnel-invaders test && pnpm --filter war-for-crown test"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.2"

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="title description">
+  <title id="title">War for Crown</title>
+  <desc id="description">A stylized strategic map with four rival castles and a crown.</desc>
+  <rect width="640" height="360" fill="#071012"/>
+  <rect x="14" y="14" width="612" height="332" rx="10" fill="#10202a" stroke="#c0883f" stroke-width="8"/>
+  <path d="M48 56h170v112H48zm176 0h170v112H224zm176 0h192v112H400zM48 174h128v132H48zm134 0h224v132H182zm230 0h180v132H412z" fill="#719f55" stroke="#17110b" stroke-width="7"/>
+  <path d="M224 56h170v112H224zM48 174h128v132H48z" fill="#7c838e"/>
+  <path d="M400 56h192v112H400z" fill="#9fa257"/>
+  <path d="M412 174h180v132H412z" fill="#254a72"/>
+  <g fill="#d8dde0">
+    <path d="m255 143 35-66 35 66z"/><path d="m306 143 29-52 29 52z"/>
+  </g>
+  <g stroke="#d9b755" stroke-width="8" fill="#8f2f32">
+    <path d="M78 125V86h20v13h24V86h20v39z"/><path d="M475 125V86h20v13h24V86h20v39z"/>
+  </g>
+  <g stroke="#d9b755" stroke-width="8" fill="#315f8f">
+    <path d="M78 270v-39h20v13h24v-13h20v39z"/><path d="M475 270v-39h20v13h24v-13h20v39z"/>
+  </g>
+  <path d="M278 241h84l-8 38h-68zm7-24 20 17 15-29 15 29 20-17 7 24h-84z" fill="#f1c65f" stroke="#5b3b18" stroke-width="5"/>
+  <text x="320" y="332" text-anchor="middle" fill="#79e4df" font-family="sans-serif" font-size="28" font-weight="700" letter-spacing="4">WAR FOR CROWN</text>
+</svg>

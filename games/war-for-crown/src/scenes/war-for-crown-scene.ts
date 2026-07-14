@@ -69,6 +69,7 @@ export const WAR_FOR_CROWN_SCENE_KEY = 'war-for-crown';
 
 export interface WarForCrownSceneData {
   readonly seed?: number;
+  readonly returnUrl?: string;
 }
 
 interface Rect {
@@ -123,6 +124,7 @@ type ButtonId =
   | 'main-load'
   | 'main-new-game'
   | 'main-rules'
+  | 'main-sofa-arcade'
   | 'map-accept'
   | 'map-back'
   | 'map-max-villages'
@@ -496,6 +498,7 @@ const UI_COPY = {
     seed: 'Ziarno',
     mainMenuTitle: 'WAR FOR CROWN',
     mainMenuSubtitle: 'Najpierw wybierz tryb gry.',
+    sofaArcade: 'SOFA ARCADE',
     newGame: 'NOWA GRA',
     rules: 'ZASADY',
     load: 'WCZYTAJ',
@@ -655,6 +658,7 @@ const UI_COPY = {
     seed: 'Seed',
     mainMenuTitle: 'WAR FOR CROWN',
     mainMenuSubtitle: 'Choose how to start.',
+    sofaArcade: 'SOFA ARCADE',
     newGame: 'NEW GAME',
     rules: 'RULES',
     load: 'LOAD',
@@ -829,6 +833,23 @@ function parseSeed(rawData: unknown): number {
   }
 
   return data.seed;
+}
+
+function parseReturnUrl(rawData: unknown): string | null {
+  if (rawData === undefined) {
+    return null;
+  }
+  if (typeof rawData !== 'object' || rawData === null) {
+    throw new Error('War for Crown scene data must be an object.');
+  }
+  const data = rawData as WarForCrownSceneData;
+  if (data.returnUrl === undefined) {
+    return null;
+  }
+  if (!data.returnUrl.startsWith('/') || !data.returnUrl.endsWith('/')) {
+    throw new Error(`War for Crown return URL must start and end with "/": ${data.returnUrl}`);
+  }
+  return data.returnUrl;
 }
 
 function cssColor(color: number): string {
@@ -1150,6 +1171,7 @@ function formatEventForLog(
 
 export class WarForCrownScene extends Phaser.Scene {
   private state!: GameState;
+  private returnUrl: string | null = null;
   private mode: SceneMode = 'main-menu';
   private language: Language = 'pl';
   private backgroundGraphics!: Phaser.GameObjects.Graphics;
@@ -1443,6 +1465,7 @@ export class WarForCrownScene extends Phaser.Scene {
       throw new Error('War for Crown soldier icon failed to load.');
     }
     const seed = parseSeed(rawData);
+    this.returnUrl = parseReturnUrl(rawData);
     this.syncPlayerSetupsWithConfig();
     this.state = createInitialState(seed, this.gameConfig);
     this.mode = 'main-menu';
@@ -2689,6 +2712,12 @@ export class WarForCrownScene extends Phaser.Scene {
         this.message = this.copy().rulesTitle;
         this.renderScene();
         break;
+      case 'main-sofa-arcade':
+        if (this.returnUrl === null) {
+          throw new Error('Cannot return to Sofa Arcade without a configured return URL.');
+        }
+        window.location.assign(this.returnUrl);
+        break;
       case 'map-accept':
         this.startPlayerSetup();
         break;
@@ -2895,6 +2924,7 @@ export class WarForCrownScene extends Phaser.Scene {
         return this.copy().loadUnavailable;
       case 'main-new-game':
       case 'main-rules':
+      case 'main-sofa-arcade':
       case 'map-accept':
       case 'map-back':
       case 'map-max-villages':
@@ -3673,6 +3703,9 @@ export class WarForCrownScene extends Phaser.Scene {
     this.drawButton('main-new-game', copy.newGame, 430, 282, 420, 48, true);
     this.drawButton('main-rules', copy.rules, 430, 354, 420, 48, true);
     this.drawButton('main-load', copy.load, 430, 426, 420, 48, false);
+    if (this.returnUrl !== null) {
+      this.drawButton('main-sofa-arcade', copy.sofaArcade, 430, 498, 420, 48, true);
+    }
 
   }
 

@@ -8,7 +8,7 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '..');
 const distDir = path.join(repoRoot, 'dist');
 const distroAssetsDir = path.join(__dirname, 'distro-assets');
-const gameBuildDir = path.join(repoRoot, 'games', 'pixel-invaders', 'dist');
+const sofaArcadeBuildDir = path.join(repoRoot, 'dist', 'pages');
 const nodeRuntimeZipPath = path.join(distDir, 'node-win-x64.zip');
 const signalPackageDir = path.join(repoRoot, 'apps', 'signal-server');
 const signalSourceDir = path.join(repoRoot, 'apps', 'signal-server', 'src');
@@ -126,13 +126,14 @@ function main() {
   requirePath(localAssetsDir, 'local playable assets directory');
   requirePath(signalAssetsDir, 'portable signal assets directory');
 
-  run('pnpm', ['--filter', 'pixel-invaders', 'build'], repoRoot, {
+  run('node', ['scripts/build-pages.mjs'], repoRoot, {
     ...process.env,
+    BASE_PATH: '/',
     VITE_SIGNAL_HTTP_URL: LOCAL_DISTRO_SIGNAL_HTTP_URL,
     VITE_PHONE_SIGNAL_HTTP_URL: LOCAL_DISTRO_PHONE_SIGNAL_HTTP_URL,
     VITE_PHONE_CONTROLLER_ORIGIN: LOCAL_DISTRO_PHONE_CONTROLLER_ORIGIN
   });
-  requirePath(gameBuildDir, 'pixel-invaders build output');
+  requirePath(sofaArcadeBuildDir, 'Sofa Arcade launcher build output');
 
   rmSync(tempRoot, { recursive: true, force: true });
   mkdirSync(tempRoot, { recursive: true });
@@ -142,7 +143,7 @@ function main() {
   copyNamedItems(localAssetsDir, localStageDir, LOCAL_ASSET_ITEMS);
   extractNodeRuntime(path.join(localStageDir, 'node'), tempRoot);
   cpSync(compiledSignalDir, path.join(localStageDir, 'signal-server'), { recursive: true });
-  cpSync(gameBuildDir, path.join(localStageDir, 'web'), { recursive: true });
+  cpSync(sofaArcadeBuildDir, path.join(localStageDir, 'web'), { recursive: true });
 
   copyNamedItems(signalAssetsDir, signalStageDir, SIGNAL_ASSET_ITEMS);
   extractNodeRuntime(path.join(signalStageDir, 'node'), tempRoot);

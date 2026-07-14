@@ -36,10 +36,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build Pixel Invaders for Pages
+      - name: Build Sofa Arcade launcher for Pages
         env:
           BASE_PATH: /${{ github.event.repository.name }}/
-        run: pnpm --filter pixel-invaders run build --base "$BASE_PATH"
+        run: pnpm build:pages
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
@@ -47,7 +47,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: games/pixel-invaders/dist
+          path: dist/pages
 
   deploy:
     environment:

@@ -2,7 +2,11 @@ import Phaser from 'phaser';
 
 import { WORLD_HEIGHT, WORLD_WIDTH } from './game/constants';
 import { WAR_FOR_CROWN_RENDER_SCALE } from './scenes/render-scale';
-import { WarForCrownScene } from './scenes/war-for-crown-scene';
+import {
+  WAR_FOR_CROWN_SCENE_KEY,
+  WarForCrownScene,
+  type WarForCrownSceneData
+} from './scenes/war-for-crown-scene';
 import { loadWarForCrownUiFont } from './scenes/ui-font';
 import './style.css';
 
@@ -14,7 +18,7 @@ void (async () => {
     parent: 'app',
     antialias: true,
     pixelArt: false,
-    scene: [WarForCrownScene],
+    scene: [],
     scale: {
       mode: Phaser.Scale.FIT,
       autoCenter: Phaser.Scale.CENTER_BOTH,
@@ -23,5 +27,9 @@ void (async () => {
     }
   };
 
-  new Phaser.Game(gameConfig);
+  const game = new Phaser.Game(gameConfig);
+  const sceneData: WarForCrownSceneData = {
+    returnUrl: import.meta.env.VITE_ARCADE_HOME_URL
+  };
+  game.scene.add(WAR_FOR_CROWN_SCENE_KEY, WarForCrownScene, true, sceneData);
 })();
