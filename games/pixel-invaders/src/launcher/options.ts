@@ -1,6 +1,4 @@
 import pixelInvadersThumbnail from '../../screenshots/start-screen-1080p.png';
-import artilleryDuelThumbnail from '../../../artillery-duel/src/assets/launcher-thumbnail.svg';
-import tunnelInvadersThumbnail from '../../../tunnel-invaders/screenshots/launcher-thumbnail.png';
 import type { MultiplayerGameLaunchPlayerSlot } from '../launch-contract';
 import { PIXEL_PHONE_LINK_CONTROLLER_ID } from '../launch-contract';
 
@@ -14,16 +12,6 @@ export interface GameOption {
   readonly controllerOptions: ReadonlyArray<ControllerOption>;
 }
 
-export interface LegacyControllerOption {
-  readonly id: string;
-  readonly label: string;
-  readonly description: string;
-  readonly launchMode: 'legacy_single';
-  readonly controllerProfileId: string;
-  readonly phoneLinkEnabled: boolean;
-  readonly sceneData?: Readonly<Record<string, unknown>>;
-}
-
 export interface MultiplayerControllerOption {
   readonly id: string;
   readonly label: string;
@@ -32,7 +20,7 @@ export interface MultiplayerControllerOption {
   readonly playerSlots: ReadonlyArray<MultiplayerGameLaunchPlayerSlot>;
 }
 
-export type ControllerOption = LegacyControllerOption | MultiplayerControllerOption;
+export type ControllerOption = MultiplayerControllerOption;
 
 function createPixelSlot(
   slotId: string,
@@ -75,15 +63,10 @@ function createPixelPhoneSlot(
 }
 
 export function optionUsesPhoneLink(option: ControllerOption): boolean {
-  if (option.launchMode === 'legacy_single') {
-    return option.phoneLinkEnabled;
-  }
-
   return option.playerSlots.some((playerSlot) => playerSlot.binding.transport === 'phone_link');
 }
 
-export const GAME_OPTIONS: ReadonlyArray<GameOption> = [
-  {
+export const PIXEL_INVADERS_GAME_SETUP: GameOption = {
     id: 'pixel-invaders',
     label: 'Pixel Invaders',
     description: 'Klasyczny test loop: ruch, strzal, fala przeciwnikow.',
@@ -179,55 +162,4 @@ export const GAME_OPTIONS: ReadonlyArray<GameOption> = [
         ]
       }
     ]
-  },
-  {
-    id: 'artillery-duel',
-    label: 'Artillery Duel',
-    description: 'Generowany teren, balistyka i klasyczny pojedynek dzialek.',
-    sceneKey: 'artillery-duel',
-    thumbnailSrc: artilleryDuelThumbnail,
-    thumbnailAlt: 'Artillery Duel thumbnail',
-    controllerOptions: [
-      {
-        id: 'artillery-solo-shared',
-        label: 'Solo vs CPU',
-        description: 'Jeden gracz przeciw CPU na wspolnym sterowaniu kanapowym.',
-        launchMode: 'legacy_single',
-        controllerProfileId: 'artillery-duel-shared-keyboard-gamepad',
-        phoneLinkEnabled: false,
-        sceneData: {
-          matchMode: 'solo-ai'
-        }
-      },
-      {
-        id: 'artillery-hotseat-shared',
-        label: '2P Hotseat',
-        description: 'Dwaj gracze na zmiane na jednym zestawie sterowania.',
-        launchMode: 'legacy_single',
-        controllerProfileId: 'artillery-duel-shared-keyboard-gamepad',
-        phoneLinkEnabled: false,
-        sceneData: {
-          matchMode: 'hotseat-2p'
-        }
-      }
-    ]
-  },
-  {
-    id: 'tunnel-invaders',
-    label: 'Tunnel Invaders',
-    description: 'Pseudo-3D tunel: przeciwnicy nadlatuja z glebi na krawedz.',
-    sceneKey: 'tunnel-invaders',
-    thumbnailSrc: tunnelInvadersThumbnail,
-    thumbnailAlt: 'Tunnel Invaders screenshot',
-    controllerOptions: [
-      {
-        id: 'tunnel-solo-default',
-        label: 'Keyboard + Gamepad',
-        description: 'Ruch wzgledny po obwodzie tunelu + strzal i skok fazowy.',
-        launchMode: 'legacy_single',
-        controllerProfileId: 'tunnel-invaders-keyboard-gamepad',
-        phoneLinkEnabled: false
-      }
-    ]
-  }
-];
+};

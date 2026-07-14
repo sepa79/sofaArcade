@@ -4,9 +4,9 @@ import { WORLD_HEIGHT, WORLD_WIDTH } from './game/constants';
 import { WAR_FOR_CROWN_RENDER_SCALE } from './scenes/render-scale';
 import {
   WAR_FOR_CROWN_SCENE_KEY,
-  WarForCrownScene,
-  type WarForCrownSceneData
+  WarForCrownScene
 } from './scenes/war-for-crown-scene';
+import type { WarForCrownSceneData } from './scenes/scene-data';
 import { loadWarForCrownUiFont } from './scenes/ui-font';
 import './style.css';
 

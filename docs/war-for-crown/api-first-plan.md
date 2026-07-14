@@ -260,7 +260,7 @@ type WarForCrownAction =
       readonly type: 'move-soldiers';
       readonly fromProvinceId: ProvinceId;
       readonly targetProvinceId: ProvinceId;
-      readonly soldiers: number;
+      readonly targetSoldiers: number;
     };
 ```
 

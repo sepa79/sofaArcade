@@ -103,7 +103,11 @@ describe('game state invariants', () => {
       map: {
         width: 3,
         height: 1,
-        tiles: [],
+        tiles: [
+          { x: 0, y: 0, provinceId: 'p1-home' },
+          { x: 1, y: 0, provinceId: 'p2-home' },
+          { x: 2, y: 0, provinceId: null }
+        ],
         provinces: [
           testProvince({
             id: 'p1-home',
@@ -146,7 +150,11 @@ describe('game state invariants', () => {
       map: {
         width: 3,
         height: 1,
-        tiles: [],
+        tiles: [
+          { x: 0, y: 0, provinceId: 'p1-home' },
+          { x: 1, y: 0, provinceId: 'p2-home' },
+          { x: 2, y: 0, provinceId: 'p1-field' }
+        ],
         provinces: [
           testProvince({
             id: 'p1-home',
@@ -199,7 +207,10 @@ describe('game state invariants', () => {
       map: {
         width: 2,
         height: 1,
-        tiles: [],
+        tiles: [
+          { x: 0, y: 0, provinceId: 'home' },
+          { x: 1, y: 0, provinceId: 'royal' }
+        ],
         provinces: [
           testProvince({
             id: 'home',

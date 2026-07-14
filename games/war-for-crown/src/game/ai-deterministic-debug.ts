@@ -172,7 +172,7 @@ function movementAction(view: PlayerView): WarForCrownAction | null {
     type: 'move-soldiers',
     fromProvinceId: move.source.id,
     targetProvinceId: move.target.id,
-    soldiers: move.soldiers
+    targetSoldiers: move.target.soldiers + move.soldiers
   };
 }
 

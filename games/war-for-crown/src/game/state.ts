@@ -1,25 +1,12 @@
 import { DEFAULT_GAME_CONFIG, PLAYER_DEFINITIONS } from './constants';
+import { validateGameConfig } from './config-validation';
 import { createC64CompatibilityState } from './c64-state';
 import { generateProvinceMapWithRngState } from './map';
 import type { GameConfig, GameState, PlayerState } from './types';
 
 function totalPlayerCount(config: GameConfig): number {
-  if (!Number.isInteger(config.humanPlayerCount) || config.humanPlayerCount < 0) {
-    throw new Error(
-      `Human player count must be a non-negative integer, got ${config.humanPlayerCount}.`
-    );
-  }
-
-  if (!Number.isInteger(config.aiPlayerCount) || config.aiPlayerCount < 0) {
-    throw new Error(`AI player count must be a non-negative integer, got ${config.aiPlayerCount}.`);
-  }
-
-  const total = config.humanPlayerCount + config.aiPlayerCount;
-  if (total < 2 || total > PLAYER_DEFINITIONS.length) {
-    throw new Error(`Total player count must be 2..${PLAYER_DEFINITIONS.length}, got ${total}.`);
-  }
-
-  return total;
+  validateGameConfig(config);
+  return config.humanPlayerCount + config.aiPlayerCount;
 }
 
 function createPlayers(config: GameConfig): ReadonlyArray<PlayerState> {

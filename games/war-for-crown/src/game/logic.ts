@@ -38,6 +38,7 @@ import type {
   ProvinceState,
   TurnStep
 } from './types';
+import { c64HumanMovementRange, requireC64HumanMovementTarget } from './human-movement';
 import type { OwnerId } from './owners';
 import type { WarForCrownEvent } from './events';
 
@@ -546,43 +547,38 @@ export function moveSoldiers(
   playerId: PlayerId,
   fromProvinceId: ProvinceId,
   targetProvinceId: ProvinceId,
-  soldiers: number
+  targetSoldiers: number
 ): GameState {
   requireTurn(state, 'move soldiers');
   requireNoActiveBattle(state, 'move soldiers');
   requireActiveTurnPlayer(state, playerId);
   requireTurnStep(state, 'movement', 'move soldiers');
-  requirePositiveInteger(soldiers, 'Move soldiers');
+  requirePositiveInteger(targetSoldiers, 'Movement target soldiers');
 
-  if (fromProvinceId === targetProvinceId) {
-    throw new Error('Move source and target provinces must be different.');
+  const { source: fromProvince, target: targetProvince } = requireC64HumanMovementTarget(
+    state.map,
+    playerId,
+    fromProvinceId,
+    targetProvinceId
+  );
+  const range = c64HumanMovementRange(fromProvince, targetProvince);
+  if (targetSoldiers > range.maximumTargetSoldiers) {
+    throw new Error(
+      `Movement target soldiers must be ${range.minimumTargetSoldiers}..${range.maximumTargetSoldiers}, got ${targetSoldiers}.`
+    );
   }
-
-  const fromProvince = requireProvince(state.map, fromProvinceId);
-  const targetProvince = requireProvince(state.map, targetProvinceId);
-
-  if (fromProvince.ownerId !== playerId) {
-    throw new Error(`Province ${fromProvinceId} is not owned by ${playerId}.`);
-  }
-
-  if (targetProvince.ownerId !== playerId) {
-    throw new Error(`Province ${targetProvinceId} is not owned by ${playerId}.`);
-  }
-
-  if (soldiers >= fromProvince.soldiers) {
-    throw new Error('A moved-from province must keep at least one soldier behind.');
-  }
+  const sourceSoldiers = fromProvince.soldiers + targetProvince.soldiers - targetSoldiers;
 
   const mapAfterSource = updateProvince(state.map, fromProvinceId, (province) => ({
     ...province,
-    soldiers: province.soldiers - soldiers
+    soldiers: sourceSoldiers
   }));
 
   return {
     ...state,
     map: updateProvince(mapAfterSource, targetProvinceId, (province) => ({
       ...province,
-      soldiers: province.soldiers + soldiers
+      soldiers: targetSoldiers
     }))
   };
 }

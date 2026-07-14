@@ -1,6 +1,8 @@
 import { WAR_FOR_CROWN_AI_STRATEGIES, type WarForCrownAiMode } from './ai';
 import { DEFAULT_GAME_CONFIG } from './constants';
+import { validateGameConfig } from './config-validation';
 import { validateGameState } from './invariants';
+import { PLAYER_COLOR_CHOICES, PLAYER_CREST_CHOICES } from './player-presentation';
 import type { GameConfig, GameState, PlayerId } from './types';
 
 export const WAR_FOR_CROWN_SAVE_FORMAT = 'war-for-crown';
@@ -92,7 +94,9 @@ function parseConfig(value: unknown): GameConfig {
     }
   }
 
-  return config as unknown as GameConfig;
+  const parsed = config as unknown as GameConfig;
+  validateGameConfig(parsed);
+  return parsed;
 }
 
 function parsePlayerSetups(
@@ -123,12 +127,30 @@ function parsePlayerSetups(
       colorIndex: requireNonNegativeInteger(setup.colorIndex, `Saved player setup ${index + 1} color index`),
       crestIndex: requireNonNegativeInteger(setup.crestIndex, `Saved player setup ${index + 1} crest index`)
     };
+    if (PLAYER_COLOR_CHOICES[base.colorIndex] === undefined) {
+      throw new Error(`Saved player setup ${index + 1} has an invalid color index.`);
+    }
+    if (PLAYER_CREST_CHOICES[base.crestIndex] === undefined) {
+      throw new Error(`Saved player setup ${index + 1} has an invalid crest index.`);
+    }
+    if (statePlayer.label !== base.name.trim()) {
+      throw new Error(`Saved player setup ${index + 1} name does not match game state.`);
+    }
+    if (statePlayer.color !== PLAYER_COLOR_CHOICES[base.colorIndex]) {
+      throw new Error(`Saved player setup ${index + 1} color does not match game state.`);
+    }
 
     if (setup.controller === 'human') {
+      if (index >= config.humanPlayerCount) {
+        throw new Error(`Saved player setup ${index + 1} must be AI-controlled.`);
+      }
       return { ...base, controller: 'human' };
     }
     if (setup.controller !== 'ai') {
       throw new Error(`Saved player setup ${index + 1} has an invalid controller.`);
+    }
+    if (index < config.humanPlayerCount) {
+      throw new Error(`Saved player setup ${index + 1} must be human-controlled.`);
     }
     const aiMode = requireNonEmptyString(setup.aiMode, `Saved player setup ${index + 1} AI mode`);
     if (!(aiMode in WAR_FOR_CROWN_AI_STRATEGIES)) {
@@ -142,6 +164,10 @@ function parsePlayerSetups(
   }
   if (setups.filter((setup) => setup.controller === 'ai').length !== config.aiPlayerCount) {
     throw new Error('Saved game AI player count does not match game config.');
+  }
+  const normalizedNames = setups.map((setup) => setup.name.trim().toLocaleLowerCase('en'));
+  if (new Set(normalizedNames).size !== normalizedNames.length) {
+    throw new Error('Saved game player names must be unique.');
   }
   return setups;
 }
@@ -182,6 +208,12 @@ export function parseWarForCrownSaveGame(value: unknown): WarForCrownSaveGame {
 
   const state = parseState(save.state);
   const config = parseConfig(save.config);
+  if (state.map.width !== config.mapWidth || state.map.height !== config.mapHeight) {
+    throw new Error('Saved game map dimensions do not match game config.');
+  }
+  if (state.map.provinces.length !== config.provinceCount) {
+    throw new Error('Saved game province count does not match game config.');
+  }
   const playerSetups = parsePlayerSetups(save.playerSetups, config, state);
   return {
     format: WAR_FOR_CROWN_SAVE_FORMAT,

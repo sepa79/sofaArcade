@@ -45,7 +45,7 @@ function turnMap(
         ownerId: 'p1',
         villages: 1,
         soldiers: 20,
-        neighbours: ['home', 'target'],
+        neighbours: ['home', 'target', 'reserve'],
         ...allyOverrides
       }),
       testProvince({
@@ -63,7 +63,7 @@ function turnMap(
         ownerId: 'p1',
         villages: 0,
         soldiers: 5,
-        neighbours: []
+        neighbours: ['ally']
       }),
       testProvince({
         id: 'p2-home',
@@ -146,7 +146,7 @@ describe('turn order and investments', () => {
         type: 'move-soldiers',
         fromProvinceId: 'home',
         targetProvinceId: 'ally',
-        soldiers: 10
+        targetSoldiers: 10
       })
     ).toThrow('Cannot move soldiers during turn step "new-month".');
     expect(() => applyPlayerAction(newMonth, 'p1', { type: 'recruit-soldiers', soldiers: 1 })).toThrow(
@@ -236,7 +236,7 @@ describe('turn order and investments', () => {
       type: 'move-soldiers',
       fromProvinceId: 'home',
       targetProvinceId: 'ally',
-      soldiers: 25
+      targetSoldiers: 45
     });
     const home = result.state.map.provinces.find((province) => province.id === 'home');
     const ally = result.state.map.provinces.find((province) => province.id === 'ally');
@@ -259,7 +259,7 @@ describe('turn order and investments', () => {
       type: 'move-soldiers',
       fromProvinceId: 'home',
       targetProvinceId: 'reserve',
-      soldiers: 25
+      targetSoldiers: 30
     });
     const home = result.state.map.provinces.find((province) => province.id === 'home');
     const reserve = result.state.map.provinces.find((province) => province.id === 'reserve');
@@ -275,6 +275,48 @@ describe('turn order and investments', () => {
     ]);
     expect(home?.soldiers).toBe(175);
     expect(reserve?.soldiers).toBe(30);
+  });
+
+  it('rejects movement between disconnected owned components', () => {
+    const connectedMap = turnMap();
+    const disconnectedMap: ProvinceMapState = {
+      ...connectedMap,
+      provinces: connectedMap.provinces.map((province) => {
+        if (province.id === 'ally') {
+          return { ...province, neighbours: province.neighbours.filter((id) => id !== 'reserve') };
+        }
+        if (province.id === 'reserve') {
+          return { ...province, neighbours: [] };
+        }
+        return province;
+      })
+    };
+
+    expect(() => applyPlayerAction(turnState('movement', disconnectedMap), 'p1', {
+      type: 'move-soldiers',
+      fromProvinceId: 'home',
+      targetProvinceId: 'reserve',
+      targetSoldiers: 30
+    })).toThrow('Movement provinces home and reserve are not connected');
+  });
+
+  it('uses the C64 final-target-count movement semantics in both directions', () => {
+    const result = applyPlayerAction(turnState('movement'), 'p1', {
+      type: 'move-soldiers',
+      fromProvinceId: 'home',
+      targetProvinceId: 'ally',
+      targetSoldiers: 5
+    });
+
+    expect(result.state.map.provinces.find((province) => province.id === 'home')?.soldiers).toBe(215);
+    expect(result.state.map.provinces.find((province) => province.id === 'ally')?.soldiers).toBe(5);
+    expect(result.events).toEqual([{
+      type: 'soldiers-moved',
+      playerId: 'p1',
+      fromProvinceId: 'ally',
+      targetProvinceId: 'home',
+      soldiers: 15
+    }]);
   });
 
   it('includes fortification in defender battle strength', () => {

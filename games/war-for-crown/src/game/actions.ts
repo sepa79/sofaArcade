@@ -41,7 +41,7 @@ export type WarForCrownAction =
       readonly type: 'move-soldiers';
       readonly fromProvinceId: ProvinceId;
       readonly targetProvinceId: ProvinceId;
-      readonly soldiers: number;
+      readonly targetSoldiers: number;
     }
   | {
       readonly type: 'attack';
@@ -674,22 +674,24 @@ export function applyPlayerAction(
     }
 
     case 'move-soldiers': {
+      const targetBefore = requireProvince(state, action.targetProvinceId);
       const nextState = moveSoldiers(
         state,
         playerId,
         action.fromProvinceId,
         action.targetProvinceId,
-        action.soldiers
+        action.targetSoldiers
       );
+      const delta = action.targetSoldiers - targetBefore.soldiers;
       return {
         state: nextState,
         events: [
           {
             type: 'soldiers-moved',
             playerId,
-            fromProvinceId: action.fromProvinceId,
-            targetProvinceId: action.targetProvinceId,
-            soldiers: action.soldiers
+            fromProvinceId: delta < 0 ? action.targetProvinceId : action.fromProvinceId,
+            targetProvinceId: delta < 0 ? action.fromProvinceId : action.targetProvinceId,
+            soldiers: Math.abs(delta)
           }
         ]
       };

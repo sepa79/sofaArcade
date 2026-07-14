@@ -17,7 +17,7 @@ import {
   type LauncherState
 } from '../launcher/model';
 import {
-  GAME_OPTIONS,
+  PIXEL_INVADERS_GAME_SETUP,
   optionUsesPhoneLink,
   type ControllerOption,
   type GameOption
@@ -130,10 +130,10 @@ function requireKeyboard(scene: Phaser.Scene): Phaser.Input.Keyboard.KeyboardPlu
 }
 
 function requireGameOption(gameIndex: number): GameOption {
-  const gameOption = GAME_OPTIONS[gameIndex];
-  if (gameOption === undefined) {
+  if (gameIndex !== 0) {
     throw new Error(`Game option is missing for index ${gameIndex}.`);
   }
+  const gameOption = PIXEL_INVADERS_GAME_SETUP;
 
   if (gameOption.controllerOptions.length === 0) {
     throw new Error(`Game "${gameOption.id}" must define at least one controller option.`);
@@ -184,7 +184,7 @@ function requireAudioMixProfileId(index: number): AudioMixProfileId {
 }
 
 function requirePlayableSceneKey(sceneKey: string): PlayableSceneKey {
-  if (sceneKey === 'pixel-invaders' || sceneKey === 'artillery-duel' || sceneKey === 'tunnel-invaders') {
+  if (sceneKey === 'pixel-invaders') {
     return sceneKey;
   }
 
@@ -200,23 +200,11 @@ function gameDescription(game: GameOption, language: LauncherLanguage): string {
     if (game.id === 'pixel-invaders') {
       return 'Klasyczny test loop: ruch, strzal, fala przeciwnikow.';
     }
-    if (game.id === 'artillery-duel') {
-      return 'Generowany teren, balistyka i klasyczny pojedynek dzialek.';
-    }
-    if (game.id === 'tunnel-invaders') {
-      return 'Pseudo-3D tunel: przeciwnicy nadlatuja z glebi na krawedz.';
-    }
     throw new Error(`Missing localized game description for game "${game.id}" and language "${language}".`);
   }
 
   if (game.id === 'pixel-invaders') {
     return 'Classic gameplay loop: movement, shots, and enemy waves.';
-  }
-  if (game.id === 'artillery-duel') {
-    return 'Generated terrain, artillery arcs, and a classic duel of cannons.';
-  }
-  if (game.id === 'tunnel-invaders') {
-    return 'Pseudo-3D tunnel: enemies rush from depth to the front edge.';
   }
   throw new Error(`Missing localized game description for game "${game.id}" and language "${language}".`);
 }
@@ -246,15 +234,6 @@ function controllerDescription(option: ControllerOption, language: LauncherLangu
   }
   if (option.id === 'pixel-pad-phone') {
     return 'Two slots: local gamepad 1 plus one phone through phone link.';
-  }
-  if (option.id === 'artillery-solo-shared') {
-    return 'One player versus CPU with shared couch controls.';
-  }
-  if (option.id === 'artillery-hotseat-shared') {
-    return 'Two players take turns on one shared controller setup.';
-  }
-  if (option.id === 'tunnel-solo-default') {
-    return 'Relative orbit movement with primary fire and phase-jump.';
   }
   throw new Error(
     `Missing localized controller description for option "${option.id}" and language "${language}".`
@@ -466,7 +445,7 @@ export class LauncherScene extends Phaser.Scene {
       if (nextState.cursorIndex === MENU_ROW_GAME) {
         nextState = normalizeControllerIndex({
           ...nextState,
-          gameIndex: normalizeIndex(nextState.gameIndex + deltaIndex, GAME_OPTIONS.length)
+          gameIndex: normalizeIndex(nextState.gameIndex + deltaIndex, 1)
         });
         selectionChanged = true;
       } else if (nextState.cursorIndex === MENU_ROW_CONTROLLER) {
@@ -859,7 +838,7 @@ export class LauncherScene extends Phaser.Scene {
         normalizeControllerIndex({
           ...this.state,
           cursorIndex: MENU_ROW_GAME,
-          gameIndex: normalizeIndex(this.state.gameIndex - 1, GAME_OPTIONS.length)
+          gameIndex: normalizeIndex(this.state.gameIndex - 1, 1)
         }),
         true
       );
@@ -871,7 +850,7 @@ export class LauncherScene extends Phaser.Scene {
         normalizeControllerIndex({
           ...this.state,
           cursorIndex: MENU_ROW_GAME,
-          gameIndex: normalizeIndex(this.state.gameIndex + 1, GAME_OPTIONS.length)
+          gameIndex: normalizeIndex(this.state.gameIndex + 1, 1)
         }),
         true
       );
@@ -1085,6 +1064,8 @@ export class LauncherScene extends Phaser.Scene {
     this.dom.startButton.textContent = copy.start;
     this.dom.previewImage.src = gameOption.thumbnailSrc;
     this.dom.previewImage.alt = gameOption.thumbnailAlt;
+    this.dom.arrowLeftButton.hidden = true;
+    this.dom.arrowRightButton.hidden = true;
     this.dom.languageEnButton.classList.toggle('is-active', this.language === 'en');
     this.dom.languagePlButton.classList.toggle('is-active', this.language === 'pl');
     this.dom.helpModal.classList.toggle('is-visible', this.helpVisible);
@@ -1378,19 +1359,10 @@ export class LauncherScene extends Phaser.Scene {
     const controllerOption = requireControllerOption(this.state);
     const audioMixProfileId = requireAudioMixProfileId(this.state.audioMixProfileIndex);
     const sceneKey = requirePlayableSceneKey(gameOption.sceneKey);
-    const data =
-      controllerOption.launchMode === 'pixel_multiplayer'
-        ? createMultiplayerGameLaunchData({
-            playerSlots: controllerOption.playerSlots,
-            audioMixProfileId
-          })
-        : {
-            controllerProfileId: controllerOption.controllerProfileId,
-            controllerLabel: controllerOption.label,
-            audioMixProfileId,
-            phoneLinkEnabled: controllerOption.phoneLinkEnabled,
-            ...controllerOption.sceneData
-          };
+    const data = createMultiplayerGameLaunchData({
+      playerSlots: controllerOption.playerSlots,
+      audioMixProfileId
+    });
 
     try {
       const sceneLoader = requireLazySceneLoader(this);

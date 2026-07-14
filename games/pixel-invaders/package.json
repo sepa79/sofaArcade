@@ -13,10 +13,8 @@
   "dependencies": {
     "@light80/core": "workspace:*",
     "@light80/game-sdk": "workspace:*",
-    "artillery-duel": "workspace:*",
     "phaser": "^3.90.0",
-    "qrcode": "^1.5.4",
-    "tunnel-invaders": "workspace:*"
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.3",

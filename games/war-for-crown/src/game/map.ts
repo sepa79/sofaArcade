@@ -1,4 +1,5 @@
 import { terrainIdForC64TerrainId } from './c64-battle';
+import { C64_MAP_HEIGHT, C64_MAP_WIDTH, validateGameConfig } from './config-validation';
 import { generateC64MapWithByteRng } from './c64-map-generator';
 import { ROYALIST_OWNER_ID } from './owners';
 import { nextRngByte, normalizeRngSeed } from './rng';
@@ -10,34 +11,13 @@ import type {
   TileState
 } from './types';
 
-const C64_MAP_WIDTH = 20;
-const C64_MAP_HEIGHT = 12;
-const C64_MIN_PROVINCE_COUNT = 16;
-const C64_MAX_PROVINCE_COUNT = 99;
-
 export interface GeneratedProvinceMap {
   readonly map: ProvinceMapState;
   readonly rngState: number;
 }
 
 function requireMapConfig(config: GameConfig): void {
-  if (config.mapWidth !== C64_MAP_WIDTH || config.mapHeight !== C64_MAP_HEIGHT) {
-    throw new Error(
-      `C64 map requires ${C64_MAP_WIDTH}x${C64_MAP_HEIGHT}, got ${config.mapWidth}x${config.mapHeight}.`
-    );
-  }
-  if (
-    !Number.isInteger(config.provinceCount) ||
-    config.provinceCount < C64_MIN_PROVINCE_COUNT ||
-    config.provinceCount > C64_MAX_PROVINCE_COUNT
-  ) {
-    throw new Error(
-      `C64 province count must be ${C64_MIN_PROVINCE_COUNT}..${C64_MAX_PROVINCE_COUNT}, got ${config.provinceCount}.`
-    );
-  }
-  if (!Number.isInteger(config.maxVillages) || config.maxVillages < 5 || config.maxVillages > 99) {
-    throw new Error(`C64 maximum villages must be 5..99, got ${config.maxVillages}.`);
-  }
+  validateGameConfig(config);
 }
 
 function provinceId(c64ProvinceId: number): ProvinceId {

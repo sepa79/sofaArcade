@@ -139,18 +139,12 @@ importers:
       '@light80/game-sdk':
         specifier: workspace:*
         version: link:../../packages/game-sdk
-      artillery-duel:
-        specifier: workspace:*
-        version: link:../artillery-duel
       phaser:
         specifier: ^3.90.0
         version: 3.90.0
       qrcode:
         specifier: ^1.5.4
         version: 1.5.4
-      tunnel-invaders:
-        specifier: workspace:*
-        version: link:../tunnel-invaders
     devDependencies:
       '@eslint/js':
         specifier: ^9.39.3

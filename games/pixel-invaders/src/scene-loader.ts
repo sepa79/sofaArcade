@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 
-export type PlayableSceneKey = 'pixel-invaders' | 'artillery-duel' | 'tunnel-invaders';
+export type PlayableSceneKey = 'pixel-invaders';
 
 export interface LazySceneLoader {
   ensureLoaded(sceneKey: PlayableSceneKey): Promise<void>;
@@ -9,7 +9,6 @@ export interface LazySceneLoader {
 export const LAZY_SCENE_LOADER_REGISTRY_KEY = 'pixel-invaders.lazy-scene-loader.v1';
 
 interface SceneDefinition {
-  readonly key: PlayableSceneKey;
   readonly sceneClass: Phaser.Types.Scenes.SceneType;
 }
 
@@ -25,32 +24,7 @@ async function loadSceneDefinition(sceneKey: PlayableSceneKey): Promise<SceneDef
     }
 
     return {
-      key: sceneModule.PIXEL_INVADERS_SCENE_KEY,
       sceneClass: sceneModule.PixelInvadersScene
-    };
-  }
-
-  if (sceneKey === 'artillery-duel') {
-    const sceneModule = await import('artillery-duel');
-    if (sceneModule.ARTILLERY_DUEL_SCENE_KEY !== 'artillery-duel') {
-      throw new Error('Artillery Duel scene key mismatch: expected "artillery-duel".');
-    }
-
-    return {
-      key: sceneModule.ARTILLERY_DUEL_SCENE_KEY,
-      sceneClass: sceneModule.ArtilleryDuelScene
-    };
-  }
-
-  if (sceneKey === 'tunnel-invaders') {
-    const sceneModule = await import('tunnel-invaders');
-    if (sceneModule.TUNNEL_INVADERS_SCENE_KEY !== 'tunnel-invaders') {
-      throw new Error('Tunnel scene key mismatch: expected "tunnel-invaders".');
-    }
-
-    return {
-      key: sceneModule.TUNNEL_INVADERS_SCENE_KEY,
-      sceneClass: sceneModule.TunnelInvadersScene
     };
   }
 
@@ -74,9 +48,6 @@ export function createLazySceneLoader(game: Phaser.Game): LazySceneLoader {
 
       const loadPromise = (async () => {
         const sceneDefinition = await loadSceneDefinition(sceneKey);
-        if (sceneDefinition.key !== sceneKey) {
-          throw new Error(`Loaded scene key mismatch: requested "${sceneKey}", loaded "${sceneDefinition.key}".`);
-        }
         if (!hasScene(game, sceneKey)) {
           game.scene.add(sceneKey, sceneDefinition.sceneClass, false);
         }

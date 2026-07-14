@@ -13,7 +13,7 @@ const arcadeGames = [
     route: 'ArtilleryDuel',
     title: 'Artillery Duel',
     description: 'Pojedynek dział, w którym liczą się kąt, siła i wiatr.',
-    players: '2 graczy'
+    players: '1–2 graczy'
   },
   {
     id: 'tunnel-invaders',

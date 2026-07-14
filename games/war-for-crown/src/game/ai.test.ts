@@ -352,7 +352,7 @@ describe('deterministic AI client', () => {
       type: 'move-soldiers',
       fromProvinceId: 'home',
       targetProvinceId: 'road',
-      soldiers: 14
+      targetSoldiers: 15
     });
 
     const result = applyPlayerAction(state, 'p1', action);
@@ -495,7 +495,7 @@ describe('War for Crown AI strategies', () => {
       type: 'move-soldiers',
       fromProvinceId: 'home',
       targetProvinceId: 'road',
-      soldiers: 29
+      targetSoldiers: 30
     });
   });
 

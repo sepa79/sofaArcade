@@ -172,6 +172,13 @@ export function validateC64CompatibilityState(state: GameState): void {
     );
   }
   requireByte(state.c64.calendar.weatherDerived, 'C64 weather-derived factor');
+  if (typeof state.c64.calendar.monthWeatherPending !== 'boolean') {
+    throw new Error('C64 month weather pending must be boolean.');
+  }
+  requireNonNegativeInteger(
+    state.c64.royalistReinforcementTimer,
+    'C64 royalist reinforcement timer'
+  );
   requireNonNegativeInteger(state.c64.deserterSoldiers, 'C64 deserter soldiers');
   if (
     state.c64.deserterOwnerId !== null &&

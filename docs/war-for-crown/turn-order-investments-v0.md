@@ -251,17 +251,16 @@ slice.
 The Phaser UI mirrors the public movement action without adding hidden state:
 
 - during `movement`, click an owned source province;
-- click any other owned target province;
-- choose the soldier count with a slider or the `-`, `+`, all, and equalize
+- click another owned province reachable through a connected path of owned provinces;
+- choose the final target-province soldier count with a slider or the `-`, `+`, all, and equalize
   buttons;
 - confirm the move through an explicit UI command.
 
-The equalize button chooses the closest legal transfer that balances source and
-target soldiers after movement. If the selected direction cannot reduce the
-imbalance, the button is disabled.
+The equalize button divides the combined soldiers as evenly as possible.
 
 The UI must submit the same public `move-soldiers` action. Movement is not an
-attack and is not restricted to adjacent provinces.
+attack and is not restricted to a single adjacent edge, but it cannot cross a
+province owned by another owner.
 
 ## Building Villages
 
@@ -288,7 +287,7 @@ Add action:
   readonly type: 'move-soldiers';
   readonly fromProvinceId: ProvinceId;
   readonly targetProvinceId: ProvinceId;
-  readonly soldiers: number;
+  readonly targetSoldiers: number;
 }
 ```
 
@@ -296,9 +295,9 @@ Rules:
 
 - Legal only during `movement`.
 - Both provinces must be owned by the acting player.
-- `soldiers` must be a positive integer.
-- Source must keep at least one soldier.
-- Target can be any other province owned by the acting player.
+- `targetSoldiers` is the final target-province count and must be a positive integer.
+- Source and target must both keep at least one soldier.
+- Source and target must belong to the same connected component owned by the acting player.
 
 ## Attack Rules Update
 
