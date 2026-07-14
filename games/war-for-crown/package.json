@@ -21,6 +21,7 @@
     "test:parity:rounds": "tsx tools/c64-parity/verify-rounds.ts"
   },
   "dependencies": {
+    "@light80/core": "workspace:*",
     "@fortawesome/fontawesome-free": "7.1.0",
     "phaser": "^3.90.0"
   },

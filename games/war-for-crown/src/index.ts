@@ -1,5 +1,11 @@
 export { createInitialState } from './game/state';
 export {
+  createWarForCrownSaveGame,
+  parseWarForCrownSaveGame,
+  WAR_FOR_CROWN_SAVE_FORMAT,
+  WAR_FOR_CROWN_SAVE_VERSION
+} from './game/save-game';
+export {
   chooseAiAction,
   chooseC64OriginalAiAction,
   chooseC64WorkbenchAiAction,
@@ -62,6 +68,11 @@ export type {
 } from './game/simulation';
 export type { PlayerStatusSummary } from './game/status';
 export type { WarForCrownJournalEntry } from './game/journal';
+export type {
+  SavedPlayerSetup,
+  SaveLanguage,
+  WarForCrownSaveGame
+} from './game/save-game';
 export type { C64BattleDecision } from './game/battle-ai';
 export type {
   BattleInput,

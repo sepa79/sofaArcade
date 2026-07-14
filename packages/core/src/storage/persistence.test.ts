@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { loadPersistentNonNegativeInt, savePersistentNonNegativeInt } from './persistence';
+import {
+  hasPersistentValue,
+  loadPersistentJson,
+  loadPersistentNonNegativeInt,
+  savePersistentJson,
+  savePersistentNonNegativeInt
+} from './persistence';
 
 class MemoryStorage {
   private readonly map = new Map<string, string>();
@@ -51,6 +57,25 @@ describe('persistence', () => {
 
     expect(() => savePersistentNonNegativeInt('score.key', -1)).toThrow(
       'Persistent integer value for key "score.key" must be non-negative safe integer.'
+    );
+  });
+
+  it('saves, detects and loads JSON values', () => {
+    setLocalStorageMock(new MemoryStorage());
+
+    expect(hasPersistentValue('game.save')).toBe(false);
+    savePersistentJson('game.save', { version: 1, turn: 7 });
+    expect(hasPersistentValue('game.save')).toBe(true);
+    expect(loadPersistentJson('game.save')).toEqual({ version: 1, turn: 7 });
+  });
+
+  it('throws with the storage key when stored JSON is invalid', () => {
+    const storage = new MemoryStorage();
+    storage.setItem('game.save', '{bad json');
+    setLocalStorageMock(storage);
+
+    expect(() => loadPersistentJson('game.save')).toThrow(
+      'Stored JSON for key "game.save" is invalid.'
     );
   });
 });

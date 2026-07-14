@@ -76,4 +76,10 @@ export {
   type PhoneControllerProviderConfig
 } from './phone/provider';
 
-export { loadPersistentNonNegativeInt, savePersistentNonNegativeInt } from './storage/persistence';
+export {
+  hasPersistentValue,
+  loadPersistentJson,
+  loadPersistentNonNegativeInt,
+  savePersistentJson,
+  savePersistentNonNegativeInt
+} from './storage/persistence';

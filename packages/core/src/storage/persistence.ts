@@ -57,3 +57,32 @@ export function savePersistentNonNegativeInt(key: string, value: number): void {
   const storage = requireBrowserStorage();
   storage.setItem(storageKey, String(value));
 }
+
+export function hasPersistentValue(key: string): boolean {
+  const storageKey = requireStorageKey(key);
+  return requireBrowserStorage().getItem(storageKey) !== null;
+}
+
+export function loadPersistentJson(key: string): unknown {
+  const storageKey = requireStorageKey(key);
+  const rawValue = requireBrowserStorage().getItem(storageKey);
+  if (rawValue === null) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(rawValue) as unknown;
+  } catch (error) {
+    throw new Error(`Stored JSON for key "${storageKey}" is invalid.`, { cause: error });
+  }
+}
+
+export function savePersistentJson(key: string, value: unknown): void {
+  const storageKey = requireStorageKey(key);
+  const serialized = JSON.stringify(value);
+  if (serialized === undefined) {
+    throw new Error(`Value for key "${storageKey}" is not JSON-serializable.`);
+  }
+
+  requireBrowserStorage().setItem(storageKey, serialized);
+}

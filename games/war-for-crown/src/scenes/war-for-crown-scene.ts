@@ -1,4 +1,9 @@
 import Phaser from 'phaser';
+import {
+  hasPersistentValue,
+  loadPersistentJson,
+  savePersistentJson
+} from '@light80/core';
 
 import {
   DEFAULT_GAME_CONFIG,
@@ -24,6 +29,12 @@ import {
   provinceFortificationLimit
 } from '../game/rules';
 import { createInitialState } from '../game/state';
+import {
+  createWarForCrownSaveGame,
+  parseWarForCrownSaveGame,
+  type SavedPlayerSetup,
+  type WarForCrownSaveGame
+} from '../game/save-game';
 import { createPlayerStatusSummary } from '../game/status';
 import { createJournalEntry, snapshotJournalValue, type WarForCrownJournalEntry } from '../game/journal';
 import type { WarForCrownEvent } from '../game/events';
@@ -122,6 +133,7 @@ type ButtonId =
   | 'hire-plus'
   | 'language-toggle'
   | 'main-load'
+  | 'main-load-json'
   | 'main-new-game'
   | 'main-rules'
   | 'main-sofa-arcade'
@@ -138,6 +150,8 @@ type ButtonId =
   | 'move-plus'
   | 'move-soldiers'
   | 'new-map'
+  | 'save-game'
+  | 'save-game-json'
   | 'victory-menu'
   | 'rules-home-max-fort'
   | 'rules-interest'
@@ -224,23 +238,8 @@ interface TurnUiCopy {
   readonly advanceLabel: string;
 }
 
-interface BasePlayerSetup {
-  readonly playerId: PlayerId;
-  readonly name: string;
-  readonly colorIndex: number;
-  readonly crestIndex: number;
-}
-
-interface HumanPlayerSetup extends BasePlayerSetup {
-  readonly controller: 'human';
-}
-
-interface AiPlayerSetup extends BasePlayerSetup {
-  readonly controller: 'ai';
-  readonly aiMode: WarForCrownAiMode;
-}
-
-type PlayerSetup = HumanPlayerSetup | AiPlayerSetup;
+type PlayerSetup = SavedPlayerSetup;
+type AiPlayerSetup = Extract<PlayerSetup, { readonly controller: 'ai' }>;
 
 interface AiModeChoice {
   readonly mode: WarForCrownAiMode;
@@ -372,6 +371,7 @@ const MAX_PLAYER_NAME_LENGTH = 12;
 const AI_AUTOPLAY_STEP_LIMIT = 80;
 const AI_ACTION_CUE_MS = 1800;
 const AI_ACTION_FLASH_MS = 220;
+const WAR_FOR_CROWN_BROWSER_SAVE_KEY = 'sofa-arcade.war-for-crown.save.v1';
 const HUMAN_PLAYER_COUNT_OPTIONS: ReadonlyArray<number> = [1, 2];
 const AI_PLAYER_COUNT_OPTIONS: ReadonlyArray<number> = Array.from(
   { length: PLAYER_DEFINITIONS.length },
@@ -502,7 +502,13 @@ const UI_COPY = {
     newGame: 'NOWA GRA',
     rules: 'ZASADY',
     load: 'WCZYTAJ',
-    loadUnavailable: 'Wczytywanie bedzie pozniej.',
+    loadJson: 'WCZYTAJ JSON',
+    loadMissing: 'Brak zapisu w przegladarce.',
+    save: 'ZAPISZ',
+    saveJson: 'JSON',
+    savedLocal: 'Gra zapisana w przegladarce.',
+    loadedLocal: 'Wczytano zapis z przegladarki.',
+    loadedJson: 'Wczytano zapis z pliku JSON.',
     back: 'WSTECZ',
     chooseMapTitle: 'WYBIERZ MAPE',
     chooseMapInstruction: 'Obejrzyj mape. Jesli pasuje, potwierdz wybor.',
@@ -662,7 +668,13 @@ const UI_COPY = {
     newGame: 'NEW GAME',
     rules: 'RULES',
     load: 'LOAD',
-    loadUnavailable: 'Loading is not available yet.',
+    loadJson: 'LOAD JSON',
+    loadMissing: 'No browser save exists.',
+    save: 'SAVE',
+    saveJson: 'JSON',
+    savedLocal: 'Game saved in this browser.',
+    loadedLocal: 'Loaded browser save.',
+    loadedJson: 'Loaded JSON save file.',
     back: 'BACK',
     chooseMapTitle: 'CHOOSE MAP',
     chooseMapInstruction: 'Inspect the map. Confirm it if it looks good.',
@@ -1172,6 +1184,7 @@ function formatEventForLog(
 export class WarForCrownScene extends Phaser.Scene {
   private state!: GameState;
   private returnUrl: string | null = null;
+  private hasBrowserSave = false;
   private mode: SceneMode = 'main-menu';
   private language: Language = 'pl';
   private backgroundGraphics!: Phaser.GameObjects.Graphics;
@@ -1466,6 +1479,7 @@ export class WarForCrownScene extends Phaser.Scene {
     }
     const seed = parseSeed(rawData);
     this.returnUrl = parseReturnUrl(rawData);
+    this.hasBrowserSave = hasPersistentValue(WAR_FOR_CROWN_BROWSER_SAVE_KEY);
     this.syncPlayerSetupsWithConfig();
     this.state = createInitialState(seed, this.gameConfig);
     this.mode = 'main-menu';
@@ -2229,6 +2243,96 @@ export class WarForCrownScene extends Phaser.Scene {
     };
   }
 
+  private currentSaveGame(): WarForCrownSaveGame {
+    return createWarForCrownSaveGame({
+      language: this.language,
+      config: this.gameConfig,
+      playerSetups: this.playerSetups,
+      state: this.state
+    });
+  }
+
+  private saveGameToBrowser(): void {
+    savePersistentJson(WAR_FOR_CROWN_BROWSER_SAVE_KEY, this.currentSaveGame());
+    this.hasBrowserSave = true;
+    this.message = this.copy().savedLocal;
+    this.renderScene();
+  }
+
+  private saveGameToJsonFile(): void {
+    const json = JSON.stringify(this.currentSaveGame(), null, 2);
+    const url = URL.createObjectURL(new Blob([`${json}\n`], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `war-for-crown-seed-${this.state.seed}-turn-${this.state.turnNumber}.json`;
+    try {
+      link.click();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  private applyLoadedSave(save: WarForCrownSaveGame, message: string): void {
+    for (const setup of save.playerSetups) {
+      if (PLAYER_COLOR_CHOICES[setup.colorIndex] === undefined) {
+        throw new Error(`Saved player ${setup.playerId} has invalid color index ${setup.colorIndex}.`);
+      }
+      if (PLAYER_CREST_CHOICES[setup.crestIndex] === undefined) {
+        throw new Error(`Saved player ${setup.playerId} has invalid crest index ${setup.crestIndex}.`);
+      }
+    }
+
+    this.language = save.language;
+    this.gameConfig = save.config;
+    this.playerSetups = save.playerSetups;
+    this.state = save.state;
+    this.mode = 'game';
+    this.editingNamePlayerId = null;
+    this.editingSeed = null;
+    this.selectedHireSoldiers = 1;
+    this.clearMapSelection();
+    this.eventLog = [];
+    this.actionJournal = [];
+    this.phaseOverlay = null;
+    this.battleSummary = null;
+    this.aiActionCue = null;
+    this.aiActionCueQueue = [];
+    this.aiActionCueElapsedMs = 0;
+    this.announcedPhaseKey = this.currentPhaseKey();
+    this.resetMapView();
+    this.message = message;
+    this.renderScene();
+  }
+
+  private loadGameFromBrowser(): void {
+    const rawSave = loadPersistentJson(WAR_FOR_CROWN_BROWSER_SAVE_KEY);
+    const save = parseWarForCrownSaveGame(rawSave);
+    this.applyLoadedSave(save, save.language === 'pl' ? UI_COPY.pl.loadedLocal : UI_COPY.en.loadedLocal);
+  }
+
+  private loadGameFromJsonFile(): void {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/json,.json';
+    input.addEventListener('change', () => {
+      const file = input.files?.[0];
+      if (file === undefined) {
+        throw new Error('JSON save file selection did not provide a file.');
+      }
+      void file.text().then((text) => {
+        let rawSave: unknown;
+        try {
+          rawSave = JSON.parse(text) as unknown;
+        } catch (error) {
+          throw new Error(`Save file "${file.name}" is not valid JSON.`, { cause: error });
+        }
+        const save = parseWarForCrownSaveGame(rawSave);
+        this.applyLoadedSave(save, save.language === 'pl' ? UI_COPY.pl.loadedJson : UI_COPY.en.loadedJson);
+      });
+    }, { once: true });
+    input.click();
+  }
+
   private applyJournaledActionForPlayer(playerId: PlayerId, action: WarForCrownAction): ReadonlyArray<WarForCrownEvent> {
     const before = this.state;
     const result = applyPlayerAction(this.state, playerId, action, this.gameConfig);
@@ -2701,8 +2805,10 @@ export class WarForCrownScene extends Phaser.Scene {
         this.toggleLanguage();
         break;
       case 'main-load':
-        this.message = this.copy().loadUnavailable;
-        this.renderScene();
+        this.loadGameFromBrowser();
+        break;
+      case 'main-load-json':
+        this.loadGameFromJsonFile();
         break;
       case 'main-new-game':
         this.startMapSelection(this.state.seed);
@@ -2767,6 +2873,12 @@ export class WarForCrownScene extends Phaser.Scene {
         this.battleSummary = null;
         this.message = this.copy().mainMenuSubtitle;
         this.renderScene();
+        break;
+      case 'save-game':
+        this.saveGameToBrowser();
+        break;
+      case 'save-game-json':
+        this.saveGameToJsonFile();
         break;
       case 'hire-soldiers':
         this.performHireSoldiers();
@@ -2921,7 +3033,9 @@ export class WarForCrownScene extends Phaser.Scene {
       case 'language-toggle':
         return this.copy().language;
       case 'main-load':
-        return this.copy().loadUnavailable;
+        return this.copy().loadMissing;
+      case 'main-load-json':
+        return this.copy().loadJson;
       case 'main-new-game':
       case 'main-rules':
       case 'main-sofa-arcade':
@@ -2954,6 +3068,9 @@ export class WarForCrownScene extends Phaser.Scene {
       case 'new-map':
       case 'victory-menu':
         return this.copy().menu;
+      case 'save-game':
+      case 'save-game-json':
+        return this.copy().save;
       case 'rules-back':
       case 'rules-new-game':
       case 'rules-home-max-fort':
@@ -3702,9 +3819,10 @@ export class WarForCrownScene extends Phaser.Scene {
 
     this.drawButton('main-new-game', copy.newGame, 430, 282, 420, 48, true);
     this.drawButton('main-rules', copy.rules, 430, 354, 420, 48, true);
-    this.drawButton('main-load', copy.load, 430, 426, 420, 48, false);
+    this.drawButton('main-load', copy.load, 430, 426, 420, 48, this.hasBrowserSave);
+    this.drawButton('main-load-json', copy.loadJson, 430, 498, 420, 48, true);
     if (this.returnUrl !== null) {
-      this.drawButton('main-sofa-arcade', copy.sofaArcade, 430, 498, 420, 48, true);
+      this.drawButton('main-sofa-arcade', copy.sofaArcade, 430, 570, 420, 48, true);
     }
 
   }
@@ -5128,12 +5246,12 @@ export class WarForCrownScene extends Phaser.Scene {
     });
 
     if (this.state.phase === 'home-selection') {
-      this.drawButton('confirm-home', copy.confirm, 914, 666, 154, 34, this.pendingHomeProvinceId !== null);
+      this.drawButton('confirm-home', copy.confirm, 850, 666, 154, 34, this.pendingHomeProvinceId !== null);
     } else {
       this.drawButton(
         'advance-step',
         turnUiCopy(this.state, this.language).advanceLabel,
-        914,
+        850,
         666,
         154,
         34,
@@ -5141,7 +5259,9 @@ export class WarForCrownScene extends Phaser.Scene {
       );
     }
 
-    this.drawButton('new-map', copy.menu, 1154, 666, 96, 34, true);
+    this.drawButton('save-game', copy.save, 1010, 666, 78, 34, true);
+    this.drawButton('save-game-json', copy.saveJson, 1094, 666, 60, 34, true);
+    this.drawButton('new-map', copy.menu, 1160, 666, 90, 34, true);
   }
 
   private drawPhaseOverlay(): void {

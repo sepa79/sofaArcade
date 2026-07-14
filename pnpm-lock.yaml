@@ -228,6 +228,9 @@ importers:
       '@fortawesome/fontawesome-free':
         specifier: 7.1.0
         version: 7.1.0
+      '@light80/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       phaser:
         specifier: ^3.90.0
         version: 3.90.0
